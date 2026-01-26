@@ -3,7 +3,9 @@
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactFieldController;
 use App\Http\Controllers\ContactImportController;
+use App\Http\Controllers\EvolutionApiController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -14,11 +16,28 @@ Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
+// Evolution API Webhook (must be public, but we'll validate via API key)
+Route::post('/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook');
+
 Route::middleware('auth')->group(function () {
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Settings routes
+    Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+
+    // Evolution API / WhatsApp routes
+    Route::prefix('settings/whatsapp')->name('whatsapp.')->group(function () {
+        Route::get('/', [EvolutionApiController::class, 'index'])->name('index');
+        Route::post('/connect', [EvolutionApiController::class, 'connect'])->name('connect');
+        Route::get('/qrcode', [EvolutionApiController::class, 'qrcode'])->name('qrcode');
+        Route::get('/status', [EvolutionApiController::class, 'status'])->name('status');
+        Route::post('/logout', [EvolutionApiController::class, 'logout'])->name('logout');
+        Route::delete('/delete', [EvolutionApiController::class, 'delete'])->name('delete');
+        Route::post('/webhook', [EvolutionApiController::class, 'configureWebhook'])->name('webhook.configure');
+    });
 
     // Contact Fields routes (MUST be before resource to avoid conflicts)
     Route::prefix('contacts/fields')->name('contacts.fields.')->group(function () {
