@@ -1,3 +1,73 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+        /* Verdes */
+        --color-brand-dark: #1F7A4D;
+        --color-brand: #2ECC71;
+        --color-brand-light: #7DCEA0;
+        
+        /* Transição */
+        --color-lime: #B7E04B;
+        
+        /* Amarelos */
+        --color-golden: #F4D03F;
+        --color-golden-vivid: #F1C40F;
+    }
+}
+
+@layer components {
+    /* Botões primários */
+    .btn-primary {
+        @apply inline-flex items-center px-4 py-2 bg-brand-700 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-brand-500 focus:bg-brand-500 active:bg-brand-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition ease-in-out duration-150;
+    }
+
+    /* Botões secundários */
+    .btn-secondary {
+        @apply inline-flex items-center px-4 py-2 bg-brand-300 border border-transparent rounded-md font-semibold text-xs text-brand-900 uppercase tracking-widest hover:bg-brand-200 focus:bg-brand-200 active:bg-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2 transition ease-in-out duration-150;
+    }
+
+    /* Botões de destaque/ação */
+    .btn-accent {
+        @apply inline-flex items-center px-4 py-2 bg-golden-500 border border-transparent rounded-md font-semibold text-xs text-gray-900 uppercase tracking-widest hover:bg-golden-400 focus:bg-golden-400 active:bg-golden-600 focus:outline-none focus:ring-2 focus:ring-golden-500 focus:ring-offset-2 transition ease-in-out duration-150;
+    }
+
+    /* Links de navegação */
+    .nav-link {
+        @apply inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-brand-100 hover:text-white hover:border-brand-300 focus:outline-none focus:text-white focus:border-brand-300 transition duration-150 ease-in-out;
+    }
+
+    .nav-link-active {
+        @apply inline-flex items-center px-1 pt-1 border-b-2 border-golden-400 text-sm font-medium leading-5 text-white focus:outline-none focus:border-golden-500 transition duration-150 ease-in-out;
+    }
+
+    /* Cards */
+    .card {
+        @apply bg-white overflow-hidden shadow-sm sm:rounded-lg border-l-4 border-brand-500;
+    }
+
+    /* Alertas de sucesso */
+    .alert-success {
+        @apply bg-brand-100 border border-brand-400 text-brand-700 px-4 py-3 rounded relative;
+    }
+
+    /* Alertas de aviso */
+    .alert-warning {
+        @apply bg-golden-100 border border-golden-400 text-golden-700 px-4 py-3 rounded relative;
+    }
+
+    /* Badges */
+    .badge-active {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-800;
+    }
+
+    .badge-inactive {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800;
+    }
+
+    .badge-admin {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-golden-100 text-golden-800;
+    }
+}
