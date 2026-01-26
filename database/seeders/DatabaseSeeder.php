@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use App\Models\User;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -13,11 +15,28 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
+        // Create Admin User
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'name' => 'Administrador',
+            'email' => 'admin@example.com',
+            'role' => UserRole::Admin,
+            'status' => UserStatus::Active,
+        ]);
+
+        // Create Regular Active User
+        User::factory()->create([
+            'name' => 'Usuário Ativo',
+            'email' => 'user@example.com',
+            'role' => UserRole::User,
+            'status' => UserStatus::Active,
+        ]);
+
+        // Create Inactive User (for testing)
+        User::factory()->create([
+            'name' => 'Usuário Inativo',
+            'email' => 'inactive@example.com',
+            'role' => UserRole::User,
+            'status' => UserStatus::Inactive,
         ]);
     }
 }

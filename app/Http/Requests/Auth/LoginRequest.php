@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Enums\UserStatus;
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -40,6 +42,17 @@ class LoginRequest extends FormRequest
     public function authenticate(): void
     {
         $this->ensureIsNotRateLimited();
+
+        // Check if user exists and is active before attempting login
+        $user = User::where('email', $this->email)->first();
+
+        if ($user && $user->status === UserStatus::Inactive) {
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => __('Sua conta está inativa. Entre em contato com o administrador.'),
+            ]);
+        }
 
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());

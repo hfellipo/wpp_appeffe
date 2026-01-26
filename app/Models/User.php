@@ -3,6 +3,8 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -21,6 +23,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
+        'status',
     ];
 
     /**
@@ -43,6 +47,56 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role' => UserRole::class,
+            'status' => UserStatus::class,
         ];
+    }
+
+    /**
+     * Check if user is active.
+     */
+    public function isActive(): bool
+    {
+        return $this->status === UserStatus::Active;
+    }
+
+    /**
+     * Check if user is inactive.
+     */
+    public function isInactive(): bool
+    {
+        return $this->status === UserStatus::Inactive;
+    }
+
+    /**
+     * Check if user is admin.
+     */
+    public function isAdmin(): bool
+    {
+        return $this->role === UserRole::Admin;
+    }
+
+    /**
+     * Check if user is regular user.
+     */
+    public function isUser(): bool
+    {
+        return $this->role === UserRole::User;
+    }
+
+    /**
+     * Scope a query to only include active users.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('status', UserStatus::Active);
+    }
+
+    /**
+     * Scope a query to only include admin users.
+     */
+    public function scopeAdmins($query)
+    {
+        return $query->where('role', UserRole::Admin);
     }
 }
