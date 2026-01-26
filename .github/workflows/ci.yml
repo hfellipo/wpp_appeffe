@@ -90,7 +90,6 @@ jobs:
           local_path: './deploy_temp/*'
           remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
           sftp_only: true
-          args: '-o ConnectTimeout=10 -o StrictHostKeyChecking=no'
 
       - name: 🧹 Cleanup
         if: always()
