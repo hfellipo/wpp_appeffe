@@ -1,4 +1,4 @@
-name: 🚀 Deploy Incremental
+name: 🚀 Deploy Incremental (SFTP)
 
 on:
   push:
