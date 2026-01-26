@@ -86,7 +86,7 @@ jobs:
           server: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT }}
+          port: ${{ secrets.SFTP_PORT || 22 }}
           local_path: './deploy_temp/*'
           remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
           sftp_only: true
