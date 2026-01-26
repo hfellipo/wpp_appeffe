@@ -1,88 +1,99 @@
-name: CI
+name: 🚀 Deploy Incremental
 
 on:
   push:
-    branches:
-      - "**"
-  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
-  changes:
+  deploy:
     runs-on: ubuntu-latest
-    outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
 
     steps:
-      - name: Checkout
+      - name: 📥 Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Detect changes
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            backend:
-              - app/**
-              - bootstrap/**
-              - config/**
-              - database/**
-              - lang/**
-              - public/**
-              - resources/views/**
-              - routes/**
-              - artisan
-              - composer.json
-              - composer.lock
-              - phpunit.xml
-              - .env.example
-            frontend:
-              - resources/js/**
-              - resources/css/**
-              - package.json
-              - package-lock.json
-              - postcss.config.js
-              - tailwind.config.js
-              - vite.config.js
+      - name: 🔍 Detect Changes
+        id: changes
+        run: |
+          CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only HEAD~1 HEAD | tr '\n' ' ' || true)
+          DELETED_FILES=$(git diff --diff-filter=D --name-only HEAD~1 HEAD | tr '\n' ' ' || true)
+          if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            {
+              echo "changed_files<<EOF"
+              echo "$CHANGED_FILES"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+            {
+              echo "deleted_files<<EOF"
+              echo "$DELETED_FILES"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: changes
-    if: >-
-      ${{
-        always() &&
-        github.event_name == 'push' &&
-        (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
-      }}
+      - name: ⏭️ Skip Deploy (No Changes)
+        if: steps.changes.outputs.has_changes == 'false'
+        run: |
+          echo "✅ Nenhuma mudança detectada. Deploy cancelado."
+          exit 0
 
-    steps:
-      - name: Deploy via SSH
+      - name: 🗑️ Remove Deleted Files (Server)
+        if: steps.changes.outputs.has_changes == 'true' && steps.changes.outputs.deleted_files != ''
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          APP_DIR: ${{ secrets.DEPLOY_PATH }}
-          GIT_BRANCH: ${{ github.ref_name }}
-          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
-          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          password: ${{ secrets.DEPLOY_PASSWORD }}
-          port: ${{ secrets.DEPLOY_PORT }}
-          envs: APP_DIR,GIT_BRANCH,BACKEND_CHANGED,FRONTEND_CHANGED
+          host: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USERNAME }}
+          password: ${{ secrets.SFTP_PASSWORD }}
+          port: ${{ secrets.SFTP_PORT }}
           script: |
-            set -e
-            cd "$APP_DIR"
-            git pull origin "$GIT_BRANCH"
-            if [ "$BACKEND_CHANGED" = "true" ]; then
-              composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader
-              php artisan migrate --force
-              php artisan config:cache
-              php artisan route:cache
-              php artisan view:cache
+            cd ${{ secrets.SFTP_REMOTE_DIR }}
+            FILES="${{ steps.changes.outputs.deleted_files }}"
+            for f in $FILES; do
+              if [ -f "$f" ]; then
+                rm -f -- "$f" || true
+                echo "removido arquivo: $f"
+              fi
+            done
+            for f in $FILES; do
+              d=$(dirname "$f")
+              [ "$d" != "." ] && rmdir -p --ignore-fail-on-non-empty -- "$d" 2>/dev/null || true
+            done
+
+      - name: 🔧 Prepare Deploy
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          mkdir -p deploy_temp
+          echo "${{ steps.changes.outputs.changed_files }}" | tr ' ' '\n' | while read file; do
+            if [ -f "$file" ]; then
+              mkdir -p "deploy_temp/$(dirname "$file")"
+              cp "$file" "deploy_temp/$file"
+              echo "📄 Preparado: $file"
             fi
-            if [ "$FRONTEND_CHANGED" = "true" ]; then
-              npm ci
-              npm run build
-            fi
+          done
+          cp .htaccess deploy_temp/ 2>/dev/null || true
+          cp composer.json deploy_temp/ 2>/dev/null || true
+          cp package.json deploy_temp/ 2>/dev/null || true
+
+      - name: 🚀 Deploy Incremental (SFTP)
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USERNAME }}
+          password: ${{ secrets.SFTP_PASSWORD }}
+          port: ${{ secrets.SFTP_PORT }}
+          local_path: './deploy_temp/*'
+          remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
+          sftp_only: true
+          args: '-o ConnectTimeout=10 -o StrictHostKeyChecking=no'
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          rm -rf deploy_temp
+          echo "🧹 Arquivos temporários removidos"
