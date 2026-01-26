@@ -12,7 +12,6 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      deploy: ${{ steps.filter.outputs.deploy }}
 
     steps:
       - name: Checkout
@@ -47,27 +46,6 @@ jobs:
               - postcss.config.js
               - tailwind.config.js
               - vite.config.js
-            deploy:
-              - app/**
-              - bootstrap/**
-              - config/**
-              - database/**
-              - lang/**
-              - public/**
-              - resources/views/**
-              - routes/**
-              - resources/js/**
-              - resources/css/**
-              - artisan
-              - composer.json
-              - composer.lock
-              - phpunit.xml
-              - package.json
-              - package-lock.json
-              - postcss.config.js
-              - tailwind.config.js
-              - vite.config.js
-              - .env.example
 
   deploy:
     runs-on: ubuntu-latest
@@ -75,7 +53,6 @@ jobs:
     if: >-
       ${{
         always() &&
-        needs.changes.outputs.deploy == 'true' &&
         github.event_name == 'push' &&
         (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
       }}
