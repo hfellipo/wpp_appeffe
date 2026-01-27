@@ -230,7 +230,8 @@ class EvolutionApiController extends Controller
         ]);
 
         // Wait a moment for instance to be ready
-        sleep(2);
+        // A Evolution API precisa de tempo para criar a instância completamente
+        sleep(3);
 
         // Configure webhook (use default URL if not provided, or use provided values)
         $webhookUrlInput = $request->input('webhook_url');
@@ -270,17 +271,27 @@ class EvolutionApiController extends Controller
             $webhookResult = ['error' => 'URL local não suportada'];
         } else {
             // Try to configure webhook with retry
+            // Aguardar um pouco mais para garantir que a instância está pronta
+            sleep(2);
+            
             $webhookResult = null;
             $maxRetries = 3;
-            $retryDelay = 2; // seconds
+            $retryDelay = 3; // seconds - aumentado para dar mais tempo
             
             for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
                 \Log::info("Tentativa {$attempt} de {$maxRetries} para configurar webhook", [
                     'url' => $webhookUrl,
                     'instance_name' => $whatsappNumber,
+                    'events' => $events,
                 ]);
                 
                 $webhookResult = $this->evolutionApi->setWebhook($webhookUrl, $events, $webhookBase64);
+                
+                \Log::info("Resposta do webhook (tentativa {$attempt})", [
+                    'has_error' => isset($webhookResult['error']),
+                    'error' => $webhookResult['error'] ?? null,
+                    'result_keys' => array_keys($webhookResult),
+                ]);
                 
                 if (!isset($webhookResult['error'])) {
                     \Log::info('Webhook configurado com sucesso', [
@@ -289,6 +300,14 @@ class EvolutionApiController extends Controller
                         'attempt' => $attempt,
                     ]);
                     break;
+                }
+                
+                // Se o erro é 404, a instância pode não estar pronta ainda
+                if (isset($webhookResult['error']) && strpos($webhookResult['error'], '404') !== false) {
+                    \Log::warning("Instância pode não estar pronta ainda (404), aguardando mais tempo...", [
+                        'attempt' => $attempt,
+                    ]);
+                    sleep($retryDelay + 2); // Aguardar mais tempo se for 404
                 }
                 
                 if ($attempt < $maxRetries) {
@@ -308,7 +327,14 @@ class EvolutionApiController extends Controller
                     'events' => $events,
                     'attempts' => $maxRetries,
                 ]);
-                $webhookWarning = 'Webhook não configurado: ' . $webhookResult['error'];
+                
+                // Mensagem mais informativa
+                $errorMsg = $webhookResult['error'];
+                if (strpos($errorMsg, '400') !== false || strpos($errorMsg, 'Bad Request') !== false) {
+                    $webhookWarning = 'Webhook não configurado (Bad Request). A instância pode ainda estar sendo criada. Você pode configurar o webhook manualmente depois na página de configurações.';
+                } else {
+                    $webhookWarning = 'Webhook não configurado: ' . $errorMsg . '. Você pode configurá-lo manualmente depois na página de configurações.';
+                }
             }
         }
 

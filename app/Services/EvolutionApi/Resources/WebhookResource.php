@@ -75,7 +75,22 @@ class WebhookResource
             'status_code' => $statusCode,
             'response_body' => $responseBody,
             'response_text' => $responseText,
+            'url_enviada' => $url,
+            'instance_name' => $instanceName,
         ]);
+        
+        // Se erro 400, logar detalhes completos
+        if ($statusCode === 400) {
+            Log::error('Evolution API - Erro 400 Bad Request ao configurar webhook - DETALHES', [
+                'status_code' => $statusCode,
+                'response_body' => $responseBody,
+                'response_text' => $responseText,
+                'payload_enviado' => $payload,
+                'url' => $url,
+                'instance_name' => $instanceName,
+                'events' => $events,
+            ]);
+        }
 
         return $this->normalizeResponse($response, 'Erro ao configurar webhook');
     }
