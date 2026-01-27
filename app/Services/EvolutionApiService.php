@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\WhatsAppInstance;
 use App\Services\EvolutionApi\Client;
 use App\Services\EvolutionApi\Resources\InstanceResource;
 use App\Services\EvolutionApi\Resources\MessageResource;
@@ -65,6 +66,16 @@ class EvolutionApiService
 
         // Only set instance name if user is authenticated
         if (auth()->check()) {
+            $dbInstance = WhatsAppInstance::where('user_id', auth()->id())
+                ->latest('id')
+                ->first();
+
+            if ($dbInstance) {
+                $this->instanceName = $dbInstance->instance_name;
+                session()->put('whatsapp_instance_name', $this->instanceName);
+                return;
+            }
+
             $this->instanceName = 'secretario_' . auth()->id();
         } else {
             $this->instanceName = 'secretario_guest';

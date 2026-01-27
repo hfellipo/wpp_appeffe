@@ -5,7 +5,10 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Models\WhatsAppInstance;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -98,5 +101,15 @@ class User extends Authenticatable
     public function scopeAdmins($query)
     {
         return $query->where('role', UserRole::Admin);
+    }
+
+    public function whatsappInstances(): HasMany
+    {
+        return $this->hasMany(WhatsAppInstance::class);
+    }
+
+    public function activeWhatsappInstance(): HasOne
+    {
+        return $this->hasOne(WhatsAppInstance::class)->where('status', 'open');
     }
 }

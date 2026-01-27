@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\WhatsAppInstance;
 use App\Services\EvolutionApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -136,6 +137,24 @@ class EvolutionApiController extends Controller
         // Persist instance name for subsequent requests
         $request->session()->put('whatsapp_instance_name', $whatsappNumber);
 
+        $whatsappInstance = null;
+        if (auth()->check()) {
+            $instanceToken = $this->extractInstanceToken($result);
+            $whatsappInstance = WhatsAppInstance::updateOrCreate(
+                ['instance_name' => $whatsappNumber],
+                [
+                    'user_id' => auth()->id(),
+                    'whatsapp_number' => $whatsappNumber,
+                    'instance_token' => $instanceToken,
+                    'status' => 'connecting',
+                    'metadata' => [
+                        'created_via' => 'connect',
+                        'create_response' => $result,
+                    ],
+                ]
+            );
+        }
+
         // Try to extract QR code from creation response (faster UX)
         $qrcode = null;
         if (isset($result['qrcode'])) {
@@ -183,6 +202,14 @@ class EvolutionApiController extends Controller
             ]);
         }
 
+        if ($whatsappInstance && !isset($webhookResult['error'])) {
+            $whatsappInstance->update([
+                'webhook_url' => $webhookUrl,
+                'webhook_events' => $events,
+                'webhook_base64' => $webhookBase64,
+            ]);
+        }
+
         // Check status
         $statusData = $this->evolutionApi->getInstanceStatus();
         $status = $statusData['status'] ?? 'not_found';
@@ -214,6 +241,25 @@ class EvolutionApiController extends Controller
             }
         }
 
+        if ($whatsappInstance) {
+            $metadata = is_array($whatsappInstance->metadata) ? $whatsappInstance->metadata : [];
+            if ($qrcode && isset($qrcode['base64'])) {
+                $metadata['qrcode_base64'] = $qrcode['base64'];
+            }
+            $metadata['status_response'] = $statusData;
+            if (!isset($webhookResult['error'])) {
+                $metadata['webhook_response'] = $webhookResult;
+            } else {
+                $metadata['webhook_error'] = $webhookResult['error'];
+            }
+            $whatsappInstance->update([
+                'status' => $status,
+                'connected_at' => $status === 'open' ? now() : $whatsappInstance->connected_at,
+                'disconnected_at' => $status === 'close' ? now() : $whatsappInstance->disconnected_at,
+                'metadata' => $metadata,
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Instância criada com sucesso! Escaneie o QR Code para conectar.',
@@ -232,6 +278,17 @@ class EvolutionApiController extends Controller
         }
 
         return in_array($host, ['127.0.0.1', 'localhost'], true);
+    }
+
+    private function extractInstanceToken(array $result): ?string
+    {
+        $token = $result['instance_token']
+            ?? $result['instanceToken']
+            ?? $result['token']
+            ?? $result['apikey']
+            ?? null;
+
+        return is_string($token) && $token !== '' ? $token : null;
     }
 
     /**
@@ -320,6 +377,20 @@ class EvolutionApiController extends Controller
         
         if (isset($result['error'])) {
             return back()->with('error', 'Erro ao configurar webhook: ' . $result['error']);
+        }
+
+        if (auth()->check()) {
+            $instanceName = $this->evolutionApi->getInstanceName();
+            WhatsAppInstance::updateOrCreate(
+                ['instance_name' => $instanceName],
+                [
+                    'user_id' => auth()->id(),
+                    'status' => 'connecting',
+                    'webhook_url' => $url,
+                    'webhook_events' => $events,
+                    'webhook_base64' => $webhookBase64,
+                ]
+            );
         }
 
         return back()->with('success', 'Webhook configurado com sucesso!');
