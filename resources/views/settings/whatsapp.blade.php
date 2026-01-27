@@ -102,11 +102,11 @@
                         </div>
 
                         <!-- QR Code -->
-                        <div x-show="showQrCode && qrCode && qrCode.startsWith('data:image')" class="mt-4 p-4 bg-gray-50 rounded-lg text-center">
+                        <div x-show="showQrCode && getValidQrCode()" class="mt-4 p-4 bg-gray-50 rounded-lg text-center">
                             <p class="text-sm text-gray-600 mb-3">{{ __('Escaneie o QR Code com seu WhatsApp:') }}</p>
                             <div class="flex justify-center">
                                 <img 
-                                    :src="qrCode" 
+                                    :src="getValidQrCode()" 
                                     alt="QR Code"
                                     class="border-2 border-gray-300 rounded-lg p-2 bg-white max-w-xs"
                                     x-on:error="handleQrCodeError()"
@@ -393,13 +393,15 @@
                     }, 5000);
                     
                     // Watch qrCode to ensure it's always valid or null
+                    // IMPORTANTE: Este watcher é executado ANTES do Alpine renderizar o template
                     this.$watch('qrCode', (value) => {
                         if (!value) return;
                         
+                        console.log('Watcher qrCode ativado:', value.substring(0, 50));
+                        
                         // Se não começa com data:image, é inválido
                         if (!value.startsWith('data:image')) {
-                            console.error('⚠ AVISO: qrCode com valor inválido detectado:', value.substring(0, 50));
-                            console.log('Limpando qrCode inválido...');
+                            console.error('⚠ AVISO: qrCode não começa com data:image, limpando...');
                             this.qrCode = null;
                             this.showQrCode = false;
                             
@@ -419,19 +421,24 @@
                             // Se o conteúdo começa com número@, é pairing code!
                             if (/^\d+@/.test(content)) {
                                 console.error('⚠ AVISO: qrCode contém pairing code após data:image!', content.substring(0, 50));
-                                console.log('Limpando qrCode inválido e movendo para pairingCode...');
-                                this.qrCode = null;
-                                this.showQrCode = false;
-                                this.pairingCode = content.split(',')[0]; // Pegar primeira parte se tiver vírgulas
+                                console.log('LIMPANDO qrCode inválido IMEDIATAMENTE...');
+                                // Usar $nextTick para garantir que a mudança seja aplicada antes do render
+                                this.$nextTick(() => {
+                                    this.qrCode = null;
+                                    this.showQrCode = false;
+                                    this.pairingCode = content.split(',')[0]; // Pegar primeira parte se tiver vírgulas
+                                });
                             }
                             // Se o conteúdo é muito curto, também é inválido
                             else if (content.length < 1000) {
                                 console.error('⚠ AVISO: qrCode muito curto para ser imagem válida:', content.length, 'caracteres');
-                                this.qrCode = null;
-                                this.showQrCode = false;
+                                this.$nextTick(() => {
+                                    this.qrCode = null;
+                                    this.showQrCode = false;
+                                });
                             }
                         }
-                    });
+                    }, { immediate: true }); // immediate: true para executar na inicialização também
                     
                     // Cleanup on component destroy
                     this.$watch('connectionStatus', (value) => {
@@ -800,6 +807,47 @@
                     }
                     
                     return cleaned.toUpperCase();
+                },
+
+                /**
+                 * Get valid QR code for image src.
+                 * Always validates before returning to prevent pairing codes from being used as images.
+                 */
+                getValidQrCode() {
+                    if (!this.qrCode) return '';
+                    
+                    const value = this.qrCode;
+                    
+                    // If it doesn't start with data:image, it's invalid
+                    if (!value.startsWith('data:image')) {
+                        return '';
+                    }
+                    
+                    // Extract content after comma
+                    const commaIndex = value.indexOf(',');
+                    if (commaIndex === -1) {
+                        return '';
+                    }
+                    
+                    const content = value.substring(commaIndex + 1);
+                    
+                    // If content starts with digit@, it's a pairing code - return empty
+                    if (/^\d+@/.test(content)) {
+                        console.error('getValidQrCode: Pairing code detectado, retornando vazio');
+                        this.qrCode = null;
+                        this.showQrCode = false;
+                        if (!this.pairingCode) {
+                            this.pairingCode = content.split(',')[0];
+                        }
+                        return '';
+                    }
+                    
+                    // If content is too short, it's invalid
+                    if (content.length < 1000) {
+                        return '';
+                    }
+                    
+                    return value;
                 },
 
                 normalizeQrCode(qrCodeData) {
