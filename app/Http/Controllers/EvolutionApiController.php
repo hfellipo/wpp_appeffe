@@ -138,21 +138,32 @@ class EvolutionApiController extends Controller
         $request->session()->put('whatsapp_instance_name', $whatsappNumber);
 
         $whatsappInstance = null;
+        $dbWarning = null;
         if (auth()->check()) {
-            $instanceToken = $this->extractInstanceToken($result);
-            $whatsappInstance = WhatsAppInstance::updateOrCreate(
-                ['instance_name' => $whatsappNumber],
-                [
-                    'user_id' => auth()->id(),
-                    'whatsapp_number' => $whatsappNumber,
-                    'instance_token' => $instanceToken,
-                    'status' => 'connecting',
-                    'metadata' => [
-                        'created_via' => 'connect',
-                        'create_response' => $result,
-                    ],
-                ]
-            );
+            try {
+                $instanceToken = $this->extractInstanceToken($result);
+                $whatsappInstance = WhatsAppInstance::updateOrCreate(
+                    ['instance_name' => $whatsappNumber],
+                    [
+                        'user_id' => auth()->id(),
+                        'whatsapp_number' => $whatsappNumber,
+                        'instance_token' => $instanceToken,
+                        'status' => 'connecting',
+                        'metadata' => [
+                            'created_via' => 'connect',
+                            'create_response' => $result,
+                        ],
+                    ]
+                );
+            } catch (\Exception $e) {
+                $dbWarning = 'Não foi possível salvar a instância no banco de dados.';
+                \Log::error('Erro ao salvar instância WhatsApp no banco', [
+                    'error' => $e->getMessage(),
+                    'instance_name' => $whatsappNumber,
+                ]);
+            }
+        } else {
+            $dbWarning = 'Usuário não autenticado. Instância não foi salva no banco.';
         }
 
         // Try to extract QR code from creation response (faster UX)
@@ -203,11 +214,19 @@ class EvolutionApiController extends Controller
         }
 
         if ($whatsappInstance && !isset($webhookResult['error'])) {
-            $whatsappInstance->update([
-                'webhook_url' => $webhookUrl,
-                'webhook_events' => $events,
-                'webhook_base64' => $webhookBase64,
-            ]);
+            try {
+                $whatsappInstance->update([
+                    'webhook_url' => $webhookUrl,
+                    'webhook_events' => $events,
+                    'webhook_base64' => $webhookBase64,
+                ]);
+            } catch (\Exception $e) {
+                $dbWarning = $dbWarning ?: 'Não foi possível salvar o webhook no banco de dados.';
+                \Log::error('Erro ao salvar webhook no banco', [
+                    'error' => $e->getMessage(),
+                    'instance_name' => $whatsappNumber,
+                ]);
+            }
         }
 
         // Check status
@@ -252,12 +271,20 @@ class EvolutionApiController extends Controller
             } else {
                 $metadata['webhook_error'] = $webhookResult['error'];
             }
-            $whatsappInstance->update([
-                'status' => $status,
-                'connected_at' => $status === 'open' ? now() : $whatsappInstance->connected_at,
-                'disconnected_at' => $status === 'close' ? now() : $whatsappInstance->disconnected_at,
-                'metadata' => $metadata,
-            ]);
+            try {
+                $whatsappInstance->update([
+                    'status' => $status,
+                    'connected_at' => $status === 'open' ? now() : $whatsappInstance->connected_at,
+                    'disconnected_at' => $status === 'close' ? now() : $whatsappInstance->disconnected_at,
+                    'metadata' => $metadata,
+                ]);
+            } catch (\Exception $e) {
+                $dbWarning = $dbWarning ?: 'Não foi possível atualizar o status no banco de dados.';
+                \Log::error('Erro ao atualizar status da instância no banco', [
+                    'error' => $e->getMessage(),
+                    'instance_name' => $whatsappNumber,
+                ]);
+            }
         }
 
         return response()->json([
@@ -267,6 +294,7 @@ class EvolutionApiController extends Controller
             'qrcode' => $qrcode,
             'instanceName' => $whatsappNumber,
             'webhook_warning' => $webhookWarning,
+            'db_warning' => $dbWarning,
         ]);
     }
 
@@ -287,6 +315,18 @@ class EvolutionApiController extends Controller
             ?? $result['token']
             ?? $result['apikey']
             ?? null;
+
+        if (!is_string($token) || $token === '') {
+            $nested = $result['instance'] ?? $result['data'] ?? $result['response'] ?? null;
+            if (is_array($nested)) {
+                $token = $nested['instance_token']
+                    ?? $nested['instanceToken']
+                    ?? $nested['token']
+                    ?? $nested['apikey']
+                    ?? $nested['hash']
+                    ?? null;
+            }
+        }
 
         return is_string($token) && $token !== '' ? $token : null;
     }

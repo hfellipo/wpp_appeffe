@@ -459,13 +459,9 @@
                                 qrCodeData = data.code;
                             }
                             
-                            if (qrCodeData) {
-                                // Ensure it's a data URL
-                                if (!qrCodeData.startsWith('data:image')) {
-                                    this.qrCode = 'data:image/png;base64,' + qrCodeData;
-                                } else {
-                                    this.qrCode = qrCodeData;
-                                }
+                            const normalizedQr = this.normalizeQrCode(qrCodeData);
+                            if (normalizedQr) {
+                                this.qrCode = normalizedQr;
                                 this.showQrCode = true;
                             } else {
                                 // Try to get QR code if status is connecting
@@ -505,6 +501,9 @@
                             if (data.webhook_warning) {
                                 alert(data.webhook_warning);
                             }
+                            if (data.db_warning) {
+                                alert(data.db_warning);
+                            }
                         } else {
                             alert(data.error || 'Erro ao conectar WhatsApp');
                         }
@@ -536,13 +535,9 @@
                             qrCodeData = data.base64;
                         }
                         
-                        if (qrCodeData) {
-                            // Ensure it's a data URL
-                            if (!qrCodeData.startsWith('data:image')) {
-                                this.qrCode = 'data:image/png;base64,' + qrCodeData;
-                            } else {
-                                this.qrCode = qrCodeData;
-                            }
+                        const normalizedQr = this.normalizeQrCode(qrCodeData);
+                        if (normalizedQr) {
+                            this.qrCode = normalizedQr;
                             this.showQrCode = true;
                         }
                     } catch (e) {
@@ -607,6 +602,28 @@
                     setTimeout(() => {
                         this.successMessage = null;
                     }, 5000); // Hide after 5 seconds
+                },
+
+                normalizeQrCode(qrCodeData) {
+                    if (!qrCodeData || typeof qrCodeData !== 'string') {
+                        return null;
+                    }
+
+                    const trimmed = qrCodeData.trim();
+                    if (trimmed === '' || trimmed.toLowerCase().includes('undefined')) {
+                        return null;
+                    }
+
+                    if (trimmed.startsWith('data:image')) {
+                        return trimmed;
+                    }
+
+                    const base64Regex = /^[A-Za-z0-9+/=]+$/;
+                    if (!base64Regex.test(trimmed)) {
+                        return null;
+                    }
+
+                    return 'data:image/png;base64,' + trimmed;
                 }
             }
         }
