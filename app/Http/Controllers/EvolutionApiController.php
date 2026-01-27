@@ -131,9 +131,19 @@ class EvolutionApiController extends Controller
             'instanceName' => $whatsappNumber,
             'response' => $result,
             'response_keys' => array_keys($result),
+            'has_error' => isset($result['error']),
+            'has_qrcode' => isset($result['qrcode']) || isset($result['base64']) || isset($result['code']),
         ]);
         
-        if (isset($result['error'])) {
+        // IMPORTANTE: Mesmo com erro, pode haver QR code na resposta
+        // A Evolution API pode retornar erro 400 mas ainda criar a instância e retornar QR code
+        $hasQrCode = isset($result['qrcode']) 
+            || isset($result['base64']) 
+            || isset($result['code'])
+            || isset($result['pairingCode']);
+        
+        if (isset($result['error']) && !$hasQrCode) {
+            // Só retornar erro se não houver QR code para processar
             $errorMessage = $result['error'];
             // Don't duplicate "Erro ao criar instância" if it's already in the message
             if (strpos($errorMessage, 'Erro ao criar instância') === false) {
@@ -144,6 +154,14 @@ class EvolutionApiController extends Controller
                 return response()->json(['error' => $errorMessage], 400);
             }
             return back()->with('error', $errorMessage);
+        }
+        
+        // Se tem erro mas também tem QR code, logar aviso mas continuar processando
+        if (isset($result['error']) && $hasQrCode) {
+            \Log::warning('Evolution API - Erro na resposta mas QR code disponível', [
+                'error' => $result['error'],
+                'has_qrcode' => true,
+            ]);
         }
 
         // Persist instance name for subsequent requests
@@ -244,12 +262,34 @@ class EvolutionApiController extends Controller
                 
                 // Check if base64 field contains valid image
                 if (isset($result['qrcode']['base64'])) {
-                    if (is_string($result['qrcode']['base64']) && preg_match('/^\d+@/', $result['qrcode']['base64'])) {
-                        $pairingCode = $result['qrcode']['base64'];
-                        \Log::info('QR code base64 detectado como pairing code', ['code' => $pairingCode]);
-                    } elseif ($this->isValidBase64Image($result['qrcode']['base64'])) {
+                    $base64Value = $result['qrcode']['base64'];
+                    
+                    // Check if it's a pairing code (starts with digit@)
+                    if (is_string($base64Value) && preg_match('/^\d+@/', $base64Value)) {
+                        $pairingCode = $base64Value;
+                        \Log::info('QR code base64 detectado como pairing code (formato: número@...)', [
+                            'code' => $pairingCode,
+                            'length' => strlen($pairingCode),
+                        ]);
+                    }
+                    // Check if it contains commas (pairing code format: 2@...,code1,code2,code3)
+                    elseif (is_string($base64Value) && strpos($base64Value, ',') !== false && preg_match('/^\d+@/', $base64Value)) {
+                        // Extract just the first part (before first comma)
+                        $pairingCode = explode(',', $base64Value)[0];
+                        \Log::info('QR code base64 detectado como pairing code com múltiplos códigos', [
+                            'code' => $pairingCode,
+                            'full_value' => substr($base64Value, 0, 100),
+                        ]);
+                    }
+                    // Check if it's a valid base64 image
+                    elseif ($this->isValidBase64Image($base64Value)) {
                         $qrcode = $result['qrcode'];
                         \Log::info('QR code base64 é imagem válida');
+                    } else {
+                        \Log::warning('QR code base64 não é imagem válida nem pairing code reconhecido', [
+                            'value_sample' => substr($base64Value, 0, 100),
+                            'length' => strlen($base64Value),
+                        ]);
                     }
                 }
                 
@@ -407,6 +447,12 @@ class EvolutionApiController extends Controller
             }
         }
 
+        // Adicionar warning se houve erro na criação mas QR code está disponível
+        $creationWarning = null;
+        if (isset($result['error']) && ($qrcode !== null || $pairingCode !== null)) {
+            $creationWarning = 'Aviso: ' . $result['error'] . ' (mas a instância foi criada e o QR code está disponível)';
+        }
+        
         $responseData = [
             'success' => true,
             'message' => 'Instância criada com sucesso! Escaneie o QR Code para conectar.',
@@ -416,12 +462,14 @@ class EvolutionApiController extends Controller
             'instanceName' => $whatsappNumber,
             'webhook_warning' => $webhookWarning,
             'db_warning' => $dbWarning,
+            'creation_warning' => $creationWarning,
         ];
         
         \Log::info('Evolution API - Resposta final para o frontend', [
             'has_qrcode' => $qrcode !== null,
             'has_pairing_code' => $pairingCode !== null,
             'status' => $status,
+            'has_creation_warning' => $creationWarning !== null,
             'response_keys' => array_keys($responseData),
         ]);
         
@@ -443,6 +491,17 @@ class EvolutionApiController extends Controller
         // Check if it's already a data URI
         if (strpos($base64, 'data:image') === 0) {
             return true;
+        }
+        
+        // IMPORTANTE: Rejeitar pairing codes explicitamente
+        // Pairing codes começam com dígito@ (ex: 2@cOz1XwPq...)
+        if (preg_match('/^\d+@/', $base64)) {
+            return false;
+        }
+        
+        // Se contém vírgulas, provavelmente é pairing code com múltiplos códigos
+        if (strpos($base64, ',') !== false && preg_match('/^\d+@/', $base64)) {
+            return false;
         }
         
         // Check if it looks like base64 (should be much longer for an image)

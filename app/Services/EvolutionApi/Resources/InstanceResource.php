@@ -26,16 +26,32 @@ class InstanceResource
             'url' => $this->client->baseUrl() . '/instance/create',
             'instanceName' => $instanceName,
             'payload' => $payload,
+            'payload_json' => json_encode($payload),
         ]);
 
         $response = $this->client->post('/instance/create', $payload);
         
+        $statusCode = $response->status();
+        $responseBody = $response->json();
+        $responseText = $response->body();
+        
         // Log da resposta completa da Evolution API
         Log::info('Evolution API - RESPOSTA COMPLETA da criação de instância', [
-            'status_code' => $response->status(),
-            'response_body' => $response->json(),
-            'response_text' => $response->body(),
+            'status_code' => $statusCode,
+            'response_body' => $responseBody,
+            'response_text' => $responseText,
+            'response_headers' => $response->headers(),
         ]);
+        
+        // Se retornou erro 400, logar detalhes do erro
+        if ($statusCode === 400) {
+            Log::error('Evolution API - Erro 400 Bad Request ao criar instância', [
+                'status_code' => $statusCode,
+                'response_body' => $responseBody,
+                'response_text' => $responseText,
+                'payload_enviado' => $payload,
+            ]);
+        }
 
         return $this->normalizeResponse($response, 'Erro ao criar instância');
     }
@@ -83,6 +99,32 @@ class InstanceResource
         $responseBody = $response->json();
         $responseText = $response->body();
 
+        // Se a resposta tem dados válidos (mesmo com erro 400), tentar extrair
+        // A Evolution API pode retornar erro 400 mas ainda criar a instância e retornar QR code
+        if (is_array($responseBody) && !empty($responseBody)) {
+            // Verificar se tem QR code ou dados úteis mesmo com erro
+            $hasUsefulData = isset($responseBody['qrcode']) 
+                || isset($responseBody['base64']) 
+                || isset($responseBody['code'])
+                || isset($responseBody['pairingCode'])
+                || isset($responseBody['instance'])
+                || isset($responseBody['data']);
+            
+            if ($hasUsefulData && ($statusCode === 200 || $statusCode === 201)) {
+                // Sucesso completo
+                return $responseBody;
+            } elseif ($hasUsefulData && $statusCode === 400) {
+                // Erro 400 mas tem dados úteis (pode ser erro em campo opcional como webhook)
+                Log::warning('Evolution API - Erro 400 mas resposta contém dados úteis', [
+                    'response_body' => $responseBody,
+                ]);
+                // Retornar os dados mesmo com erro, mas adicionar aviso
+                $responseBody['_warning'] = 'A API retornou erro 400, mas a instância pode ter sido criada. Verifique os logs.';
+                return $responseBody;
+            }
+        }
+
+        // Se não tem dados úteis e é erro, retornar erro
         if ($statusCode !== 201 && $statusCode !== 200 && !$response->successful()) {
             $errorMessage = $this->extractErrorMessage($statusCode, $responseBody, $responseText, $defaultMessage);
             return ['error' => $errorMessage];
