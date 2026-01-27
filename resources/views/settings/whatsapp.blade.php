@@ -435,6 +435,11 @@
                         });
 
                         const data = await response.json();
+                        
+                        // Log do retorno JSON da API
+                        console.log('=== RETORNO DA API DE CRIAR INSTÂNCIA ===');
+                        console.log(data);
+                        console.log('=========================================');
 
                         if (response.ok && data.success) {
                             // Update instance name
