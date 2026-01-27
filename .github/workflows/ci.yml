@@ -95,6 +95,12 @@ jobs:
             fi
           done <<< "${{ steps.changes.outputs.changed_files }}"
 
+      - name: 📋 List Changed Files
+        if: steps.changes.outputs.has_changed_files == 'true'
+        run: |
+          echo "Arquivos detectados:"
+          printf '%s\n' "${{ steps.changes.outputs.changed_files }}"
+
       - name: 📋 List Files to Deploy
         if: steps.changes.outputs.has_changed_files == 'true'
         run: |
@@ -103,7 +109,6 @@ jobs:
 
       - name: ✅ Check Deploy Files
         id: check_deploy
-        if: steps.changes.outputs.has_changed_files == 'true'
         run: |
           if [ -d deploy_temp ] && find deploy_temp -maxdepth 20 -type f -print -quit | grep -q .; then
             echo "has_deploy_files=true" >> $GITHUB_OUTPUT
