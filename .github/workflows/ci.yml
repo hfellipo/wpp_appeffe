@@ -18,8 +18,14 @@ jobs:
       - name: 🔍 Detect Changes
         id: changes
         run: |
-          CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only HEAD~1 HEAD | tr '\n' ' ' || true)
-          DELETED_FILES=$(git diff --diff-filter=D --name-only HEAD~1 HEAD | tr '\n' ' ' || true)
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            CHANGED_FILES=$(git ls-tree -r --name-only HEAD | tr '\n' ' ' || true)
+            DELETED_FILES=""
+          else
+            CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only "$BEFORE_SHA" HEAD | tr '\n' ' ' || true)
+            DELETED_FILES=$(git diff --diff-filter=D --name-only "$BEFORE_SHA" HEAD | tr '\n' ' ' || true)
+          fi
           if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             if [ -n "$CHANGED_FILES" ]; then
