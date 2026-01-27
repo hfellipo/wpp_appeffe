@@ -64,7 +64,19 @@ jobs:
               [ "$d" != "." ] && rmdir -p --ignore-fail-on-non-empty -- "$d" 2>/dev/null || true
             done
 
-      - name: 🚀 Deploy (SFTP)
+      - name: 🔧 Prepare Deploy
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          mkdir -p deploy_temp
+          echo "${{ steps.changes.outputs.changed_files }}" | tr ' ' '\n' | while read file; do
+            if [ -f "$file" ]; then
+              mkdir -p "deploy_temp/$(dirname "$file")"
+              cp "$file" "deploy_temp/$file"
+              echo "📄 Preparado: $file"
+            fi
+          done
+
+      - name: 🚀 Deploy Incremental (SFTP)
         if: steps.changes.outputs.has_changes == 'true'
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
@@ -72,6 +84,12 @@ jobs:
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
           port: ${{ secrets.SFTP_PORT || 22 }}
-          local_path: './'
+          local_path: './deploy_temp/*'
           remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
           sftp_only: true
+
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          rm -rf deploy_temp
+          echo "🧹 Arquivos temporários removidos"
