@@ -86,7 +86,7 @@ jobs:
         id: check_deploy
         if: steps.changes.outputs.has_changed_files == 'true'
         run: |
-          if find deploy_temp -type f -maxdepth 20 | read -r; then
+          if [ -d deploy_temp ] && find deploy_temp -maxdepth 20 -type f -print -quit | grep -q .; then
             echo "has_deploy_files=true" >> $GITHUB_OUTPUT
           else
             echo "has_deploy_files=false" >> $GITHUB_OUTPUT
