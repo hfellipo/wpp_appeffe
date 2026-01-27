@@ -20,11 +20,11 @@ jobs:
         run: |
           BEFORE_SHA="${{ github.event.before }}"
           if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            CHANGED_FILES=$(git ls-tree -r --name-only HEAD | tr '\n' ' ' || true)
+            CHANGED_FILES=$(git ls-tree -r --name-only HEAD || true)
             DELETED_FILES=""
           else
-            CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only "$BEFORE_SHA" HEAD | tr '\n' ' ' || true)
-            DELETED_FILES=$(git diff --diff-filter=D --name-only "$BEFORE_SHA" HEAD | tr '\n' ' ' || true)
+            CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only "$BEFORE_SHA" HEAD || true)
+            DELETED_FILES=$(git diff --diff-filter=D --name-only "$BEFORE_SHA" HEAD || true)
           fi
           if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
@@ -80,13 +80,13 @@ jobs:
         if: steps.changes.outputs.has_changed_files == 'true'
         run: |
           mkdir -p deploy_temp
-          echo "${{ steps.changes.outputs.changed_files }}" | tr ' ' '\n' | while read file; do
+          while IFS= read -r file; do
             if [ -f "$file" ]; then
               mkdir -p "deploy_temp/$(dirname "$file")"
               cp "$file" "deploy_temp/$file"
               echo "📄 Preparado: $file"
             fi
-          done
+          done <<< "${{ steps.changes.outputs.changed_files }}"
 
       - name: ✅ Check Deploy Files
         id: check_deploy
