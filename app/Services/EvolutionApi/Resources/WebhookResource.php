@@ -16,6 +16,7 @@ class WebhookResource
 
     /**
      * Configure webhook for an instance.
+     * Format according to official documentation: /webhook/set/{instance}
      * 
      * @param string $instanceName Instance name
      * @param string $url Webhook URL
@@ -35,7 +36,7 @@ class WebhookResource
         bool $byEvents = false,
         ?array $headers = null
     ): array {
-        // Formato correto conforme documentação da Evolution API
+        // Formato conforme documentação oficial e Postman Collection v2.3
         // O payload deve ter um objeto "webhook" envolvendo tudo
         $webhookConfig = [
             'enabled' => $enabled,
@@ -45,7 +46,7 @@ class WebhookResource
             'events' => $events,
         ];
 
-        // Adicionar headers se fornecidos
+        // Adicionar headers se fornecidos (opcional, mas suportado)
         if ($headers !== null && !empty($headers)) {
             $webhookConfig['headers'] = $headers;
         }
@@ -63,6 +64,7 @@ class WebhookResource
             'byEvents' => $byEvents,
             'has_headers' => $headers !== null,
             'payload' => $payload,
+            'endpoint' => "/webhook/set/{$instanceName}",
         ]);
 
         $response = $this->client->post("/webhook/set/{$instanceName}", $payload);
@@ -79,17 +81,23 @@ class WebhookResource
             'instance_name' => $instanceName,
         ]);
         
-        // Se erro 400, logar detalhes completos
+        // Se erro 400, tentar formato alternativo da documentação oficial
         if ($statusCode === 400) {
-            Log::error('Evolution API - Erro 400 Bad Request ao configurar webhook - DETALHES', [
+            Log::warning('Evolution API - Erro 400 Bad Request, tentando formato alternativo da documentação oficial', [
                 'status_code' => $statusCode,
                 'response_body' => $responseBody,
                 'response_text' => $responseText,
                 'payload_enviado' => $payload,
-                'url' => $url,
-                'instance_name' => $instanceName,
-                'events' => $events,
             ]);
+            
+            // Tentar formato oficial (sem objeto webhook envolvendo)
+            try {
+                return $this->setOfficialFormat($instanceName, $url, $events, $webhookBase64, $enabled, $byEvents);
+            } catch (\Exception $e) {
+                Log::error('Evolution API - Erro ao tentar formato alternativo', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $this->normalizeResponse($response, 'Erro ao configurar webhook');
@@ -107,6 +115,59 @@ class WebhookResource
     public function setSimple(string $instanceName, string $url, array $events, bool $webhookBase64 = false): array
     {
         return $this->set($instanceName, $url, $events, $webhookBase64);
+    }
+
+    /**
+     * Configure webhook using official documentation format (alternative method).
+     * Format: Direct fields without "webhook" wrapper object.
+     * Endpoint: /webhook/set/{instance}
+     * 
+     * @param string $instanceName Instance name
+     * @param string $url Webhook URL
+     * @param array $events Array of events
+     * @param bool $webhookBase64 Whether to send media as base64
+     * @param bool $enabled Whether webhook is enabled
+     * @param bool $byEvents Whether to use byEvents mode
+     * @return array
+     */
+    public function setOfficialFormat(
+        string $instanceName,
+        string $url,
+        array $events,
+        bool $webhookBase64 = false,
+        bool $enabled = true,
+        bool $byEvents = false
+    ): array {
+        // Formato conforme documentação oficial (sem objeto webhook envolvendo)
+        $payload = [
+            'enabled' => $enabled,
+            'url' => $url,
+            'webhook_by_events' => $byEvents,
+            'webhook_base64' => $webhookBase64,
+            'events' => $events,
+        ];
+
+        Log::info('Evolution API - Configurando webhook (formato oficial)', [
+            'instance_name' => $instanceName,
+            'url' => $url,
+            'events_count' => count($events),
+            'payload' => $payload,
+            'endpoint' => "/webhook/set/{$instanceName}",
+        ]);
+
+        $response = $this->client->post("/webhook/set/{$instanceName}", $payload);
+
+        $statusCode = $response->status();
+        $responseBody = $response->json();
+        $responseText = $response->body();
+
+        Log::info('Evolution API - Resposta webhook (formato oficial)', [
+            'status_code' => $statusCode,
+            'response_body' => $responseBody,
+            'response_text' => $responseText,
+        ]);
+
+        return $this->normalizeResponse($response, 'Erro ao configurar webhook');
     }
 
     public function find(string $instanceName): array
