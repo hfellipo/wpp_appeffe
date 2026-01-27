@@ -58,15 +58,21 @@ class InstanceResource
 
     public function connect(string $instanceName): array
     {
+        // Passar qrcode como query parameter conforme documentação
         $response = $this->client->get("/instance/connect/{$instanceName}", [
             'qrcode' => true,
         ]);
         
+        $statusCode = $response->status();
+        $responseBody = $response->json();
+        $responseText = $response->body();
+        
         // Log da resposta completa do connect
         Log::info('Evolution API - RESPOSTA COMPLETA do connect (QR Code)', [
-            'status_code' => $response->status(),
-            'response_body' => $response->json(),
-            'response_text_length' => strlen($response->body()),
+            'status_code' => $statusCode,
+            'response_body' => $responseBody,
+            'response_text' => $responseText,
+            'url' => $this->client->baseUrl() . "/instance/connect/{$instanceName}?qrcode=true",
         ]);
 
         return $this->normalizeResponse($response, 'Erro ao obter QR Code');
