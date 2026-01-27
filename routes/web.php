@@ -17,8 +17,16 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 // Evolution API Webhook (must be public, but we'll validate via API key)
+// Rotas normais (sem /public)
 Route::post('/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook');
 Route::get('/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test');
+Route::post('/webhook/evolution/test', [EvolutionApiController::class, 'testWebhookPost'])->name('evolution.webhook.test.post');
+
+// Rotas com /public (para servidores que redirecionam automaticamente)
+// IMPORTANTE: Se o servidor adiciona /public automaticamente, estas rotas são necessárias
+Route::post('/public/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook.public');
+Route::get('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test.public');
+Route::post('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhookPost'])->name('evolution.webhook.test.post.public');
 
 // Debug endpoint to test database connection
 Route::get('/debug/db-test', function () {

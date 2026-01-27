@@ -973,17 +973,45 @@ class EvolutionApiController extends Controller
     }
 
     /**
-     * Test webhook endpoint - to verify it's accessible.
+     * Test webhook endpoint - to verify it's accessible (GET).
      */
     public function testWebhook(Request $request): JsonResponse
     {
+        $webhookUrl = $this->getWebhookUrl();
+        
         return response()->json([
             'status' => 'ok',
             'message' => 'Webhook endpoint is accessible',
             'timestamp' => now()->toIso8601String(),
-            'url' => $request->fullUrl(),
+            'current_url' => $request->fullUrl(),
             'method' => $request->method(),
             'ip' => $request->ip(),
+            'webhook_url_for_evolution_api' => $webhookUrl,
+            'note' => 'Use POST method to /webhook/evolution (not /test)',
+            'test_post_command' => "curl -X POST {$webhookUrl} -H 'Content-Type: application/json' -d '{\"test\":\"data\"}'",
+        ]);
+    }
+
+    /**
+     * Test webhook endpoint with POST - simulates Evolution API request.
+     */
+    public function testWebhookPost(Request $request): JsonResponse
+    {
+        \Log::info('Test Webhook POST - Simulando Evolution API', [
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'ip' => $request->ip(),
+            'data' => $request->all(),
+            'headers' => $request->headers->all(),
+        ]);
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'Webhook POST endpoint is working!',
+            'timestamp' => now()->toIso8601String(),
+            'received_data' => $request->all(),
+            'webhook_url_for_evolution_api' => $this->getWebhookUrl(),
+            'note' => 'Se você recebeu esta resposta, o webhook está funcionando corretamente!',
         ]);
     }
 
