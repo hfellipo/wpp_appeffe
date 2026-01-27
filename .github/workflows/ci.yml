@@ -20,11 +20,18 @@ jobs:
         run: |
           BEFORE_SHA="${{ github.event.before }}"
           if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            CHANGED_FILES=$(git ls-tree -r --name-only HEAD || true)
-            DELETED_FILES=""
-          else
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+              BEFORE_SHA="$(git rev-parse HEAD~1)"
+            else
+              BEFORE_SHA=""
+            fi
+          fi
+          if [ -n "$BEFORE_SHA" ]; then
             CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only "$BEFORE_SHA" HEAD || true)
             DELETED_FILES=$(git diff --diff-filter=D --name-only "$BEFORE_SHA" HEAD || true)
+          else
+            CHANGED_FILES=$(git ls-tree -r --name-only HEAD || true)
+            DELETED_FILES=""
           fi
           if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
@@ -61,7 +68,7 @@ jobs:
           host: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT }}
+          port: ${{ secrets.SFTP_PORT || 22 }}
           script: |
             cd ${{ secrets.SFTP_REMOTE_DIR }}
             FILES="${{ steps.changes.outputs.deleted_files }}"
@@ -87,6 +94,12 @@ jobs:
               echo "📄 Preparado: $file"
             fi
           done <<< "${{ steps.changes.outputs.changed_files }}"
+
+      - name: 📋 List Files to Deploy
+        if: steps.changes.outputs.has_changed_files == 'true'
+        run: |
+          echo "Arquivos preparados:"
+          find deploy_temp -type f -maxdepth 20 || true
 
       - name: ✅ Check Deploy Files
         id: check_deploy
