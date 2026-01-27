@@ -14,14 +14,44 @@ class WebhookResource
         $this->client = $client;
     }
 
-    public function set(string $instanceName, string $url, array $events, bool $webhookBase64): array
-    {
+    /**
+     * Configure webhook for an instance.
+     * 
+     * @param string $instanceName Instance name
+     * @param string $url Webhook URL
+     * @param array $events Array of events to listen to
+     * @param bool $webhookBase64 Whether to send media as base64
+     * @param bool $enabled Whether webhook is enabled (default: true)
+     * @param bool $byEvents Whether to use byEvents mode (default: false)
+     * @param array|null $headers Custom headers (optional)
+     * @return array
+     */
+    public function set(
+        string $instanceName, 
+        string $url, 
+        array $events, 
+        bool $webhookBase64 = false,
+        bool $enabled = true,
+        bool $byEvents = false,
+        ?array $headers = null
+    ): array {
         // Formato correto conforme documentação da Evolution API
-        $payload = [
+        // O payload deve ter um objeto "webhook" envolvendo tudo
+        $webhookConfig = [
+            'enabled' => $enabled,
             'url' => $url,
-            'byEvents' => true,
+            'byEvents' => $byEvents,
             'base64' => $webhookBase64,
             'events' => $events,
+        ];
+
+        // Adicionar headers se fornecidos
+        if ($headers !== null && !empty($headers)) {
+            $webhookConfig['headers'] = $headers;
+        }
+
+        $payload = [
+            'webhook' => $webhookConfig,
         ];
 
         Log::info('Evolution API - Configurando webhook', [
@@ -29,6 +59,9 @@ class WebhookResource
             'url' => $url,
             'events_count' => count($events),
             'base64' => $webhookBase64,
+            'enabled' => $enabled,
+            'byEvents' => $byEvents,
+            'has_headers' => $headers !== null,
             'payload' => $payload,
         ]);
 
@@ -45,6 +78,20 @@ class WebhookResource
         ]);
 
         return $this->normalizeResponse($response, 'Erro ao configurar webhook');
+    }
+
+    /**
+     * Configure webhook with simple parameters (backward compatibility).
+     * 
+     * @param string $instanceName Instance name
+     * @param string $url Webhook URL
+     * @param array $events Array of events to listen to
+     * @param bool $webhookBase64 Whether to send media as base64
+     * @return array
+     */
+    public function setSimple(string $instanceName, string $url, array $events, bool $webhookBase64 = false): array
+    {
+        return $this->set($instanceName, $url, $events, $webhookBase64);
     }
 
     public function find(string $instanceName): array

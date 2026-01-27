@@ -249,7 +249,7 @@ class EvolutionApiService
     }
 
     /**
-     * Set webhook configuration.
+     * Set webhook configuration (simple version).
      */
     public function setWebhook(string $url, array $events = [], bool $webhookBase64 = false): array
     {
@@ -262,6 +262,46 @@ class EvolutionApiService
             return is_array($data) ? $data : [];
         } catch (\Exception $e) {
             Log::error('Evolution API - Erro ao configurar webhook', ['error' => $e->getMessage()]);
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Set webhook configuration with advanced options.
+     * 
+     * @param string $url Webhook URL
+     * @param array $events Array of events
+     * @param bool $webhookBase64 Whether to send media as base64
+     * @param bool $enabled Whether webhook is enabled
+     * @param bool $byEvents Whether to use byEvents mode
+     * @param array|null $headers Custom headers
+     * @return array
+     */
+    public function setWebhookAdvanced(
+        string $url, 
+        array $events = [], 
+        bool $webhookBase64 = false,
+        bool $enabled = true,
+        bool $byEvents = false,
+        ?array $headers = null
+    ): array {
+        if (!$this->isConfigured()) {
+            return ['error' => 'Evolution API não configurada'];
+        }
+
+        try {
+            $data = $this->webhooks->set(
+                $this->instanceName, 
+                $url, 
+                $events, 
+                $webhookBase64,
+                $enabled,
+                $byEvents,
+                $headers
+            );
+            return is_array($data) ? $data : [];
+        } catch (\Exception $e) {
+            Log::error('Evolution API - Erro ao configurar webhook avançado', ['error' => $e->getMessage()]);
             return ['error' => $e->getMessage()];
         }
     }
