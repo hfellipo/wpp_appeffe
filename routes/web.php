@@ -17,14 +17,42 @@ Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
+// Rota de debug para testar se o Laravel está recebendo requisições
+Route::match(['get', 'post'], '/debug/test', function (Request $request) {
+    return response()->json([
+        'status' => 'ok',
+        'message' => 'Laravel está funcionando!',
+        'path_info' => $request->getPathInfo(),
+        'request_uri' => $request->server->get('REQUEST_URI'),
+        'script_name' => $request->server->get('SCRIPT_NAME'),
+        'full_url' => $request->fullUrl(),
+        'method' => $request->method(),
+        'timestamp' => now()->toIso8601String(),
+    ]);
+})->name('debug.test');
+
+Route::match(['get', 'post'], '/public/debug/test', function (Request $request) {
+    return response()->json([
+        'status' => 'ok',
+        'message' => 'Laravel está funcionando (via /public)!',
+        'path_info' => $request->getPathInfo(),
+        'request_uri' => $request->server->get('REQUEST_URI'),
+        'script_name' => $request->server->get('SCRIPT_NAME'),
+        'full_url' => $request->fullUrl(),
+        'method' => $request->method(),
+        'timestamp' => now()->toIso8601String(),
+        'note' => 'Se você vê esta mensagem, o Laravel está recebendo requisições com /public',
+    ]);
+})->name('debug.test.public');
+
 // Evolution API Webhook (must be public, but we'll validate via API key)
-// Rotas normais (sem /public)
+// O middleware RemovePublicPrefix remove /public automaticamente, então estas rotas funcionam com ou sem /public
 Route::post('/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook');
 Route::get('/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test');
 Route::post('/webhook/evolution/test', [EvolutionApiController::class, 'testWebhookPost'])->name('evolution.webhook.test.post');
 
-// Rotas com /public (para servidores que redirecionam automaticamente)
-// IMPORTANTE: Se o servidor adiciona /public automaticamente, estas rotas são necessárias
+// Rotas com /public como fallback (caso o middleware não funcione)
+// IMPORTANTE: Estas rotas são processadas DEPOIS que o middleware RemovePublicPrefix tenta remover /public
 Route::post('/public/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook.public');
 Route::get('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test.public');
 Route::post('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhookPost'])->name('evolution.webhook.test.post.public');

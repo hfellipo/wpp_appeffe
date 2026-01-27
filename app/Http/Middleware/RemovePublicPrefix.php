@@ -18,8 +18,16 @@ class RemovePublicPrefix
     {
         $path = $request->getPathInfo();
         $requestUri = $request->server->get('REQUEST_URI', '');
+        $scriptName = $request->server->get('SCRIPT_NAME', '');
         
-        // Se o path começa com /public/ ou é exatamente /public, remover
+        \Log::info('Middleware RemovePublicPrefix: Iniciando', [
+            'path_info' => $path,
+            'request_uri' => $requestUri,
+            'script_name' => $scriptName,
+            'full_url' => $request->fullUrl(),
+        ]);
+        
+        // Se o path começa com /public/, remover
         if (strpos($path, '/public/') === 0) {
             $newPath = substr($path, 7); // Remove '/public'
             
@@ -39,7 +47,17 @@ class RemovePublicPrefix
         } elseif ($path === '/public') {
             // Se é exatamente /public, redirecionar para /
             $request->server->set('PATH_INFO', '/');
-            $request->server->set('REQUEST_URI', '/');
+            $newRequestUri = preg_replace('#^/public/?$#', '/', $requestUri);
+            $request->server->set('REQUEST_URI', $newRequestUri);
+            
+            \Log::info('Middleware RemovePublicPrefix: /public redirecionado para /', [
+                'request_uri_original' => $requestUri,
+                'request_uri_novo' => $newRequestUri,
+            ]);
+        } else {
+            \Log::info('Middleware RemovePublicPrefix: Nenhuma correção necessária', [
+                'path' => $path,
+            ]);
         }
         
         return $next($request);

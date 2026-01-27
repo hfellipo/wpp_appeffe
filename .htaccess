@@ -1,0 +1,13 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Se a requisição já está em /public, deixar passar
+    # Se não está em /public e não é um arquivo/diretório existente, redirecionar para public/
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ public/$1 [L]
+    
+    # Se acessar diretamente /public, remover o /public do path antes de passar para o Laravel
+    # Isso é feito pelo middleware RemovePublicPrefix, mas garantimos aqui também
+</IfModule>
