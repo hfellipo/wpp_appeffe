@@ -29,6 +29,13 @@ class InstanceResource
         ]);
 
         $response = $this->client->post('/instance/create', $payload);
+        
+        // Log da resposta completa da Evolution API
+        Log::info('Evolution API - RESPOSTA COMPLETA da criação de instância', [
+            'status_code' => $response->status(),
+            'response_body' => $response->json(),
+            'response_text' => $response->body(),
+        ]);
 
         return $this->normalizeResponse($response, 'Erro ao criar instância');
     }
@@ -37,6 +44,13 @@ class InstanceResource
     {
         $response = $this->client->get("/instance/connect/{$instanceName}", [
             'qrcode' => true,
+        ]);
+        
+        // Log da resposta completa do connect
+        Log::info('Evolution API - RESPOSTA COMPLETA do connect (QR Code)', [
+            'status_code' => $response->status(),
+            'response_body' => $response->json(),
+            'response_text_length' => strlen($response->body()),
         ]);
 
         return $this->normalizeResponse($response, 'Erro ao obter QR Code');

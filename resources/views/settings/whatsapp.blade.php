@@ -120,6 +120,25 @@
                             </p>
                         </div>
                         
+                        <!-- Pairing Code (código de pareamento) -->
+                        <div x-show="pairingCode && !qrCode" class="mt-4 p-6 bg-brand-50 rounded-lg text-center border-2 border-brand-200">
+                            <p class="text-sm text-gray-700 mb-3 font-medium">{{ __('Código de Pareamento:') }}</p>
+                            <div class="bg-white border-2 border-brand-300 rounded-lg p-6 inline-block">
+                                <p class="text-4xl font-mono font-bold text-brand-600 tracking-widest" x-text="pairingCode"></p>
+                            </div>
+                            <div class="mt-4 text-left bg-white p-4 rounded border border-gray-200">
+                                <p class="text-xs text-gray-600 mb-2 font-medium">{{ __('Como conectar usando o código:') }}</p>
+                                <ol class="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+                                    <li>{{ __('Abra o WhatsApp no seu celular') }}</li>
+                                    <li>{{ __('Toque em Menu (⋮) ou Configurações') }}</li>
+                                    <li>{{ __('Selecione "Aparelhos conectados"') }}</li>
+                                    <li>{{ __('Toque em "Conectar um aparelho"') }}</li>
+                                    <li>{{ __('Selecione "Conectar com número de telefone"') }}</li>
+                                    <li>{{ __('Digite o código acima') }}</li>
+                                </ol>
+                            </div>
+                        </div>
+                        
                         <!-- QR Code Loading -->
                         <div x-show="connectionStatus === 'connecting' && !qrCode" class="mt-4 p-4 bg-gray-50 rounded-lg text-center">
                             <p class="text-sm text-gray-600 mb-3">{{ __('Aguardando QR Code...') }}</p>
@@ -344,6 +363,7 @@
             return {
                 connectionStatus: '{{ $status['status'] ?? 'not_found' }}',
                 qrCode: null,
+                pairingCode: null,
                 showQrCode: false,
                 loading: false,
                 configured: {!! $configuredJs !!},
@@ -448,6 +468,12 @@
                             // Update status
                             this.connectionStatus = data.status || 'connecting';
                             
+                            // Extract pairing code if available
+                            if (data.pairingCode) {
+                                this.pairingCode = data.pairingCode;
+                                console.log('Pairing Code recebido:', this.pairingCode);
+                            }
+                            
                             // Show QR code if available
                             let qrCodeData = null;
                             if (data.qrcode) {
@@ -468,7 +494,9 @@
                             if (normalizedQr) {
                                 this.qrCode = normalizedQr;
                                 this.showQrCode = true;
+                                console.log('QR Code válido recebido');
                             } else {
+                                console.log('QR Code não disponível como imagem, tentando obter via /connect...');
                                 // Try to get QR code if status is connecting
                                 if (this.connectionStatus === 'connecting') {
                                     await this.getQrCode();
@@ -525,6 +553,16 @@
                         const response = await fetch('{{ route("whatsapp.qrcode") }}');
                         const data = await response.json();
                         
+                        console.log('=== RESPOSTA DO ENDPOINT /qrcode ===');
+                        console.log(data);
+                        console.log('====================================');
+                        
+                        // Extract pairing code if available
+                        if (data.pairingCode) {
+                            this.pairingCode = data.pairingCode;
+                            console.log('Pairing Code do /qrcode:', this.pairingCode);
+                        }
+                        
                         let qrCodeData = null;
                         if (data.qrcode) {
                             if (typeof data.qrcode === 'string') {
@@ -544,6 +582,9 @@
                         if (normalizedQr) {
                             this.qrCode = normalizedQr;
                             this.showQrCode = true;
+                            console.log('QR Code imagem obtido com sucesso');
+                        } else {
+                            console.log('Imagem do QR Code não disponível, usando pairing code');
                         }
                     } catch (e) {
                         console.error('Erro ao obter QR Code:', e);
