@@ -1,13 +1,19 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
     
-    # Se a requisição já está em /public, deixar passar
-    # Se não está em /public e não é um arquivo/diretório existente, redirecionar para public/
+    # IMPORTANTE: Este .htaccess está na raiz do projeto Laravel
+    # O DocumentRoot do servidor aponta para a raiz, não para public/
+    
+    # Se a requisição está em /public/ e não é um arquivo físico, passar para public/index.php
+    # O Laravel vai receber o path completo (/public/debug/test) e o middleware RemovePublicPrefix vai remover /public
+    RewriteCond %{REQUEST_URI} ^/public/
+    RewriteCond %{DOCUMENT_ROOT}/public%{REQUEST_URI} !-f
+    RewriteCond %{DOCUMENT_ROOT}/public%{REQUEST_URI} !-d
+    RewriteRule ^public/(.*)$ public/index.php [L]
+    
+    # Se não está em /public e não é um arquivo/diretório existente, passar para public/index.php
     RewriteCond %{REQUEST_URI} !^/public/
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^(.*)$ public/$1 [L]
-    
-    # Se acessar diretamente /public, remover o /public do path antes de passar para o Laravel
-    # Isso é feito pelo middleware RemovePublicPrefix, mas garantimos aqui também
+    RewriteRule ^(.*)$ public/index.php [L]
 </IfModule>
