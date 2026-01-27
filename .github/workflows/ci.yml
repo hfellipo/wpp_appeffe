@@ -109,22 +109,24 @@ jobs:
 
       - name: ✅ Check Deploy Files
         id: check_deploy
+        if: steps.changes.outputs.has_changed_files == 'true'
         run: |
           if [ -d deploy_temp ] && find deploy_temp -maxdepth 20 -type f -print -quit | grep -q .; then
             echo "has_deploy_files=true" >> $GITHUB_OUTPUT
           else
             echo "has_deploy_files=false" >> $GITHUB_OUTPUT
           fi
+          echo "Deploy files status: $(cat $GITHUB_OUTPUT | tail -n 1 || true)"
 
       - name: 🚀 Deploy Incremental (SFTP)
-        if: steps.check_deploy.outputs.has_deploy_files == 'true'
+        if: steps.changes.outputs.has_changed_files == 'true' && steps.check_deploy.outputs.has_deploy_files == 'true'
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
           port: ${{ secrets.SFTP_PORT || 22 }}
-          local_path: './deploy_temp/*'
+          local_path: './deploy_temp'
           remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
           sftp_only: true
 
