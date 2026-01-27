@@ -122,19 +122,30 @@
                         
                         <!-- Pairing Code (código de pareamento) -->
                         <div x-show="pairingCode && !qrCode" class="mt-4 p-6 bg-brand-50 rounded-lg text-center border-2 border-brand-200">
-                            <p class="text-sm text-gray-700 mb-3 font-medium">{{ __('Código de Pareamento:') }}</p>
-                            <div class="bg-white border-2 border-brand-300 rounded-lg p-6 inline-block">
-                                <p class="text-4xl font-mono font-bold text-brand-600 tracking-widest" x-text="pairingCode"></p>
+                            <div class="mb-4">
+                                <svg class="w-16 h-16 mx-auto text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                </svg>
                             </div>
-                            <div class="mt-4 text-left bg-white p-4 rounded border border-gray-200">
-                                <p class="text-xs text-gray-600 mb-2 font-medium">{{ __('Como conectar usando o código:') }}</p>
-                                <ol class="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+                            <p class="text-base text-gray-700 mb-4 font-medium">{{ __('Use o código abaixo no seu WhatsApp') }}</p>
+                            <div class="bg-white border-3 border-brand-400 rounded-xl p-8 inline-block shadow-lg">
+                                <p class="text-sm text-gray-500 mb-2">{{ __('CÓDIGO DE PAREAMENTO') }}</p>
+                                <p class="text-3xl font-mono font-bold text-brand-600 tracking-wider select-all" x-text="formatPairingCode(pairingCode)"></p>
+                            </div>
+                            <div class="mt-6 text-left bg-white p-5 rounded-lg border border-gray-200 shadow-sm">
+                                <p class="text-sm text-gray-700 mb-3 font-semibold flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                    {{ __('Como conectar:') }}
+                                </p>
+                                <ol class="text-sm text-gray-600 space-y-2 list-decimal list-inside ml-2">
                                     <li>{{ __('Abra o WhatsApp no seu celular') }}</li>
-                                    <li>{{ __('Toque em Menu (⋮) ou Configurações') }}</li>
+                                    <li>{{ __('Toque em "Menu" (⋮) ou "Configurações"') }}</li>
                                     <li>{{ __('Selecione "Aparelhos conectados"') }}</li>
                                     <li>{{ __('Toque em "Conectar um aparelho"') }}</li>
-                                    <li>{{ __('Selecione "Conectar com número de telefone"') }}</li>
-                                    <li>{{ __('Digite o código acima') }}</li>
+                                    <li class="font-semibold text-brand-700">{{ __('Selecione "Conectar com número de telefone"') }}</li>
+                                    <li>{{ __('Digite o código exibido acima') }}</li>
                                 </ol>
                             </div>
                         </div>
@@ -458,7 +469,12 @@
                         
                         // Log do retorno JSON da API
                         console.log('=== RETORNO DA API DE CRIAR INSTÂNCIA ===');
-                        console.log(data);
+                        console.log('Resposta completa:', data);
+                        console.log('Tem QR code?', data.qrcode !== null && data.qrcode !== undefined);
+                        console.log('QR code valor:', data.qrcode);
+                        console.log('Tem Pairing Code?', data.pairingCode !== null && data.pairingCode !== undefined);
+                        console.log('Pairing Code valor:', data.pairingCode);
+                        console.log('Status:', data.status);
                         console.log('=========================================');
 
                         if (response.ok && data.success) {
@@ -650,6 +666,44 @@
                     }, 5000); // Hide after 5 seconds
                 },
 
+                formatPairingCode(code) {
+                    if (!code) return '';
+                    
+                    // Remove the prefix like "2@" if present
+                    let cleaned = code;
+                    if (/^\d+@/.test(code)) {
+                        // Keep only the part after @
+                        const parts = code.split('@');
+                        if (parts.length > 1) {
+                            cleaned = parts.slice(1).join('@');
+                        }
+                    }
+                    
+                    // Remove any commas or special characters
+                    cleaned = cleaned.replace(/[,\s]/g, '');
+                    
+                    // If it's very long (Evolution API sometimes returns long codes)
+                    // take only the first 8-12 characters which is typical for pairing codes
+                    if (cleaned.length > 20) {
+                        // It might be encoded, let's try to extract something meaningful
+                        // WhatsApp pairing codes are usually 8 digits
+                        const match = cleaned.match(/[A-Z0-9]{8}/);
+                        if (match) {
+                            cleaned = match[0];
+                        } else {
+                            // Take first 8 characters
+                            cleaned = cleaned.substring(0, 8).toUpperCase();
+                        }
+                    }
+                    
+                    // Format in groups of 4 for readability (e.g., ABCD-EFGH)
+                    if (cleaned.length === 8) {
+                        return cleaned.substring(0, 4) + '-' + cleaned.substring(4, 8);
+                    }
+                    
+                    return cleaned.toUpperCase();
+                },
+
                 normalizeQrCode(qrCodeData) {
                     if (!qrCodeData || typeof qrCodeData !== 'string') {
                         return null;
@@ -660,15 +714,37 @@
                         return null;
                     }
 
+                    // If it already has data:image prefix, return it
                     if (trimmed.startsWith('data:image')) {
                         return trimmed;
                     }
 
-                    const base64Regex = /^[A-Za-z0-9+/=]+$/;
-                    if (!base64Regex.test(trimmed)) {
+                    // Check if it's a pairing code (starts with number@)
+                    // Pairing codes look like: 2@ZYHAyU9k... or 1@ABC123...
+                    if (/^\d+@/.test(trimmed)) {
+                        console.log('Detectado pairing code (não é imagem):', trimmed);
+                        // Extract and set pairing code
+                        this.pairingCode = trimmed;
+                        return null; // Not an image
+                    }
+
+                    // Check if it's too short to be a QR code image
+                    // A valid QR code image in base64 should be at least 1000 characters
+                    if (trimmed.length < 1000) {
+                        console.log('Base64 muito curto para ser uma imagem QR Code:', trimmed.length, 'caracteres');
+                        // Might be a pairing code without @ prefix
+                        this.pairingCode = trimmed;
                         return null;
                     }
 
+                    // Validate base64 format
+                    const base64Regex = /^[A-Za-z0-9+/=]+$/;
+                    if (!base64Regex.test(trimmed)) {
+                        console.log('Não é base64 válido');
+                        return null;
+                    }
+
+                    // If it passes all checks, assume it's a valid base64 image
                     return 'data:image/png;base64,' + trimmed;
                 }
             }

@@ -204,31 +204,80 @@ class EvolutionApiController extends Controller
         $qrcode = null;
         $pairingCode = null;
         
+        \Log::info('Evolution API - Processando resposta de criação', [
+            'result_keys' => array_keys($result),
+            'has_qrcode_key' => isset($result['qrcode']),
+            'qrcode_type' => isset($result['qrcode']) ? gettype($result['qrcode']) : 'not set',
+            'qrcode_value_sample' => isset($result['qrcode']) ? (is_string($result['qrcode']) ? substr($result['qrcode'], 0, 100) : json_encode($result['qrcode'])) : null,
+        ]);
+        
         // Extract pairing code if available
         if (isset($result['pairingCode'])) {
             $pairingCode = $result['pairingCode'];
+            \Log::info('Pairing code encontrado em result[pairingCode]', ['code' => $pairingCode]);
         } elseif (isset($result['pairing_code'])) {
             $pairingCode = $result['pairing_code'];
+            \Log::info('Pairing code encontrado em result[pairing_code]', ['code' => $pairingCode]);
         }
         
         // Try to extract QR code image
         if (isset($result['qrcode'])) {
             if (is_string($result['qrcode'])) {
+                \Log::info('QR code é string', [
+                    'length' => strlen($result['qrcode']),
+                    'starts_with' => substr($result['qrcode'], 0, 20),
+                    'is_valid_image' => $this->isValidBase64Image($result['qrcode']),
+                ]);
+                
+                // Check if it starts with digit@ (pairing code pattern)
+                if (preg_match('/^\d+@/', $result['qrcode'])) {
+                    $pairingCode = $result['qrcode'];
+                    \Log::info('QR code detectado como pairing code (formato: número@...)', ['code' => $pairingCode]);
+                }
                 // Check if it's a valid base64 image
-                if ($this->isValidBase64Image($result['qrcode'])) {
+                elseif ($this->isValidBase64Image($result['qrcode'])) {
                     $qrcode = ['base64' => $result['qrcode']];
+                    \Log::info('QR code detectado como imagem base64 válida');
                 }
             } elseif (is_array($result['qrcode'])) {
+                \Log::info('QR code é array', ['keys' => array_keys($result['qrcode'])]);
+                
                 // Check if base64 field contains valid image
-                if (isset($result['qrcode']['base64']) && $this->isValidBase64Image($result['qrcode']['base64'])) {
-                    $qrcode = $result['qrcode'];
-                } elseif (isset($result['qrcode']['pairingCode'])) {
+                if (isset($result['qrcode']['base64'])) {
+                    if (is_string($result['qrcode']['base64']) && preg_match('/^\d+@/', $result['qrcode']['base64'])) {
+                        $pairingCode = $result['qrcode']['base64'];
+                        \Log::info('QR code base64 detectado como pairing code', ['code' => $pairingCode]);
+                    } elseif ($this->isValidBase64Image($result['qrcode']['base64'])) {
+                        $qrcode = $result['qrcode'];
+                        \Log::info('QR code base64 é imagem válida');
+                    }
+                }
+                
+                if (isset($result['qrcode']['pairingCode'])) {
                     $pairingCode = $result['qrcode']['pairingCode'];
+                    \Log::info('Pairing code encontrado em qrcode[pairingCode]', ['code' => $pairingCode]);
                 }
             }
-        } elseif (isset($result['base64']) && $this->isValidBase64Image($result['base64'])) {
-            $qrcode = ['base64' => $result['base64']];
+        } elseif (isset($result['base64'])) {
+            \Log::info('Verificando result[base64]', [
+                'length' => strlen($result['base64']),
+                'starts_with' => substr($result['base64'], 0, 20),
+            ]);
+            
+            if (preg_match('/^\d+@/', $result['base64'])) {
+                $pairingCode = $result['base64'];
+                \Log::info('result[base64] detectado como pairing code', ['code' => $pairingCode]);
+            } elseif ($this->isValidBase64Image($result['base64'])) {
+                $qrcode = ['base64' => $result['base64']];
+                \Log::info('result[base64] é imagem válida');
+            }
         }
+        
+        \Log::info('Evolution API - Resultado da extração', [
+            'has_qrcode_image' => $qrcode !== null,
+            'has_pairing_code' => $pairingCode !== null,
+            'pairing_code_value' => $pairingCode,
+        ]);
 
         // Wait a moment for instance to be ready
         sleep(2);
