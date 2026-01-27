@@ -181,6 +181,7 @@ class EvolutionApiService
 
     /**
      * Get instance status.
+     * Uses connectionState endpoint (more direct) or falls back to fetchInstances.
      */
     public function getInstanceStatus(): array
     {
@@ -189,6 +190,31 @@ class EvolutionApiService
         }
 
         try {
+            // Try connectionState endpoint first (more direct according to Postman collection)
+            try {
+                $connectionState = $this->instances->connectionState($this->instanceName);
+                
+                if (!isset($connectionState['error'])) {
+                    // Extract state from connectionState response
+                    $state = $connectionState['state'] 
+                        ?? $connectionState['connectionStatus'] 
+                        ?? $connectionState['status'] 
+                        ?? null;
+                    
+                    if ($state !== null) {
+                        return [
+                            'status' => $state,
+                            'data' => $connectionState,
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Evolution API - Erro ao usar connectionState, tentando fetchInstances', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // Fallback to fetchInstances
             $instances = $this->instances->fetchInstances();
             
             // If response is an object with instances array

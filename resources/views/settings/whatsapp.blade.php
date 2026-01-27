@@ -394,7 +394,10 @@
                     
                     // Watch qrCode to ensure it's always valid or null
                     this.$watch('qrCode', (value) => {
-                        if (value && !value.startsWith('data:image')) {
+                        if (!value) return;
+                        
+                        // Se não começa com data:image, é inválido
+                        if (!value.startsWith('data:image')) {
                             console.error('⚠ AVISO: qrCode com valor inválido detectado:', value.substring(0, 50));
                             console.log('Limpando qrCode inválido...');
                             this.qrCode = null;
@@ -404,6 +407,28 @@
                             if (/^\d+@/.test(value)) {
                                 console.log('Movendo para pairingCode');
                                 this.pairingCode = value;
+                            }
+                            return;
+                        }
+                        
+                        // Se começa com data:image, verificar o conteúdo após a vírgula
+                        const commaIndex = value.indexOf(',');
+                        if (commaIndex !== -1) {
+                            const content = value.substring(commaIndex + 1);
+                            
+                            // Se o conteúdo começa com número@, é pairing code!
+                            if (/^\d+@/.test(content)) {
+                                console.error('⚠ AVISO: qrCode contém pairing code após data:image!', content.substring(0, 50));
+                                console.log('Limpando qrCode inválido e movendo para pairingCode...');
+                                this.qrCode = null;
+                                this.showQrCode = false;
+                                this.pairingCode = content.split(',')[0]; // Pegar primeira parte se tiver vírgulas
+                            }
+                            // Se o conteúdo é muito curto, também é inválido
+                            else if (content.length < 1000) {
+                                console.error('⚠ AVISO: qrCode muito curto para ser imagem válida:', content.length, 'caracteres');
+                                this.qrCode = null;
+                                this.showQrCode = false;
                             }
                         }
                     });
@@ -786,8 +811,9 @@
                     const trimmed = qrCodeData.trim();
                     console.log('normalizeQrCode: processando', {
                         length: trimmed.length,
-                        starts: trimmed.substring(0, 20),
-                        isPairingCodePattern: /^\d+@/.test(trimmed)
+                        starts: trimmed.substring(0, 50),
+                        isPairingCodePattern: /^\d+@/.test(trimmed),
+                        hasDataImagePrefix: trimmed.startsWith('data:image')
                     });
 
                     if (trimmed === '' || trimmed.toLowerCase().includes('undefined')) {
@@ -795,9 +821,31 @@
                         return null;
                     }
 
-                    // If it already has data:image prefix, return it
+                    // IMPORTANTE: Se já tem prefixo data:image, verificar se o conteúdo é válido
                     if (trimmed.startsWith('data:image')) {
-                        console.log('normalizeQrCode: ✓ já tem prefixo data:image');
+                        // Extrair o conteúdo após a vírgula
+                        const commaIndex = trimmed.indexOf(',');
+                        if (commaIndex !== -1) {
+                            const content = trimmed.substring(commaIndex + 1);
+                            
+                            // Se o conteúdo começa com número@, é pairing code!
+                            if (/^\d+@/.test(content)) {
+                                console.log('normalizeQrCode: ✗ Detectado PAIRING CODE dentro de data:image!');
+                                this.pairingCode = content;
+                                this.showQrCode = false;
+                                return null; // NÃO retornar como imagem
+                            }
+                            
+                            // Validar se é imagem válida
+                            if (content.length < 1000) {
+                                console.log('normalizeQrCode: ✗ Conteúdo muito curto para ser imagem');
+                                this.pairingCode = content;
+                                this.showQrCode = false;
+                                return null;
+                            }
+                        }
+                        
+                        console.log('normalizeQrCode: ✓ já tem prefixo data:image e parece válido');
                         return trimmed;
                     }
 
@@ -809,6 +857,14 @@
                         this.pairingCode = trimmed;
                         this.showQrCode = false; // IMPORTANTE: não mostrar como imagem
                         return null; // Not an image
+                    }
+
+                    // Check if it contains commas and starts with number@ (pairing code format)
+                    if (trimmed.includes(',') && /^\d+@/.test(trimmed)) {
+                        console.log('normalizeQrCode: ✓ Detectado PAIRING CODE com vírgulas');
+                        this.pairingCode = trimmed.split(',')[0]; // Pegar primeira parte
+                        this.showQrCode = false;
+                        return null;
                     }
 
                     // Check if it's too short to be a QR code image

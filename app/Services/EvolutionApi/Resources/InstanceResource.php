@@ -85,6 +85,23 @@ class InstanceResource
         return $this->normalizeResponse($response, 'Erro ao obter instâncias');
     }
 
+    /**
+     * Get connection state of an instance.
+     * According to Postman collection: GET /instance/connectionState/{instance}
+     */
+    public function connectionState(string $instanceName): array
+    {
+        $response = $this->client->get("/instance/connectionState/{$instanceName}");
+
+        Log::info('Evolution API - Connection State', [
+            'instance_name' => $instanceName,
+            'status_code' => $response->status(),
+            'response_body' => $response->json(),
+        ]);
+
+        return $this->normalizeResponse($response, 'Erro ao obter status de conexão');
+    }
+
     public function logout(string $instanceName): array
     {
         $response = $this->client->delete("/instance/logout/{$instanceName}");

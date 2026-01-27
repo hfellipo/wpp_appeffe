@@ -394,6 +394,13 @@ class EvolutionApiController extends Controller
             }
         }
 
+        // IMPORTANTE: Se há pairing code, garantir que qrcode seja null
+        // Isso evita que o frontend tente usar pairing code como imagem
+        if ($pairingCode !== null) {
+            $qrcode = null;
+            \Log::info('Pairing code detectado, garantindo que qrcode seja null');
+        }
+        
         // Adicionar warning se houve erro na criação mas QR code está disponível
         $creationWarning = null;
         if (isset($result['error']) && ($qrcode !== null || $pairingCode !== null)) {
@@ -404,7 +411,7 @@ class EvolutionApiController extends Controller
             'success' => true,
             'message' => 'Instância criada com sucesso! Escaneie o QR Code para conectar.',
             'status' => $status,
-            'qrcode' => $qrcode,
+            'qrcode' => $qrcode, // Será null se há pairing code
             'pairingCode' => $pairingCode,
             'instanceName' => $whatsappNumber,
             'webhook_warning' => $webhookWarning,
@@ -425,7 +432,9 @@ class EvolutionApiController extends Controller
 
     /**
      * Extract QR code and pairing code from Evolution API response.
-     * Tries all possible formats like in the PHP example.
+     * Based on Postman Collection v2.3:
+     * - Create Instance returns: qrcode.base64
+     * - Instance Connect returns: base64 (direct)
      * 
      * @param array $result Response from Evolution API
      * @return array ['qrcode' => array|null, 'pairingCode' => string|null]
@@ -438,6 +447,7 @@ class EvolutionApiController extends Controller
         \Log::info('Evolution API - Processando resposta para extrair QR code', [
             'result_keys' => array_keys($result),
             'has_qrcode_key' => isset($result['qrcode']),
+            'has_base64_key' => isset($result['base64']),
             'qrcode_type' => isset($result['qrcode']) ? gettype($result['qrcode']) : 'not set',
         ]);
         
@@ -450,33 +460,33 @@ class EvolutionApiController extends Controller
             \Log::info('Pairing code encontrado em result[pairing_code]', ['code' => $pairingCode]);
         }
         
-        // Try to extract QR code image (como no exemplo PHP)
-        // 1. Check qrcode.base64
+        // Try to extract QR code image (conforme Postman Collection v2.3)
+        // 1. Check qrcode.base64 (Create Instance format)
         if (isset($result['qrcode']['base64'])) {
             $base64Value = $result['qrcode']['base64'];
             
             if (is_string($base64Value)) {
                 // Check if it's a pairing code
                 if (preg_match('/^\d+@/', $base64Value)) {
-                    $pairingCode = explode(',', $base64Value)[0]; // Get first part if comma-separated
-                    \Log::info('QR code base64 detectado como pairing code', ['code' => $pairingCode]);
+                    $pairingCode = explode(',', $base64Value)[0];
+                    \Log::info('qrcode.base64 detectado como pairing code', ['code' => $pairingCode]);
                 } elseif ($this->isValidBase64Image($base64Value)) {
                     $qrcode = ['base64' => $base64Value];
-                    \Log::info('QR code base64 é imagem válida');
+                    \Log::info('qrcode.base64 é imagem válida (formato Create Instance)');
                 }
             }
         }
-        // 2. Check base64 (direct)
+        // 2. Check base64 (direct - Instance Connect format)
         elseif (isset($result['base64'])) {
             $base64Value = $result['base64'];
             
             if (is_string($base64Value)) {
                 if (preg_match('/^\d+@/', $base64Value)) {
                     $pairingCode = explode(',', $base64Value)[0];
-                    \Log::info('result[base64] detectado como pairing code', ['code' => $pairingCode]);
+                    \Log::info('base64 direto detectado como pairing code', ['code' => $pairingCode]);
                 } elseif ($this->isValidBase64Image($base64Value)) {
                     $qrcode = ['base64' => $base64Value];
-                    \Log::info('result[base64] é imagem válida');
+                    \Log::info('base64 direto é imagem válida (formato Instance Connect)');
                 }
             }
         }
@@ -486,10 +496,10 @@ class EvolutionApiController extends Controller
             
             if (preg_match('/^\d+@/', $qrcodeValue)) {
                 $pairingCode = explode(',', $qrcodeValue)[0];
-                \Log::info('QR code string detectado como pairing code', ['code' => $pairingCode]);
+                \Log::info('qrcode string detectado como pairing code', ['code' => $pairingCode]);
             } elseif ($this->isValidBase64Image($qrcodeValue)) {
                 $qrcode = ['base64' => $qrcodeValue];
-                \Log::info('QR code string é imagem válida');
+                \Log::info('qrcode string é imagem válida');
             }
         }
         // 4. Check qrcode.pairingCode
@@ -605,6 +615,12 @@ class EvolutionApiController extends Controller
         
         // Use helper function to extract QR code (como no exemplo PHP)
         $extracted = $this->extractQrCodeAndPairingCode($result);
+        
+        // IMPORTANTE: Se há pairing code, garantir que qrcode seja null
+        if ($extracted['pairingCode'] !== null) {
+            $extracted['qrcode'] = null;
+            \Log::info('Pairing code detectado no /qrcode, garantindo que qrcode seja null');
+        }
         
         $response = [];
         
