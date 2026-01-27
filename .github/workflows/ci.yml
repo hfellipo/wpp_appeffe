@@ -82,8 +82,18 @@ jobs:
             fi
           done
 
-      - name: 🚀 Deploy Incremental (SFTP)
+      - name: ✅ Check Deploy Files
+        id: check_deploy
         if: steps.changes.outputs.has_changed_files == 'true'
+        run: |
+          if find deploy_temp -type f -maxdepth 20 | read -r; then
+            echo "has_deploy_files=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_deploy_files=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🚀 Deploy Incremental (SFTP)
+        if: steps.check_deploy.outputs.has_deploy_files == 'true'
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.SFTP_HOST }}
