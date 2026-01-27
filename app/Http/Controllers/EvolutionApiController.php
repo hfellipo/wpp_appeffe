@@ -323,33 +323,83 @@ class EvolutionApiController extends Controller
         sleep(2);
 
         // Configure webhook (use default URL if not provided, or use provided values)
-        $webhookUrl = $request->input('webhook_url') ?: route('evolution.webhook');
+        $webhookUrlInput = $request->input('webhook_url');
+        
+        // Se não foi fornecida, usar a rota padrão como URL absoluta
+        if (empty($webhookUrlInput)) {
+            $webhookUrl = url(route('evolution.webhook', [], false));
+        } else {
+            $webhookUrl = $webhookUrlInput;
+        }
+        
+        // Garantir que é uma URL absoluta válida
+        if (!filter_var($webhookUrl, FILTER_VALIDATE_URL)) {
+            \Log::error('URL do webhook inválida', ['url' => $webhookUrl]);
+            $webhookUrl = url(route('evolution.webhook', [], false));
+        }
+        
         $events = $request->input('events', []);
         $webhookBase64 = $request->boolean('webhook_base64', false);
+        
+        \Log::info('Preparando para configurar webhook', [
+            'url' => $webhookUrl,
+            'events_count' => count($events),
+            'base64' => $webhookBase64,
+        ]);
 
         // If no events selected, use default important events
         if (empty($events)) {
             $events = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'QRCODE_UPDATED', 'CONNECTION_UPDATE'];
         }
 
-        // Always configure webhook
-        $webhookResult = $this->evolutionApi->setWebhook($webhookUrl, $events, $webhookBase64);
-        $webhookWarning = null;
-        
-        if (isset($webhookResult['error'])) {
-            \Log::warning('Erro ao configurar webhook durante conexão', [
-                'error' => $webhookResult['error'],
-                'url' => $webhookUrl,
-                'events' => $events,
-            ]);
-            $webhookWarning = 'Webhook não configurado: ' . $webhookResult['error'];
-        } elseif ($this->isLocalWebhookUrl($webhookUrl)) {
+        // Validate webhook URL
+        $webhookResult = null;
+        if ($this->isLocalWebhookUrl($webhookUrl)) {
             $webhookWarning = 'Webhook configurado com URL local. A Evolution API não consegue acessar 127.0.0.1/localhost.';
+            \Log::warning('Webhook URL é local', ['url' => $webhookUrl]);
+            $webhookResult = ['error' => 'URL local não suportada'];
         } else {
-            \Log::info('Webhook configurado com sucesso durante conexão', [
-                'url' => $webhookUrl,
-                'events_count' => count($events),
-            ]);
+            // Try to configure webhook with retry
+            $webhookResult = null;
+            $maxRetries = 3;
+            $retryDelay = 2; // seconds
+            
+            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                \Log::info("Tentativa {$attempt} de {$maxRetries} para configurar webhook", [
+                    'url' => $webhookUrl,
+                    'instance_name' => $whatsappNumber,
+                ]);
+                
+                $webhookResult = $this->evolutionApi->setWebhook($webhookUrl, $events, $webhookBase64);
+                
+                if (!isset($webhookResult['error'])) {
+                    \Log::info('Webhook configurado com sucesso', [
+                        'url' => $webhookUrl,
+                        'events_count' => count($events),
+                        'attempt' => $attempt,
+                    ]);
+                    break;
+                }
+                
+                if ($attempt < $maxRetries) {
+                    \Log::warning("Erro ao configurar webhook, tentando novamente em {$retryDelay}s", [
+                        'error' => $webhookResult['error'],
+                        'attempt' => $attempt,
+                    ]);
+                    sleep($retryDelay);
+                }
+            }
+            
+            $webhookWarning = null;
+            if (isset($webhookResult['error'])) {
+                \Log::error('Erro ao configurar webhook após todas as tentativas', [
+                    'error' => $webhookResult['error'],
+                    'url' => $webhookUrl,
+                    'events' => $events,
+                    'attempts' => $maxRetries,
+                ]);
+                $webhookWarning = 'Webhook não configurado: ' . $webhookResult['error'];
+            }
         }
 
         if ($whatsappInstance && !isset($webhookResult['error'])) {

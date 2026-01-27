@@ -16,11 +16,32 @@ class WebhookResource
 
     public function set(string $instanceName, string $url, array $events, bool $webhookBase64): array
     {
-        $response = $this->client->post("/webhook/set/{$instanceName}", [
+        // Formato correto conforme documentação da Evolution API
+        $payload = [
             'url' => $url,
-            'webhook_by_events' => true,
-            'webhook_base64' => $webhookBase64,
+            'byEvents' => true,
+            'base64' => $webhookBase64,
             'events' => $events,
+        ];
+
+        Log::info('Evolution API - Configurando webhook', [
+            'instance_name' => $instanceName,
+            'url' => $url,
+            'events_count' => count($events),
+            'base64' => $webhookBase64,
+            'payload' => $payload,
+        ]);
+
+        $response = $this->client->post("/webhook/set/{$instanceName}", $payload);
+
+        $statusCode = $response->status();
+        $responseBody = $response->json();
+        $responseText = $response->body();
+
+        Log::info('Evolution API - Resposta da configuração do webhook', [
+            'status_code' => $statusCode,
+            'response_body' => $responseBody,
+            'response_text' => $responseText,
         ]);
 
         return $this->normalizeResponse($response, 'Erro ao configurar webhook');
@@ -61,7 +82,14 @@ class WebhookResource
         $errorMessage = $defaultMessage;
 
         if ($statusCode === 400) {
-            $errorMessage = 'Requisição inválida. Verifique se a instância existe e os parâmetros estão corretos.';
+            $errorMessage = 'Requisição inválida (Bad Request). Verifique se a instância existe e os parâmetros estão corretos.';
+            
+            // Log detalhado para erro 400
+            Log::error('Evolution API - Erro 400 Bad Request no webhook', [
+                'response_body' => $responseBody,
+                'response_text' => $responseText,
+                'status_code' => $statusCode,
+            ]);
         } elseif ($statusCode === 401) {
             $errorMessage = 'Não autorizado. Verifique se a API Key está correta.';
         } elseif ($statusCode === 403) {
@@ -76,9 +104,11 @@ class WebhookResource
             $extractedMessage = $responseBody['message']
                 ?? $responseBody['error']
                 ?? $responseBody['errorMessage']
-                ?? (isset($responseBody['response']['message']) ? $responseBody['response']['message'] : null);
+                ?? $responseBody['response']['message'] ?? null
+                ?? (isset($responseBody['response']) && is_string($responseBody['response']) ? $responseBody['response'] : null);
+                
             if ($extractedMessage) {
-                $errorMessage = $extractedMessage;
+                $errorMessage = is_string($extractedMessage) ? $extractedMessage : json_encode($extractedMessage);
             }
         } elseif (!empty($responseText)) {
             $decoded = json_decode($responseText, true);
