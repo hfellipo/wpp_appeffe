@@ -18,6 +18,7 @@ Route::get('/dashboard', function () {
 
 // Evolution API Webhook (must be public, but we'll validate via API key)
 Route::post('/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook');
+Route::get('/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test');
 
 // Debug endpoint to test database connection
 Route::get('/debug/db-test', function () {

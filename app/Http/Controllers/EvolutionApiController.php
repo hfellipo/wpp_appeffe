@@ -236,9 +236,9 @@ class EvolutionApiController extends Controller
         // Configure webhook (use default URL if not provided, or use provided values)
         $webhookUrlInput = $request->input('webhook_url');
         
-        // Se não foi fornecida, usar a rota padrão como URL absoluta
+        // Se não foi fornecida, gerar URL correta do webhook
         if (empty($webhookUrlInput)) {
-            $webhookUrl = url(route('evolution.webhook', [], false));
+            $webhookUrl = $this->getWebhookUrl();
         } else {
             $webhookUrl = $webhookUrlInput;
         }
@@ -246,8 +246,11 @@ class EvolutionApiController extends Controller
         // Garantir que é uma URL absoluta válida
         if (!filter_var($webhookUrl, FILTER_VALIDATE_URL)) {
             \Log::error('URL do webhook inválida', ['url' => $webhookUrl]);
-            $webhookUrl = url(route('evolution.webhook', [], false));
+            $webhookUrl = $this->getWebhookUrl();
         }
+        
+        // Verificar se a URL é acessível publicamente
+        $this->validateWebhookUrl($webhookUrl);
         
         $events = $request->input('events', []);
         $webhookBase64 = $request->boolean('webhook_base64', false);
@@ -548,6 +551,83 @@ class EvolutionApiController extends Controller
         ];
     }
 
+    /**
+     * Get webhook URL correctly formatted for production.
+     * Removes /public from URL if present and ensures correct format.
+     */
+    private function getWebhookUrl(): string
+    {
+        // Get base URL from config or env
+        $appUrl = config('app.url');
+        
+        if (empty($appUrl)) {
+            // Fallback: try to get from request
+            $appUrl = request()->getSchemeAndHttpHost();
+            \Log::warning('APP_URL não configurado, usando URL da requisição', ['url' => $appUrl]);
+        }
+        
+        // Remove trailing slash
+        $appUrl = rtrim($appUrl, '/');
+        
+        // Remove /public if present (common in production setups)
+        // IMPORTANTE: Em produção, o Laravel geralmente não precisa de /public na URL
+        $appUrl = preg_replace('#/public/?$#', '', $appUrl);
+        
+        // Generate route URL (absolute: false para não incluir domínio)
+        $routePath = route('evolution.webhook', [], false);
+        
+        // Combine
+        $webhookUrl = $appUrl . $routePath;
+        
+        \Log::info('URL do webhook gerada', [
+            'app_url_config' => config('app.url'),
+            'app_url_used' => $appUrl,
+            'route_path' => $routePath,
+            'final_url' => $webhookUrl,
+            'env_app_url' => env('APP_URL'),
+        ]);
+        
+        return $webhookUrl;
+    }
+
+    /**
+     * Validate webhook URL and log warnings if needed.
+     */
+    private function validateWebhookUrl(string $url): void
+    {
+        $parsed = parse_url($url);
+        
+        \Log::info('Validação da URL do webhook', [
+            'url' => $url,
+            'scheme' => $parsed['scheme'] ?? null,
+            'host' => $parsed['host'] ?? null,
+            'path' => $parsed['path'] ?? null,
+            'has_public' => strpos($url, '/public') !== false,
+        ]);
+        
+        // Check if URL contains /public (may cause issues in production)
+        if (strpos($url, '/public') !== false) {
+            \Log::warning('URL do webhook contém /public - pode causar problemas em produção', [
+                'url' => $url,
+                'sugestao' => 'Configure APP_URL no .env sem /public',
+            ]);
+        }
+        
+        // Check if it's HTTPS (recommended)
+        if (isset($parsed['scheme']) && $parsed['scheme'] !== 'https') {
+            \Log::warning('URL do webhook não usa HTTPS - pode causar problemas', [
+                'url' => $url,
+            ]);
+        }
+        
+        // Check if host is localhost/127.0.0.1
+        if ($this->isLocalWebhookUrl($url)) {
+            \Log::error('URL do webhook é local - Evolution API não conseguirá acessar', [
+                'url' => $url,
+            ]);
+        }
+    }
+
     private function isLocalWebhookUrl(string $url): bool
     {
         $host = parse_url($url, PHP_URL_HOST);
@@ -729,9 +809,21 @@ class EvolutionApiController extends Controller
         $events = $request->input('events', []);
         $webhookBase64 = $request->boolean('webhook_base64', false);
 
+        // Validar URL antes de configurar
+        $this->validateWebhookUrl($url);
+        
+        // Gerar diagnóstico
+        $diagnostics = $this->diagnoseWebhook($url);
+        \Log::info('Diagnóstico do webhook antes de configurar', $diagnostics);
+
         $result = $this->evolutionApi->setWebhook($url, $events, $webhookBase64);
         
         if (isset($result['error'])) {
+            \Log::error('Erro ao configurar webhook manualmente', [
+                'error' => $result['error'],
+                'url' => $url,
+                'diagnostics' => $diagnostics,
+            ]);
             return back()->with('error', 'Erro ao configurar webhook: ' . $result['error']);
         }
 
@@ -753,14 +845,55 @@ class EvolutionApiController extends Controller
     }
 
     /**
+     * Diagnose webhook configuration and accessibility.
+     */
+    private function diagnoseWebhook(string $url): array
+    {
+        $diagnostics = [
+            'url' => $url,
+            'is_valid_url' => filter_var($url, FILTER_VALIDATE_URL) !== false,
+            'is_local' => $this->isLocalWebhookUrl($url),
+            'has_public' => strpos($url, '/public') !== false,
+            'is_https' => strpos($url, 'https://') === 0,
+            'app_url' => config('app.url'),
+            'route_path' => route('evolution.webhook', [], false),
+            'expected_url' => $this->getWebhookUrl(),
+        ];
+
+        $parsed = parse_url($url);
+        if ($parsed) {
+            $diagnostics['parsed'] = [
+                'scheme' => $parsed['scheme'] ?? null,
+                'host' => $parsed['host'] ?? null,
+                'port' => $parsed['port'] ?? null,
+                'path' => $parsed['path'] ?? null,
+            ];
+        }
+
+        // Check if URL matches expected format
+        $expectedUrl = $this->getWebhookUrl();
+        $diagnostics['matches_expected'] = $url === $expectedUrl;
+        
+        if (!$diagnostics['matches_expected']) {
+            $diagnostics['warning'] = 'URL não corresponde à URL esperada. Verifique APP_URL no .env';
+        }
+
+        return $diagnostics;
+    }
+
+    /**
      * Handle webhook from Evolution API.
      */
     public function webhook(Request $request): JsonResponse
     {
         // Log webhook data for debugging
-        \Log::info('Evolution API Webhook', [
+        \Log::info('Evolution API Webhook - RECEBIDO', [
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'method' => $request->method(),
             'data' => $request->all(),
             'headers' => $request->headers->all(),
+            'raw_body' => $request->getContent(),
         ]);
 
         // Handle different event types
@@ -769,25 +902,50 @@ class EvolutionApiController extends Controller
 
         switch ($event) {
             case 'qrcode.updated':
+            case 'QRCODE_UPDATED':
                 // QR Code was updated
+                \Log::info('Webhook: QR Code atualizado', ['data' => $data]);
                 break;
             case 'connection.update':
+            case 'CONNECTION_UPDATE':
                 // Connection status changed
+                \Log::info('Webhook: Status de conexão atualizado', ['data' => $data]);
                 break;
             case 'messages.upsert':
+            case 'MESSAGES_UPSERT':
                 // New message received
                 $this->handleIncomingMessage($data);
                 break;
             case 'messages.update':
+            case 'MESSAGES_UPDATE':
                 // Message status updated (sent, delivered, read)
                 $this->handleMessageUpdate($data);
                 break;
             default:
                 // Handle other events
+                \Log::info('Webhook: Evento não tratado', [
+                    'event' => $event,
+                    'data' => $data,
+                ]);
                 break;
         }
 
         return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Test webhook endpoint - to verify it's accessible.
+     */
+    public function testWebhook(Request $request): JsonResponse
+    {
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'Webhook endpoint is accessible',
+            'timestamp' => now()->toIso8601String(),
+            'url' => $request->fullUrl(),
+            'method' => $request->method(),
+            'ip' => $request->ip(),
+        ]);
     }
 
     /**
