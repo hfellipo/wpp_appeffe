@@ -22,6 +22,11 @@ jobs:
           DELETED_FILES=$(git diff --diff-filter=D --name-only HEAD~1 HEAD | tr '\n' ' ' || true)
           if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
+            if [ -n "$CHANGED_FILES" ]; then
+              echo "has_changed_files=true" >> $GITHUB_OUTPUT
+            else
+              echo "has_changed_files=false" >> $GITHUB_OUTPUT
+            fi
             {
               echo "changed_files<<EOF"
               echo "$CHANGED_FILES"
@@ -34,6 +39,7 @@ jobs:
             } >> $GITHUB_OUTPUT
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "has_changed_files=false" >> $GITHUB_OUTPUT
           fi
 
       - name: ⏭️ Skip Deploy (No Changes)
@@ -65,7 +71,7 @@ jobs:
             done
 
       - name: 🔧 Prepare Deploy
-        if: steps.changes.outputs.has_changes == 'true'
+        if: steps.changes.outputs.has_changed_files == 'true'
         run: |
           mkdir -p deploy_temp
           echo "${{ steps.changes.outputs.changed_files }}" | tr ' ' '\n' | while read file; do
@@ -77,7 +83,7 @@ jobs:
           done
 
       - name: 🚀 Deploy Incremental (SFTP)
-        if: steps.changes.outputs.has_changes == 'true'
+        if: steps.changes.outputs.has_changed_files == 'true'
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.SFTP_HOST }}
