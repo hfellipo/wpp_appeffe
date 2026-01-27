@@ -553,25 +553,62 @@ class EvolutionApiController extends Controller
 
     /**
      * Get webhook URL correctly formatted for production.
-     * Removes /public from URL if present and ensures correct format.
+     * Detects if server requires /public in URL and adjusts accordingly.
      */
     private function getWebhookUrl(): string
     {
         // Get base URL from config or env
         $appUrl = config('app.url');
         
-        if (empty($appUrl)) {
+        if (empty($appUrl) || $appUrl === 'http://localhost') {
             // Fallback: try to get from request
             $appUrl = request()->getSchemeAndHttpHost();
-            \Log::warning('APP_URL não configurado, usando URL da requisição', ['url' => $appUrl]);
+            \Log::warning('APP_URL não configurado ou é localhost, usando URL da requisição', [
+                'config_url' => config('app.url'),
+                'request_url' => $appUrl,
+            ]);
         }
         
         // Remove trailing slash
         $appUrl = rtrim($appUrl, '/');
         
-        // Remove /public if present (common in production setups)
-        // IMPORTANTE: Em produção, o Laravel geralmente não precisa de /public na URL
-        $appUrl = preg_replace('#/public/?$#', '', $appUrl);
+        // IMPORTANTE: Detectar se o servidor requer /public na URL
+        // Opção 1: Verificar variável de ambiente (mais confiável e explícito)
+        $forcePublic = env('WEBHOOK_REQUIRES_PUBLIC', false);
+        
+        // Opção 2: Verificar a URL completa da requisição atual
+        $currentFullUrl = request()->fullUrl();
+        $currentPath = request()->getPathInfo();
+        $requestUri = request()->getRequestUri();
+        
+        // Detectar se a requisição atual tem /public
+        // Isso indica que o servidor redireciona para /public
+        $hasPublicInRequest = strpos($currentFullUrl, '/public') !== false || 
+                              strpos($requestUri, '/public') !== false;
+        
+        // Se APP_URL já tem /public, manter
+        $hasPublicInAppUrl = strpos($appUrl, '/public') !== false;
+        
+        // Decidir se precisa de /public
+        $needsPublic = $forcePublic || $hasPublicInRequest || $hasPublicInAppUrl;
+        
+        // Se não tem /public mas detectamos que precisa, adicionar
+        if ($needsPublic && !$hasPublicInAppUrl) {
+            $appUrl .= '/public';
+            \Log::info('Servidor requer /public na URL, adicionando', [
+                'url_antes' => preg_replace('#/public/?$#', '', $appUrl),
+                'url_depois' => $appUrl,
+                'force_public_env' => $forcePublic,
+                'has_public_in_request' => $hasPublicInRequest,
+                'has_public_in_app_url' => $hasPublicInAppUrl,
+            ]);
+        }
+        
+        // Se tem /public mas não precisa, remover
+        if (!$needsPublic && $hasPublicInAppUrl) {
+            $appUrl = preg_replace('#/public/?$#', '', $appUrl);
+            \Log::info('Removendo /public da URL (não necessário)', ['url' => $appUrl]);
+        }
         
         // Generate route URL (absolute: false para não incluir domínio)
         $routePath = route('evolution.webhook', [], false);
@@ -581,10 +618,12 @@ class EvolutionApiController extends Controller
         
         \Log::info('URL do webhook gerada', [
             'app_url_config' => config('app.url'),
-            'app_url_used' => $appUrl,
+            'app_url_final' => $appUrl,
             'route_path' => $routePath,
-            'final_url' => $webhookUrl,
-            'env_app_url' => env('APP_URL'),
+            'webhook_url' => $webhookUrl,
+            'needs_public' => $needsPublic,
+            'current_full_url' => $currentFullUrl,
+            'current_path' => $currentPath,
         ]);
         
         return $webhookUrl;
