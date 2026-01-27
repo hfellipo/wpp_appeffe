@@ -6,6 +6,7 @@ use App\Http\Controllers\ContactImportController;
 use App\Http\Controllers\EvolutionApiController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -27,6 +28,81 @@ Route::post('/webhook/evolution/test', [EvolutionApiController::class, 'testWebh
 Route::post('/public/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook.public');
 Route::get('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test.public');
 Route::post('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhookPost'])->name('evolution.webhook.test.post.public');
+
+// API de teste simples - retorna apenas status básico
+Route::get('/api/ping', function () {
+    return response()->json([
+        'status' => 'ok',
+        'message' => 'API está funcionando!',
+        'timestamp' => now()->toIso8601String(),
+        'server_time' => now()->format('Y-m-d H:i:s'),
+    ]);
+})->name('api.ping');
+
+// API de teste HTTP - para verificar acesso e debug
+Route::match(['get', 'post', 'put', 'patch', 'delete'], '/api/test', function (Request $request) {
+    $controller = app(EvolutionApiController::class);
+    $webhookUrl = $controller->getWebhookUrl();
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'API de teste funcionando corretamente!',
+        'timestamp' => now()->toIso8601String(),
+        'server_time' => now()->format('Y-m-d H:i:s'),
+        'timezone' => config('app.timezone'),
+        
+        // Informações da requisição
+        'request' => [
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'path' => $request->path(),
+            'query_string' => $request->getQueryString(),
+            'ip' => $request->ip(),
+            'ips' => $request->ips(),
+            'user_agent' => $request->userAgent(),
+            'content_type' => $request->header('Content-Type'),
+            'accept' => $request->header('Accept'),
+        ],
+        
+        // Headers recebidos
+        'headers' => $request->headers->all(),
+        
+        // Dados recebidos
+        'data' => [
+            'query_params' => $request->query(),
+            'post_data' => $request->post(),
+            'json_data' => $request->json() ? $request->json()->all() : null,
+            'raw_body' => $request->getContent(),
+            'all_data' => $request->all(),
+        ],
+        
+        // Informações do servidor
+        'server' => [
+            'php_version' => PHP_VERSION,
+            'laravel_version' => app()->version(),
+            'app_url' => config('app.url'),
+            'app_env' => config('app.env'),
+            'app_debug' => config('app.debug'),
+        ],
+        
+        // Informações do webhook
+        'webhook' => [
+            'webhook_url' => $webhookUrl,
+            'webhook_requires_public' => env('WEBHOOK_REQUIRES_PUBLIC', false),
+            'note' => 'Use esta URL para configurar o webhook na Evolution API',
+        ],
+        
+        // Comandos úteis para teste
+        'test_commands' => [
+            'curl_get' => "curl -X GET '{$request->fullUrl()}'",
+            'curl_post' => "curl -X POST '{$request->fullUrl()}' -H 'Content-Type: application/json' -d '{\"test\":\"data\"}'",
+            'curl_webhook' => "curl -X POST '{$webhookUrl}' -H 'Content-Type: application/json' -d '{\"event\":\"test\",\"data\":{}}'",
+        ],
+    ], 200, [
+        'Content-Type' => 'application/json',
+        'X-Test-API' => 'true',
+    ]);
+})->name('api.test');
 
 // Debug endpoint to test database connection
 Route::get('/debug/db-test', function () {

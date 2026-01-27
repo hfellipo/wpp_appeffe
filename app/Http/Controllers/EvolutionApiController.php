@@ -567,7 +567,7 @@ class EvolutionApiController extends Controller
      * Get webhook URL correctly formatted for production.
      * Detects if server requires /public in URL and adjusts accordingly.
      */
-    private function getWebhookUrl(): string
+    public function getWebhookUrl(): string
     {
         // Get base URL from config or env
         $appUrl = config('app.url');
