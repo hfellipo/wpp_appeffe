@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\RemovePublicPrefix;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,7 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => EnsureUserIsAdmin::class,
         ]);
 
-        // Add to web group to check on every request
+        // Remove /public prefix from paths (for servers that redirect to /public)
+        // This must run BEFORE routing, so we use prepend
+        $middleware->web(prepend: [
+            RemovePublicPrefix::class,
+        ]);
+
+        // Add to web group to check on every request (after RemovePublicPrefix)
         $middleware->web(append: [
             EnsureUserIsActive::class,
         ]);
