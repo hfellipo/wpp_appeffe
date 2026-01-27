@@ -120,6 +120,10 @@ class EvolutionApiController extends Controller
 
         // Create instance with WhatsApp number
         $result = $this->evolutionApi->createInstance($whatsappNumber);
+        \Log::info('Evolution API - Retorno criar instância', [
+            'instanceName' => $whatsappNumber,
+            'response' => $result,
+        ]);
         
         if (isset($result['error'])) {
             $errorMessage = $result['error'];
