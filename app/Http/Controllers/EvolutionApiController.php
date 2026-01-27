@@ -119,10 +119,18 @@ class EvolutionApiController extends Controller
         }
 
         // Create instance with WhatsApp number
+        \Log::info('Evolution API - ANTES de criar instância', [
+            'instanceName' => $whatsappNumber,
+            'user_id' => auth()->id(),
+            'user_authenticated' => auth()->check(),
+        ]);
+        
         $result = $this->evolutionApi->createInstance($whatsappNumber);
-        \Log::info('Evolution API - Retorno criar instância', [
+        
+        \Log::info('Evolution API - DEPOIS criar instância (resposta completa)', [
             'instanceName' => $whatsappNumber,
             'response' => $result,
+            'response_keys' => array_keys($result),
         ]);
         
         if (isset($result['error'])) {
@@ -143,9 +151,22 @@ class EvolutionApiController extends Controller
 
         $whatsappInstance = null;
         $dbWarning = null;
+        
+        \Log::info('Evolution API - Tentando salvar no banco', [
+            'authenticated' => auth()->check(),
+            'user_id' => auth()->id(),
+            'instance_name' => $whatsappNumber,
+        ]);
+        
         if (auth()->check()) {
             try {
                 $instanceToken = $this->extractInstanceToken($result);
+                
+                \Log::info('Evolution API - Token extraído', [
+                    'token' => $instanceToken,
+                    'token_length' => $instanceToken ? strlen($instanceToken) : 0,
+                ]);
+                
                 $whatsappInstance = WhatsAppInstance::updateOrCreate(
                     ['instance_name' => $whatsappNumber],
                     [
@@ -159,15 +180,24 @@ class EvolutionApiController extends Controller
                         ],
                     ]
                 );
+                
+                \Log::info('Evolution API - Instância salva com sucesso no banco', [
+                    'id' => $whatsappInstance->id,
+                    'instance_name' => $whatsappInstance->instance_name,
+                ]);
             } catch (\Exception $e) {
                 $dbWarning = 'Não foi possível salvar a instância no banco de dados.';
                 \Log::error('Erro ao salvar instância WhatsApp no banco', [
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                     'instance_name' => $whatsappNumber,
                 ]);
             }
         } else {
             $dbWarning = 'Usuário não autenticado. Instância não foi salva no banco.';
+            \Log::warning('Evolution API - Usuário não autenticado', [
+                'session_id' => session()->getId(),
+            ]);
         }
 
         // Try to extract QR code from creation response (faster UX)

@@ -19,6 +19,40 @@ Route::get('/dashboard', function () {
 // Evolution API Webhook (must be public, but we'll validate via API key)
 Route::post('/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook');
 
+// Debug endpoint to test database connection
+Route::get('/debug/db-test', function () {
+    try {
+        $extensions = [
+            'mbstring' => extension_loaded('mbstring'),
+            'pdo' => extension_loaded('pdo'),
+            'pdo_mysql' => extension_loaded('pdo_mysql'),
+        ];
+        
+        $dbTest = null;
+        try {
+            \DB::connection()->getPdo();
+            $dbTest = 'Database connection OK';
+            $tables = \DB::select('SHOW TABLES');
+        } catch (\Exception $e) {
+            $dbTest = 'Database connection FAILED: ' . $e->getMessage();
+            $tables = [];
+        }
+        
+        return response()->json([
+            'php_version' => PHP_VERSION,
+            'extensions' => $extensions,
+            'database' => $dbTest,
+            'tables_count' => count($tables),
+            'laravel_version' => app()->version(),
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ], 500);
+    }
+});
+
 Route::middleware('auth')->group(function () {
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
