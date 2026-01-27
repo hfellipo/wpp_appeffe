@@ -64,7 +64,9 @@ class WebhookResource
             'byEvents' => $byEvents,
             'has_headers' => $headers !== null,
             'payload' => $payload,
+            'payload_json' => json_encode($payload, JSON_PRETTY_PRINT),
             'endpoint' => "/webhook/set/{$instanceName}",
+            'full_url' => $this->client->baseUrl() . "/webhook/set/{$instanceName}",
         ]);
 
         $response = $this->client->post("/webhook/set/{$instanceName}", $payload);
@@ -77,25 +79,38 @@ class WebhookResource
             'status_code' => $statusCode,
             'response_body' => $responseBody,
             'response_text' => $responseText,
+            'response_text_length' => strlen($responseText),
             'url_enviada' => $url,
             'instance_name' => $instanceName,
+            'payload_enviado' => $payload,
         ]);
         
-        // Se erro 400, tentar formato alternativo da documentação oficial
+        // Se erro 400, logar TODOS os detalhes e tentar formato alternativo
         if ($statusCode === 400) {
-            Log::warning('Evolution API - Erro 400 Bad Request, tentando formato alternativo da documentação oficial', [
+            Log::error('Evolution API - Erro 400 Bad Request - DETALHES COMPLETOS', [
                 'status_code' => $statusCode,
                 'response_body' => $responseBody,
                 'response_text' => $responseText,
+                'response_headers' => $response->headers(),
                 'payload_enviado' => $payload,
+                'payload_json' => json_encode($payload, JSON_PRETTY_PRINT),
+                'url' => $url,
+                'instance_name' => $instanceName,
+                'events' => $events,
+                'events_count' => count($events),
+                'base64' => $webhookBase64,
+                'enabled' => $enabled,
+                'byEvents' => $byEvents,
             ]);
             
             // Tentar formato oficial (sem objeto webhook envolvendo)
             try {
+                Log::info('Tentando formato alternativo (sem objeto webhook)...');
                 return $this->setOfficialFormat($instanceName, $url, $events, $webhookBase64, $enabled, $byEvents);
             } catch (\Exception $e) {
                 Log::error('Evolution API - Erro ao tentar formato alternativo', [
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
             }
         }
