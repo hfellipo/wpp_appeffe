@@ -6,6 +6,7 @@ use App\Models\WhatsAppInstance;
 use App\Services\EvolutionApiHttpClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 
 class WhatsAppEvolutionController extends Controller
 {
@@ -18,9 +19,18 @@ class WhatsAppEvolutionController extends Controller
 
     /**
      * GET /settings/whatsapp
-     * Página/endpoint simples para evitar 500/404 durante rebuild.
+     * Página de configurações do WhatsApp (UI).
      */
-    public function index(): JsonResponse
+    public function index(): View
+    {
+        return view('settings.whatsapp');
+    }
+
+    /**
+     * GET /settings/whatsapp/api
+     * Endpoint simples (JSON) para teste/diagnóstico.
+     */
+    public function apiIndex(): JsonResponse
     {
         return response()->json([
             'ok' => true,
