@@ -313,8 +313,10 @@ class EvolutionApiController extends Controller
 
         if ($whatsappInstance) {
             $metadata = is_array($whatsappInstance->metadata) ? $whatsappInstance->metadata : [];
+            // ⚠️ IMPORTANTE: qrcode.base64 é ENORME - campo metadata é LONGTEXT (suporta)
+            // NÃO truncar ao salvar - passar base64 COMPLETO
             if ($qrcode && isset($qrcode['base64'])) {
-                $metadata['qrcode_base64'] = $qrcode['base64'];
+                $metadata['qrcode_base64'] = $qrcode['base64']; // Base64 completo, sem truncar
             }
             $metadata['status_response'] = $statusData;
             $metadata['created_at'] = now()->toIso8601String();
@@ -408,8 +410,18 @@ class EvolutionApiController extends Controller
         
         // Try to extract QR code image (conforme Postman Collection v2.3)
         // 1. Check qrcode.base64 (Create Instance format)
+        // ⚠️ IMPORTANTE: qrcode.base64 é ENORME (milhares de caracteres)
+        // NÃO truncar, NÃO usar substr(), NÃO salvar em VARCHAR curto
+        // ✅ Usar qrcode.base64 (correto) - NÃO usar qrcode.code (errado para imagem)
         if (isset($result['qrcode']['base64'])) {
             $base64Value = $result['qrcode']['base64'];
+            
+            \Log::info('Evolution API - Processando qrcode.base64', [
+                'is_string' => is_string($base64Value),
+                'length' => is_string($base64Value) ? strlen($base64Value) : 0,
+                'starts_with_data_image' => is_string($base64Value) && strpos($base64Value, 'data:image') === 0,
+                'first_50_chars' => is_string($base64Value) ? substr($base64Value, 0, 50) : 'not_string',
+            ]);
             
             if (is_string($base64Value)) {
                 // Check if it's a pairing code
@@ -417,8 +429,16 @@ class EvolutionApiController extends Controller
                     $pairingCode = explode(',', $base64Value)[0];
                     \Log::info('qrcode.base64 detectado como pairing code', ['code' => $pairingCode]);
                 } elseif ($this->isValidBase64Image($base64Value)) {
+                    // ✅ Passar base64 COMPLETO (sem truncar)
                     $qrcode = ['base64' => $base64Value];
-                    \Log::info('qrcode.base64 é imagem válida (formato Create Instance)');
+                    \Log::info('qrcode.base64 é imagem válida (formato Create Instance)', [
+                        'length' => strlen($base64Value), // Log apenas o tamanho, não o conteúdo
+                    ]);
+                } else {
+                    \Log::warning('qrcode.base64 não passou na validação isValidBase64Image', [
+                        'length' => strlen($base64Value),
+                        'starts_with_data_image' => strpos($base64Value, 'data:image') === 0,
+                    ]);
                 }
             }
         }
@@ -602,9 +622,16 @@ class EvolutionApiController extends Controller
 
     private function isValidBase64Image(string $base64): bool
     {
-        // Check if it's already a data URI
+        // Se começa com data:image, é válido (já é um data URI completo)
         if (strpos($base64, 'data:image') === 0) {
-            return true;
+            // Verificar se tem vírgula e conteúdo base64 após ela
+            $commaIndex = strpos($base64, ',');
+            if ($commaIndex !== false && $commaIndex < strlen($base64) - 1) {
+                // Tem conteúdo base64 após a vírgula - válido
+                return true;
+            }
+            // Se não tem vírgula ou não tem conteúdo, pode ser inválido
+            return false;
         }
         
         // IMPORTANTE: Rejeitar pairing codes explicitamente

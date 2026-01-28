@@ -140,6 +140,8 @@
                                         <div x-show="qrModal.qrCode && !qrModal.pairingCode" class="text-center mb-4">
                                             <p class="text-sm text-gray-600 mb-3">{{ __('Escaneie o QR Code com seu WhatsApp:') }}</p>
                                             <div class="flex justify-center">
+                                                {{-- ✅ Usando qrcode.base64 (correto) - qrModal.qrCode contém apenas a parte base64 após a vírgula --}}
+                                                {{-- ❌ NÃO usar qrcode.code aqui - isso quebraria a imagem --}}
                                                 <img 
                                                     :src="qrModal.qrCode ? 'data:image/png;base64,' + qrModal.qrCode : ''" 
                                                     alt="QR Code"
@@ -607,23 +609,37 @@
                             this.connectionStatus = data.status || 'connecting';
                             
                             // Extrair QR code de forma simples
+                            // ⚠️ IMPORTANTE: qrcode.base64 é ENORME (milhares de caracteres)
+                            // ✅ Usar qrcode.base64 (correto) - ❌ NÃO usar qrcode.code (errado para imagem)
                             // O QR code vem em qrcode.base64 (data:image/png;base64,...)
-                            // Extrair apenas a parte base64 após a vírgula
+                            // Extrair apenas a parte base64 após a vírgula (SEM truncar)
                             let qrCodeBase64 = null;
                             
                             if (data.qrcode && typeof data.qrcode === 'object' && data.qrcode.base64) {
+                                const base64Value = data.qrcode.base64;
+                                console.log('📦 QR Code recebido - tipo:', typeof base64Value, 'tamanho:', base64Value?.length);
+                                
                                 // Verificar se é uma imagem válida (começa com data:image)
-                                if (data.qrcode.base64.startsWith('data:image')) {
-                                    // Extrair apenas a parte base64 após a vírgula
-                                    const commaIndex = data.qrcode.base64.indexOf(',');
+                                if (base64Value && typeof base64Value === 'string' && base64Value.startsWith('data:image')) {
+                                    // Extrair apenas a parte base64 após a vírgula (COMPLETA, sem truncar)
+                                    const commaIndex = base64Value.indexOf(',');
                                     if (commaIndex !== -1) {
-                                        qrCodeBase64 = data.qrcode.base64.substring(commaIndex + 1);
-                                        console.log('✓ QR Code base64 extraído:', qrCodeBase64.substring(0, 50) + '...');
+                                        // ✅ substring(commaIndex + 1) extrai TUDO após a vírgula (sem truncar)
+                                        qrCodeBase64 = base64Value.substring(commaIndex + 1);
+                                        console.log('✓ QR Code base64 extraído (completo):', qrCodeBase64.length, 'caracteres');
+                                        console.log('✓ Primeiros 50 chars do base64:', qrCodeBase64.substring(0, 50));
                                     } else {
-                                        qrCodeBase64 = data.qrcode.base64;
+                                        // Se não tem vírgula, pode ser que já venha só o base64
+                                        qrCodeBase64 = base64Value;
+                                        console.log('⚠ QR Code sem vírgula, usando valor completo');
                                     }
                                 } else {
-                                    console.log('⚠ qrcode.base64 não é uma imagem válida:', data.qrcode.base64.substring(0, 50));
+                                    console.error('❌ qrcode.base64 não é uma imagem válida:', {
+                                        temValor: !!base64Value,
+                                        tipo: typeof base64Value,
+                                        comecaComDataImage: base64Value?.startsWith?.('data:image'),
+                                        primeirosChars: base64Value?.substring?.(0, 50)
+                                    });
                                 }
                             }
                             
@@ -633,6 +649,10 @@
                             // Abrir modal com QR code ou pairing code
                             if (qrCodeBase64) {
                                 // QR code válido - abrir modal (armazenar apenas base64, montar data URI na exibição)
+                                console.log('✅ Preparando para exibir QR code no modal', {
+                                    base64Length: qrCodeBase64.length,
+                                    firstChars: qrCodeBase64.substring(0, 50),
+                                });
                                 this.qrModal = {
                                     isOpen: true,
                                     qrCode: qrCodeBase64, // Apenas a parte base64
@@ -642,7 +662,7 @@
                                 };
                                 this.qrCode = qrCodeBase64; // Apenas a parte base64
                                 this.showQrCode = true;
-                                console.log('✓ QR Code exibido no modal');
+                                console.log('✓ QR Code configurado no modal - aguardando renderização');
                             } else if (pairingCode) {
                                 // Pairing code - abrir modal com pairing code
                                 this.qrModal = {
@@ -755,17 +775,25 @@
                         }
                         
                         // Extrair QR code de forma simples
-                        // Extrair apenas a parte base64 após a vírgula
+                        // ⚠️ IMPORTANTE: qrcode.base64 é ENORME - extrair COMPLETO (sem truncar)
+                        // ✅ Usar qrcode.base64 (correto) - ❌ NÃO usar qrcode.code (errado para imagem)
                         let qrCodeBase64 = null;
                         if (data.qrcode && typeof data.qrcode === 'object' && data.qrcode.base64) {
-                            if (data.qrcode.base64.startsWith('data:image')) {
-                                // Extrair apenas a parte base64 após a vírgula
-                                const commaIndex = data.qrcode.base64.indexOf(',');
+                            const base64Value = data.qrcode.base64;
+                            console.log('📦 QR Code recebido no getQrCode - tipo:', typeof base64Value, 'tamanho:', base64Value?.length);
+                            
+                            if (base64Value && typeof base64Value === 'string' && base64Value.startsWith('data:image')) {
+                                // Extrair apenas a parte base64 após a vírgula (COMPLETA, sem truncar)
+                                const commaIndex = base64Value.indexOf(',');
                                 if (commaIndex !== -1) {
-                                    qrCodeBase64 = data.qrcode.base64.substring(commaIndex + 1);
+                                    // ✅ substring(commaIndex + 1) extrai TUDO após a vírgula (sem truncar)
+                                    qrCodeBase64 = base64Value.substring(commaIndex + 1);
+                                    console.log('✓ QR Code base64 extraído (completo):', qrCodeBase64.length, 'caracteres');
                                 } else {
-                                    qrCodeBase64 = data.qrcode.base64;
+                                    qrCodeBase64 = base64Value;
                                 }
+                            } else {
+                                console.error('❌ qrcode.base64 não é uma imagem válida no getQrCode');
                             }
                         }
                         
@@ -866,8 +894,15 @@
                     }, 5000); // Hide after 5 seconds
                 },
 
-                handleQrCodeError() {
-                    console.error('Erro ao carregar imagem QR Code - pode ser pairing code sendo tratado como imagem');
+                handleQrCodeError(event) {
+                    console.error('❌ Erro ao carregar imagem do QR code', {
+                        error: event,
+                        qrCodeLength: this.qrModal.qrCode?.length,
+                        qrCodeFirstChars: this.qrModal.qrCode?.substring(0, 100),
+                        hasPairingCode: !!this.pairingCode,
+                        pairingCode: this.pairingCode,
+                        connectionStatus: this.connectionStatus,
+                    });
                     this.showQrCode = false;
                     this.qrCode = null;
                     this.qrModal.qrCode = ''; // Limpar QR code do modal
@@ -879,7 +914,7 @@
                         if (!this.qrModal.isOpen) {
                             this.qrModal.isOpen = true;
                         }
-                        console.log('Modal atualizado para mostrar pairing code');
+                        console.log('✓ Modal atualizado para mostrar pairing code');
                     } else if (this.connectionStatus === 'connecting') {
                         // Se não temos pairing code, tentar obter novamente
                         console.log('Tentando obter QR code novamente...');
