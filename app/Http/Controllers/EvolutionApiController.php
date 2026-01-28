@@ -178,23 +178,52 @@ class EvolutionApiController extends Controller
         
         if (auth()->check()) {
             try {
-                $instanceToken = $this->extractInstanceToken($result);
+                // Extrair dados da resposta da Evolution API conforme estrutura fornecida
+                // instance_name vem de instance.instanceName na resposta
+                $instanceNameFromResponse = $result['instance']['instanceName'] ?? $whatsappNumber;
                 
-                \Log::info('Evolution API - Token extraído', [
-                    'token' => $instanceToken,
-                    'token_length' => $instanceToken ? strlen($instanceToken) : 0,
+                // instance_token é o hash retornado na resposta (não vem dentro de instance)
+                $instanceToken = $result['hash'] ?? null;
+                
+                // Extrair outros dados relevantes
+                $instanceId = $result['instance']['instanceId'] ?? null;
+                $integration = $result['instance']['integration'] ?? null;
+                $statusFromResponse = $result['instance']['status'] ?? 'connecting';
+                
+                \Log::info('Evolution API - Dados extraídos da resposta', [
+                    'instance_name_response' => $instanceNameFromResponse,
+                    'instance_name_original' => $whatsappNumber,
+                    'instance_token' => $instanceToken,
+                    'instance_id' => $instanceId,
+                    'integration' => $integration,
+                    'status_from_response' => $statusFromResponse,
                 ]);
                 
+                // Normalizar status
+                $normalizedStatus = 'connecting';
+                if ($statusFromResponse === 'open' || $statusFromResponse === 'connected') {
+                    $normalizedStatus = 'open';
+                } elseif ($statusFromResponse === 'close' || $statusFromResponse === 'disconnected') {
+                    $normalizedStatus = 'close';
+                } elseif ($statusFromResponse === 'connecting' || $statusFromResponse === 'qrcode') {
+                    $normalizedStatus = 'connecting';
+                }
+                
                 $whatsappInstance = WhatsAppInstance::updateOrCreate(
-                    ['instance_name' => $whatsappNumber],
+                    ['instance_name' => $instanceNameFromResponse],
                     [
                         'user_id' => auth()->id(),
                         'whatsapp_number' => $whatsappNumber,
-                        'instance_token' => $instanceToken,
-                        'status' => 'connecting',
+                        'instance_name' => $instanceNameFromResponse, // Usar o nome da resposta
+                        'instance_token' => $instanceToken, // hash da resposta
+                        'status' => $normalizedStatus,
                         'metadata' => [
                             'created_via' => 'connect',
                             'create_response' => $result,
+                            'instance_id' => $instanceId,
+                            'integration' => $integration,
+                            'hash' => $instanceToken,
+                            'instance_data' => $result['instance'] ?? null,
                         ],
                     ]
                 );
@@ -202,6 +231,8 @@ class EvolutionApiController extends Controller
                 \Log::info('Evolution API - Instância salva com sucesso no banco', [
                     'id' => $whatsappInstance->id,
                     'instance_name' => $whatsappInstance->instance_name,
+                    'instance_token' => $whatsappInstance->instance_token ? 'definido (' . strlen($whatsappInstance->instance_token) . ' chars)' : 'não definido',
+                    'status' => $whatsappInstance->status,
                 ]);
             } catch (\Exception $e) {
                 $dbWarning = 'Não foi possível salvar a instância no banco de dados.';
