@@ -271,148 +271,14 @@ class EvolutionApiController extends Controller
             }
         }
 
-        // AGORA configurar webhook (DEPOIS de obter QR code e verificar status)
-        // A instância já deve estar mais estável neste ponto
-        $webhookUrlInput = $request->input('webhook_url');
-        
-        // Se não foi fornecida, gerar URL correta do webhook
-        if (empty($webhookUrlInput)) {
-            $webhookUrl = $this->getWebhookUrl();
-        } else {
-            $webhookUrl = $webhookUrlInput;
-        }
-        
-        // Garantir que é uma URL absoluta válida
-        if (!filter_var($webhookUrl, FILTER_VALIDATE_URL)) {
-            \Log::error('URL do webhook inválida', ['url' => $webhookUrl]);
-            $webhookUrl = $this->getWebhookUrl();
-        }
-        
-        // Verificar se a URL é acessível publicamente
-        $this->validateWebhookUrl($webhookUrl);
-        
-        $events = $request->input('events', []);
-        $webhookBase64 = $request->boolean('webhook_base64', false);
-        
-        // If no events selected, use default important events (conforme exemplo fornecido)
-        if (empty($events)) {
-            $events = [
-                'APPLICATION_STARTUP',
-                'QRCODE_UPDATED',
-                'MESSAGES_UPSERT',
-                'MESSAGES_UPDATE',
-                'CONNECTION_UPDATE'
-            ];
-        }
-
-        // Configure webhook (agora que a instância está mais estável)
-        $webhookResult = null;
+        // NOTA: Webhook será configurado separadamente após a instância estar conectada
+        // Use o endpoint /settings/whatsapp/webhook para configurar o webhook manualmente
+        // Não configuramos webhook durante a criação para evitar erros e seguir o fluxo:
+        // 1. Criar instância
+        // 2. Conectar WhatsApp (mostrar QR code)
+        // 3. Ativar instância (quando conectar)
+        // 4. Configurar webhook (separadamente, após estar conectado)
         $webhookWarning = null;
-        
-        // Verificar se a instância existe antes de configurar webhook
-        if ($status === 'not_found') {
-            \Log::warning('Instância não encontrada, pulando configuração do webhook', [
-                'instance_name' => $whatsappNumber,
-                'status' => $status,
-            ]);
-            $webhookWarning = 'Instância ainda não encontrada. O webhook será configurado quando a instância estiver pronta.';
-        } elseif ($this->isLocalWebhookUrl($webhookUrl)) {
-            $webhookWarning = 'Webhook configurado com URL local. A Evolution API não consegue acessar 127.0.0.1/localhost.';
-            \Log::warning('Webhook URL é local', ['url' => $webhookUrl]);
-            $webhookResult = ['error' => 'URL local não suportada'];
-        } else {
-            // Aguardar mais um pouco para garantir que a instância está totalmente pronta
-            sleep(2);
-            
-            $maxRetries = 3;
-            $retryDelay = 3; // seconds
-            
-            \Log::info('Configurando webhook APÓS obter QR code e verificar status', [
-                'url' => $webhookUrl,
-                'instance_name' => $whatsappNumber,
-                'events' => $events,
-                'status_atual' => $status,
-                'has_qrcode' => $qrcode !== null,
-                'has_pairing_code' => $pairingCode !== null,
-            ]);
-            
-            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-                \Log::info("Tentativa {$attempt} de {$maxRetries} para configurar webhook", [
-                    'url' => $webhookUrl,
-                    'instance_name' => $whatsappNumber,
-                    'events' => $events,
-                    'status' => $status,
-                ]);
-                
-                $webhookResult = $this->evolutionApi->setWebhook($webhookUrl, $events, $webhookBase64);
-                
-                \Log::info("Resposta do webhook (tentativa {$attempt})", [
-                    'has_error' => isset($webhookResult['error']),
-                    'error' => $webhookResult['error'] ?? null,
-                    'result_keys' => array_keys($webhookResult),
-                    'full_result' => $webhookResult,
-                ]);
-                
-                if (!isset($webhookResult['error'])) {
-                    \Log::info('✓ Webhook configurado com sucesso!', [
-                        'url' => $webhookUrl,
-                        'events_count' => count($events),
-                        'attempt' => $attempt,
-                    ]);
-                    break;
-                }
-                
-                // Se o erro é 404, a instância pode não estar pronta ainda
-                if (isset($webhookResult['error']) && strpos($webhookResult['error'], '404') !== false) {
-                    \Log::warning("Instância pode não estar pronta ainda (404), aguardando mais tempo...", [
-                        'attempt' => $attempt,
-                    ]);
-                    sleep($retryDelay + 2);
-                }
-                
-                if ($attempt < $maxRetries) {
-                    \Log::warning("Erro ao configurar webhook, tentando novamente em {$retryDelay}s", [
-                        'error' => $webhookResult['error'],
-                        'attempt' => $attempt,
-                    ]);
-                    sleep($retryDelay);
-                }
-            }
-            
-            if (isset($webhookResult['error'])) {
-                \Log::error('✗ Erro ao configurar webhook após todas as tentativas', [
-                    'error' => $webhookResult['error'],
-                    'url' => $webhookUrl,
-                    'events' => $events,
-                    'attempts' => $maxRetries,
-                    'status' => $status,
-                ]);
-                
-                $errorMsg = $webhookResult['error'];
-                if (strpos($errorMsg, '400') !== false || strpos($errorMsg, 'Bad Request') !== false) {
-                    $webhookWarning = 'Webhook não configurado (Bad Request). Verifique os logs para mais detalhes. Você pode configurá-lo manualmente depois na página de configurações.';
-                } else {
-                    $webhookWarning = 'Webhook não configurado: ' . $errorMsg . '. Você pode configurá-lo manualmente depois na página de configurações.';
-                }
-            }
-        }
-
-        // Salvar webhook no banco se configurado com sucesso
-        if ($whatsappInstance && !isset($webhookResult['error'])) {
-            try {
-                $whatsappInstance->update([
-                    'webhook_url' => $webhookUrl,
-                    'webhook_events' => $events,
-                    'webhook_base64' => $webhookBase64,
-                ]);
-            } catch (\Exception $e) {
-                $dbWarning = $dbWarning ?: 'Não foi possível salvar o webhook no banco de dados.';
-                \Log::error('Erro ao salvar webhook no banco', [
-                    'error' => $e->getMessage(),
-                    'instance_name' => $whatsappNumber,
-                ]);
-            }
-        }
 
         if ($whatsappInstance) {
             $metadata = is_array($whatsappInstance->metadata) ? $whatsappInstance->metadata : [];
@@ -420,11 +286,8 @@ class EvolutionApiController extends Controller
                 $metadata['qrcode_base64'] = $qrcode['base64'];
             }
             $metadata['status_response'] = $statusData;
-            if (!isset($webhookResult['error'])) {
-                $metadata['webhook_response'] = $webhookResult;
-            } else {
-                $metadata['webhook_error'] = $webhookResult['error'];
-            }
+            $metadata['created_at'] = now()->toIso8601String();
+            
             try {
                 $whatsappInstance->update([
                     'status' => $status,
@@ -461,10 +324,15 @@ class EvolutionApiController extends Controller
             'qrcode' => $qrcode, // Será null se há pairing code
             'pairingCode' => $pairingCode,
             'instanceName' => $whatsappNumber,
-            'webhook_warning' => $webhookWarning,
+            'note' => 'Configure o webhook separadamente após conectar o WhatsApp',
             'db_warning' => $dbWarning,
             'creation_warning' => $creationWarning,
         ];
+        
+        // Adicionar webhook_warning apenas se houver algum problema específico
+        if ($webhookWarning) {
+            $responseData['webhook_warning'] = $webhookWarning;
+        }
         
         \Log::info('Evolution API - Resposta final para o frontend', [
             'has_qrcode' => $qrcode !== null,
@@ -860,24 +728,56 @@ class EvolutionApiController extends Controller
     /**
      * Configure webhook.
      */
+    /**
+     * Configure webhook separately (after instance is created and connected).
+     * This method is called separately from instance creation to avoid errors.
+     */
     public function configureWebhook(Request $request): RedirectResponse
     {
         $request->validate([
-            'url' => 'required|url',
+            'url' => 'nullable|url', // Opcional: usa URL padrão se não fornecida
             'events' => 'nullable|array',
             'webhook_base64' => 'nullable|boolean',
         ]);
 
+        // Se URL não fornecida, usar URL padrão
         $url = $request->input('url');
-        $events = $request->input('events', []);
-        $webhookBase64 = $request->boolean('webhook_base64', false);
+        if (empty($url)) {
+            $url = $this->getWebhookUrl();
+        }
+
+        // Garantir que é uma URL absoluta válida
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            \Log::error('URL do webhook inválida', ['url' => $url]);
+            $url = $this->getWebhookUrl();
+        }
 
         // Validar URL antes de configurar
         $this->validateWebhookUrl($url);
         
+        // Eventos padrão conforme exemplo fornecido
+        $events = $request->input('events', []);
+        if (empty($events)) {
+            $events = [
+                'APPLICATION_STARTUP',
+                'QRCODE_UPDATED',
+                'MESSAGES_UPSERT',
+                'MESSAGES_UPDATE',
+                'CONNECTION_UPDATE'
+            ];
+        }
+
+        $webhookBase64 = $request->boolean('webhook_base64', false);
+        
         // Gerar diagnóstico
         $diagnostics = $this->diagnoseWebhook($url);
-        \Log::info('Diagnóstico do webhook antes de configurar', $diagnostics);
+        \Log::info('Configurando webhook separadamente (após criação da instância)', [
+            'url' => $url,
+            'events' => $events,
+            'events_count' => count($events),
+            'webhook_base64' => $webhookBase64,
+            'diagnostics' => $diagnostics,
+        ]);
 
         $result = $this->evolutionApi->setWebhook($url, $events, $webhookBase64);
         
@@ -885,23 +785,29 @@ class EvolutionApiController extends Controller
             \Log::error('Erro ao configurar webhook manualmente', [
                 'error' => $result['error'],
                 'url' => $url,
+                'events' => $events,
                 'diagnostics' => $diagnostics,
             ]);
             return back()->with('error', 'Erro ao configurar webhook: ' . $result['error']);
         }
 
+        // Salvar no banco de dados
         if (auth()->check()) {
             $instanceName = $this->evolutionApi->getInstanceName();
             WhatsAppInstance::updateOrCreate(
                 ['instance_name' => $instanceName],
                 [
                     'user_id' => auth()->id(),
-                    'status' => 'connecting',
                     'webhook_url' => $url,
                     'webhook_events' => $events,
                     'webhook_base64' => $webhookBase64,
                 ]
             );
+            
+            \Log::info('Webhook configurado e salvo no banco de dados', [
+                'instance_name' => $instanceName,
+                'url' => $url,
+            ]);
         }
 
         return back()->with('success', 'Webhook configurado com sucesso!');
