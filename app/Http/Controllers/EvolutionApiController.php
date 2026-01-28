@@ -294,9 +294,15 @@ class EvolutionApiController extends Controller
         $events = $request->input('events', []);
         $webhookBase64 = $request->boolean('webhook_base64', false);
         
-        // If no events selected, use default important events
+        // If no events selected, use default important events (conforme exemplo fornecido)
         if (empty($events)) {
-            $events = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'QRCODE_UPDATED', 'CONNECTION_UPDATE'];
+            $events = [
+                'APPLICATION_STARTUP',
+                'QRCODE_UPDATED',
+                'MESSAGES_UPSERT',
+                'MESSAGES_UPDATE',
+                'CONNECTION_UPDATE'
+            ];
         }
 
         // Configure webhook (agora que a instância está mais estável)
@@ -625,14 +631,14 @@ class EvolutionApiController extends Controller
         // Generate route URL (absolute: false para não incluir domínio)
         $routePath = route('evolution.webhook', [], false);
         
-        // IMPORTANTE: Remover barra final se existir (muitas APIs rejeitam URLs com "/" no final)
+        // Remover barra final se existir (será adicionada pelo WebhookResource conforme exemplo)
         $routePath = rtrim($routePath, '/');
         
         // Combine
         $webhookUrl = $appUrl . $routePath;
         
-        // Garantir que não termina com "/" (causa comum de Bad Request 400)
-        $webhookUrl = rtrim($webhookUrl, '/');
+        // NOTA: A barra final "/" será adicionada pelo WebhookResource::set() conforme o exemplo fornecido
+        // O exemplo PHP adiciona "/" no final: if (substr($webhookUrl, -1) !== '/') { $webhookUrl .= '/'; }
         
         \Log::info('URL do webhook gerada', [
             'app_url_config' => config('app.url'),

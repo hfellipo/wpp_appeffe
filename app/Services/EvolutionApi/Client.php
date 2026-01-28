@@ -53,18 +53,22 @@ class Client
         // Suporte para diferentes tipos de headers de autenticação
         // Pode ser configurado via EVOLUTION_API_AUTH_TYPE no .env
         // Valores: 'apikey' (padrão), 'bearer', 'x-api-key'
+        // IMPORTANTE: A API key vem de EVOLUTION_API_KEY no .env (via config/services.php)
         $authType = env('EVOLUTION_API_AUTH_TYPE', 'apikey');
         
         $headers = [];
         switch (strtolower($authType)) {
             case 'bearer':
+                // Usa: Authorization: Bearer <EVOLUTION_API_KEY>
                 $headers['Authorization'] = 'Bearer ' . $this->apiKey;
                 break;
             case 'x-api-key':
+                // Usa: x-api-key: <EVOLUTION_API_KEY>
                 $headers['x-api-key'] = $this->apiKey;
                 break;
             case 'apikey':
             default:
+                // Usa: apikey: <EVOLUTION_API_KEY> (padrão)
                 $headers['apikey'] = $this->apiKey;
                 break;
         }

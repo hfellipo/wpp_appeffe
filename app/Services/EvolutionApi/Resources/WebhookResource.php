@@ -36,35 +36,41 @@ class WebhookResource
         bool $byEvents = false,
         ?array $headers = null
     ): array {
-        // Formato conforme documentação oficial e Postman Collection v2.3
-        // O payload deve ter um objeto "webhook" envolvendo tudo
-        $webhookConfig = [
-            'enabled' => $enabled,
-            'url' => $url,
-            'byEvents' => $byEvents,
-            'base64' => $webhookBase64,
-            'events' => $events,
-        ];
-
-        // Adicionar headers se fornecidos (opcional, mas suportado)
-        if ($headers !== null && !empty($headers)) {
-            $webhookConfig['headers'] = $headers;
+        // Formato conforme exemplo fornecido pelo usuário
+        // Payload direto, sem objeto "webhook" envolvendo
+        
+        // IMPORTANTE: Adicionar "/" no final da URL conforme exemplo
+        if (substr($url, -1) !== '/') {
+            $url .= '/';
         }
-
+        
+        // Headers padrão se não fornecidos
+        if ($headers === null || empty($headers)) {
+            $headers = [
+                'Content-Type' => 'application/json'
+            ];
+        }
+        
+        // Payload no formato exato do exemplo
         $payload = [
-            'webhook' => $webhookConfig,
+            'url' => $url,
+            'events' => $events,
+            'webhook_by_events' => $byEvents,
+            'webhook_base64' => $webhookBase64,
+            'headers' => $headers,
         ];
 
         Log::info('Evolution API - Configurando webhook', [
             'instance_name' => $instanceName,
             'url' => $url,
+            'url_with_slash' => $url, // URL já tem "/" no final
             'events_count' => count($events),
-            'base64' => $webhookBase64,
-            'enabled' => $enabled,
-            'byEvents' => $byEvents,
-            'has_headers' => $headers !== null,
+            'events' => $events,
+            'webhook_base64' => $webhookBase64,
+            'webhook_by_events' => $byEvents,
+            'headers' => $headers,
             'payload' => $payload,
-            'payload_json' => json_encode($payload, JSON_PRETTY_PRINT),
+            'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
             'endpoint' => "/webhook/set/{$instanceName}",
             'full_url' => $this->client->baseUrl() . "/webhook/set/{$instanceName}",
         ]);
@@ -119,23 +125,15 @@ class WebhookResource
                 'instance_name' => $instanceName,
                 'events' => $events,
                 'events_count' => count($events),
-                'base64' => $webhookBase64,
-                'enabled' => $enabled,
-                'byEvents' => $byEvents,
+                'webhook_base64' => $webhookBase64,
+                'webhook_by_events' => $byEvents,
+                'headers' => $headers,
                 'endpoint' => "/webhook/set/{$instanceName}",
                 'full_endpoint_url' => $this->client->baseUrl() . "/webhook/set/{$instanceName}",
             ]);
             
-            // Tentar formato oficial (sem objeto webhook envolvendo)
-            try {
-                Log::info('Tentando formato alternativo (sem objeto webhook)...');
-                return $this->setOfficialFormat($instanceName, $url, $events, $webhookBase64, $enabled, $byEvents);
-            } catch (\Exception $e) {
-                Log::error('Evolution API - Erro ao tentar formato alternativo', [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-            }
+            // NOTA: Não tentamos formato alternativo pois já estamos usando o formato do exemplo fornecido
+            // Se ainda der erro 400, verificar os logs acima para identificar o problema
         }
 
         return $this->normalizeResponse($response, 'Erro ao configurar webhook');
@@ -176,20 +174,30 @@ class WebhookResource
         bool $enabled = true,
         bool $byEvents = false
     ): array {
-        // Formato conforme documentação oficial (sem objeto webhook envolvendo)
+        // Formato conforme exemplo fornecido (igual ao método set principal)
+        // Adicionar "/" no final da URL conforme exemplo
+        if (substr($url, -1) !== '/') {
+            $url .= '/';
+        }
+        
         $payload = [
-            'enabled' => $enabled,
             'url' => $url,
+            'events' => $events,
             'webhook_by_events' => $byEvents,
             'webhook_base64' => $webhookBase64,
-            'events' => $events,
+            'headers' => [
+                'Content-Type' => 'application/json'
+            ],
         ];
 
         Log::info('Evolution API - Configurando webhook (formato oficial)', [
             'instance_name' => $instanceName,
             'url' => $url,
+            'url_with_slash' => $url,
             'events_count' => count($events),
+            'events' => $events,
             'payload' => $payload,
+            'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
             'endpoint' => "/webhook/set/{$instanceName}",
         ]);
 
