@@ -3,7 +3,6 @@
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactFieldController;
 use App\Http\Controllers\ContactImportController;
-use App\Http\Controllers\EvolutionApiController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Http\Request;
@@ -45,17 +44,7 @@ Route::match(['get', 'post'], '/public/debug/test', function (Request $request) 
     ]);
 })->name('debug.test.public');
 
-// Evolution API Webhook (must be public, but we'll validate via API key)
-// O middleware RemovePublicPrefix remove /public automaticamente, então estas rotas funcionam com ou sem /public
-Route::post('/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook');
-Route::get('/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test');
-Route::post('/webhook/evolution/test', [EvolutionApiController::class, 'testWebhookPost'])->name('evolution.webhook.test.post');
-
-// Rotas com /public como fallback (caso o middleware não funcione)
-// IMPORTANTE: Estas rotas são processadas DEPOIS que o middleware RemovePublicPrefix tenta remover /public
-Route::post('/public/webhook/evolution', [EvolutionApiController::class, 'webhook'])->name('evolution.webhook.public');
-Route::get('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhook'])->name('evolution.webhook.test.public');
-Route::post('/public/webhook/evolution/test', [EvolutionApiController::class, 'testWebhookPost'])->name('evolution.webhook.test.post.public');
+// Evolution API Webhook routes - REMOVIDAS (será refeito do zero)
 
 // API de teste simples - retorna apenas status básico
 Route::get('/api/ping', function () {
@@ -66,147 +55,6 @@ Route::get('/api/ping', function () {
         'server_time' => now()->format('Y-m-d H:i:s'),
     ]);
 })->name('api.ping');
-
-// API de teste HTTP - para verificar acesso e debug
-Route::match(['get', 'post', 'put', 'patch', 'delete'], '/api/test', function (Request $request) {
-    $controller = app(EvolutionApiController::class);
-    $webhookUrl = $controller->getWebhookUrl();
-    
-    return response()->json([
-        'status' => 'success',
-        'message' => 'API de teste funcionando corretamente!',
-        'timestamp' => now()->toIso8601String(),
-        'server_time' => now()->format('Y-m-d H:i:s'),
-        'timezone' => config('app.timezone'),
-        
-        // Informações da requisição
-        'request' => [
-            'method' => $request->method(),
-            'url' => $request->fullUrl(),
-            'path' => $request->path(),
-            'query_string' => $request->getQueryString(),
-            'ip' => $request->ip(),
-            'ips' => $request->ips(),
-            'user_agent' => $request->userAgent(),
-            'content_type' => $request->header('Content-Type'),
-            'accept' => $request->header('Accept'),
-        ],
-        
-        // Headers recebidos
-        'headers' => $request->headers->all(),
-        
-        // Dados recebidos
-        'data' => [
-            'query_params' => $request->query(),
-            'post_data' => $request->post(),
-            'json_data' => $request->json() ? $request->json()->all() : null,
-            'raw_body' => $request->getContent(),
-            'all_data' => $request->all(),
-        ],
-        
-        // Informações do servidor
-        'server' => [
-            'php_version' => PHP_VERSION,
-            'laravel_version' => app()->version(),
-            'app_url' => config('app.url'),
-            'app_env' => config('app.env'),
-            'app_debug' => config('app.debug'),
-        ],
-        
-        // Informações do webhook
-        'webhook' => [
-            'webhook_url' => $webhookUrl,
-            'webhook_requires_public' => env('WEBHOOK_REQUIRES_PUBLIC', false),
-            'note' => 'Use esta URL para configurar o webhook na Evolution API',
-        ],
-        
-        // Comandos úteis para teste
-        'test_commands' => [
-            'curl_get' => "curl -X GET '{$request->fullUrl()}'",
-            'curl_post' => "curl -X POST '{$request->fullUrl()}' -H 'Content-Type: application/json' -d '{\"test\":\"data\"}'",
-            'curl_webhook' => "curl -X POST '{$webhookUrl}' -H 'Content-Type: application/json' -d '{\"event\":\"test\",\"data\":{}}'",
-        ],
-    ], 200, [
-        'Content-Type' => 'application/json',
-        'X-Test-API' => 'true',
-    ]);
-})->name('api.test');
-
-// Rotas com /public para API de teste (para servidores que redirecionam automaticamente)
-Route::get('/public/api/ping', function () {
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'API está funcionando!',
-        'timestamp' => now()->toIso8601String(),
-        'server_time' => now()->format('Y-m-d H:i:s'),
-        'note' => 'Acessado via /public/api/ping',
-    ]);
-})->name('api.ping.public');
-
-Route::match(['get', 'post', 'put', 'patch', 'delete'], '/public/api/test', function (Request $request) {
-    $controller = app(EvolutionApiController::class);
-    $webhookUrl = $controller->getWebhookUrl();
-    
-    return response()->json([
-        'status' => 'success',
-        'message' => 'API de teste funcionando corretamente!',
-        'timestamp' => now()->toIso8601String(),
-        'server_time' => now()->format('Y-m-d H:i:s'),
-        'timezone' => config('app.timezone'),
-        'note' => 'Acessado via /public/api/test',
-        
-        // Informações da requisição
-        'request' => [
-            'method' => $request->method(),
-            'url' => $request->fullUrl(),
-            'path' => $request->path(),
-            'query_string' => $request->getQueryString(),
-            'ip' => $request->ip(),
-            'ips' => $request->ips(),
-            'user_agent' => $request->userAgent(),
-            'content_type' => $request->header('Content-Type'),
-            'accept' => $request->header('Accept'),
-        ],
-        
-        // Headers recebidos
-        'headers' => $request->headers->all(),
-        
-        // Dados recebidos
-        'data' => [
-            'query_params' => $request->query(),
-            'post_data' => $request->post(),
-            'json_data' => $request->json() ? $request->json()->all() : null,
-            'raw_body' => $request->getContent(),
-            'all_data' => $request->all(),
-        ],
-        
-        // Informações do servidor
-        'server' => [
-            'php_version' => PHP_VERSION,
-            'laravel_version' => app()->version(),
-            'app_url' => config('app.url'),
-            'app_env' => config('app.env'),
-            'app_debug' => config('app.debug'),
-        ],
-        
-        // Informações do webhook
-        'webhook' => [
-            'webhook_url' => $webhookUrl,
-            'webhook_requires_public' => env('WEBHOOK_REQUIRES_PUBLIC', false),
-            'note' => 'Use esta URL para configurar o webhook na Evolution API',
-        ],
-        
-        // Comandos úteis para teste
-        'test_commands' => [
-            'curl_get' => "curl -X GET '{$request->fullUrl()}'",
-            'curl_post' => "curl -X POST '{$request->fullUrl()}' -H 'Content-Type: application/json' -d '{\"test\":\"data\"}'",
-            'curl_webhook' => "curl -X POST '{$webhookUrl}' -H 'Content-Type: application/json' -d '{\"event\":\"test\",\"data\":{}}'",
-        ],
-    ], 200, [
-        'Content-Type' => 'application/json',
-        'X-Test-API' => 'true',
-    ]);
-})->name('api.test.public');
 
 // Debug endpoint to test database connection
 Route::get('/debug/db-test', function () {
@@ -251,16 +99,7 @@ Route::middleware('auth')->group(function () {
     // Settings routes
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
 
-    // Evolution API / WhatsApp routes
-    Route::prefix('settings/whatsapp')->name('whatsapp.')->group(function () {
-        Route::get('/', [EvolutionApiController::class, 'index'])->name('index');
-        Route::post('/connect', [EvolutionApiController::class, 'connect'])->name('connect');
-        Route::get('/qrcode', [EvolutionApiController::class, 'qrcode'])->name('qrcode');
-        Route::get('/status', [EvolutionApiController::class, 'status'])->name('status');
-        Route::post('/logout', [EvolutionApiController::class, 'logout'])->name('logout');
-        Route::delete('/delete', [EvolutionApiController::class, 'delete'])->name('delete');
-        Route::post('/webhook', [EvolutionApiController::class, 'configureWebhook'])->name('webhook.configure');
-    });
+    // Evolution API / WhatsApp routes - REMOVIDAS (será refeito do zero)
 
     // Contact Fields routes (MUST be before resource to avoid conflicts)
     Route::prefix('contacts/fields')->name('contacts.fields.')->group(function () {
