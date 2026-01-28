@@ -544,6 +544,30 @@
                     }
                 },
 
+                alertApiSummary(title, data) {
+                    try {
+                        const summary = {
+                            success: data?.success,
+                            status: data?.status,
+                            instanceName: data?.instanceName,
+                            hasQrcodeObj: !!data?.qrcode,
+                            qrcodeBase64IsString: typeof data?.qrcode?.base64 === 'string',
+                            qrcodeBase64StartsWith: typeof data?.qrcode?.base64 === 'string' ? data.qrcode.base64.substring(0, 30) : null,
+                            qrcodeBase64Length: typeof data?.qrcode?.base64 === 'string' ? data.qrcode.base64.length : null,
+                            hasPairingCode: !!data?.pairingCode,
+                            pairingCodePrefix: typeof data?.pairingCode === 'string' ? data.pairingCode.substring(0, 30) : null,
+                            hasQrText: !!data?.qrText,
+                            qrTextPrefix: typeof data?.qrText === 'string' ? data.qrText.substring(0, 30) : null,
+                            creationWarning: data?.creation_warning,
+                            dbWarning: data?.db_warning,
+                            webhookWarning: data?.webhook_warning,
+                        };
+                        alert(title + "\n\n" + JSON.stringify(summary, null, 2));
+                    } catch (e) {
+                        alert(title + "\n\n" + "Não foi possível resumir a resposta (erro no JS).");
+                    }
+                },
+
                 getStatusLabel(status) {
                     const labels = {
                         'open': '{{ __('Conectado') }}',
@@ -623,6 +647,9 @@
                         });
 
                         const data = await response.json();
+
+                        // ALERT: resumo do JsonResponse (sem base64 gigante)
+                        this.alertApiSummary('RETORNO (JsonResponse) - Criar/Conectar Instância', data);
                         
                         // Log do retorno JSON da API
                         console.log('═══════════════════════════════════════════');
@@ -701,6 +728,7 @@
                                 this.qrCode = null;
                                 this.showQrCode = false;
                                 if (this.connectionStatus === 'connecting') {
+                                    alert('Tentando carregar QR Code agora (GET /qrcode)...');
                                     await this.getQrCode();
                                 }
                             }
@@ -780,8 +808,12 @@
 
                 async getQrCode() {
                     try {
+                        alert('Carregando QR Code (GET /qrcode)...');
                         const response = await fetch('{{ route("whatsapp.qrcode") }}');
                         const data = await response.json();
+
+                        // ALERT: resumo do JsonResponse do /qrcode
+                        this.alertApiSummary('RETORNO (JsonResponse) - Endpoint /qrcode', data);
                         
                         console.log('=== RESPOSTA DO ENDPOINT /qrcode ===');
                         console.log(data);
