@@ -784,9 +784,31 @@ class EvolutionApiController extends Controller
             $response['pairingCode'] = $extracted['pairingCode'];
         }
         
-        // If no valid data was extracted, return the original result
+        // Se nada foi extraído, NÃO devolver o $result cru (em prod ele pode vir "data:image...,2@..."
+        // e isso quebra o <img> no browser com ERR_INVALID_URL).
         if (empty($response)) {
-            return response()->json($result);
+            $pairingFromBase64 = null;
+            if (isset($result['qrcode']['base64']) && is_string($result['qrcode']['base64']) && str_starts_with($result['qrcode']['base64'], 'data:image')) {
+                $comma = strpos($result['qrcode']['base64'], ',');
+                if ($comma !== false) {
+                    $payload = substr($result['qrcode']['base64'], $comma + 1);
+                    if (preg_match('/^\d+@/', $payload)) {
+                        $pairingFromBase64 = explode(',', $payload)[0];
+                    }
+                }
+            }
+
+            $pairingFromCode = null;
+            if (isset($result['qrcode']['code']) && is_string($result['qrcode']['code']) && preg_match('/^\d+@/', $result['qrcode']['code'])) {
+                $pairingFromCode = explode(',', $result['qrcode']['code'])[0];
+            }
+
+            $pairing = $pairingFromBase64 ?? $pairingFromCode;
+            if ($pairing) {
+                return response()->json(['pairingCode' => $pairing]);
+            }
+
+            return response()->json([]);
         }
         
         return response()->json($response);

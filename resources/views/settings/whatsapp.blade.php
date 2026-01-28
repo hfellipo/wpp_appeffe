@@ -143,7 +143,16 @@
                                                 {{-- ✅ Usar EXATAMENTE qrcode.base64 como vem da API (data:image/png;base64,...) --}}
                                                 {{-- ❌ NÃO usar qrcode.code aqui - isso quebraria a imagem --}}
                                                 <img 
-                                                    :src="(qrModal.qrCode && typeof qrModal.qrCode === 'string' && qrModal.qrCode.startsWith('data:image')) ? qrModal.qrCode : ''" 
+                                                    :src="(() => { 
+                                                        const v = qrModal.qrCode; 
+                                                        if (!v || typeof v !== 'string' || !v.startsWith('data:image')) return ''; 
+                                                        const comma = v.indexOf(','); 
+                                                        if (comma === -1) return ''; 
+                                                        const payload = v.substring(comma + 1); 
+                                                        // Se o payload começa com dígito@, é pairing code e NÃO pode ir para <img>
+                                                        if (/^\\d+@/.test(payload)) return ''; 
+                                                        return v; 
+                                                    })()" 
                                                     alt="QR Code"
                                                     class="border-2 border-gray-300 rounded-lg p-2 bg-white max-w-xs mx-auto"
                                                     x-on:error="handleQrCodeError($event)"
