@@ -34,10 +34,6 @@ class InstanceResource
         $responseBody = $response->json();
         $responseText = $response->body();
 
-        log::info('JSON resposta', [
-            'responseBody' => $responseBody
-        ]);
-
         // Log do $response (serializável e útil)
         // Evita logar base64 gigante inteiro: loga apenas tamanho/prefixo.
         $qrcodeBase64 = is_array($responseBody) ? ($responseBody['qrcode']['base64'] ?? null) : null;
