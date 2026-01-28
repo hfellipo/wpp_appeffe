@@ -16,18 +16,32 @@
 @php
     // Ative com ?debugAlerts=1 na URL
     $debugAlerts = request()->query('debugAlerts') === '1';
+    // Identificador manual de build desta view (para confirmar se produção está servindo código atualizado)
+    $whatsappViewBuild = 'wa-settings-2026-01-28-01';
 @endphp
 
 <script>
   // DEBUG fora do Alpine (provar que a view carregou)
   window.__WHATSAPP_DEBUG_ALERTS__ = {!! $debugAlerts ? 'true' : 'false' !!};
+  window.__WHATSAPP_VIEW_BUILD__ = @json($whatsappViewBuild);
   if (window.__WHATSAPP_DEBUG_ALERTS__) {
-    alert('DEBUG: settings/whatsapp.blade.php foi carregado (debugAlerts=1)');
+    alert(
+      'DEBUG: settings/whatsapp.blade.php foi carregado (debugAlerts=1)\n' +
+      'build=' + window.__WHATSAPP_VIEW_BUILD__ + '\n' +
+      'url=' + window.location.href
+    );
   }
 </script>
 
 <div class="py-12" x-data="whatsappConfig()">
         <div class="max-w-4xl mx-auto sm:px-6 lg:px-8 space-y-6">
+            @if($debugAlerts)
+                <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+                    <div class="text-sm font-mono">
+                        DEBUG ATIVO (debugAlerts=1) — build: {{ $whatsappViewBuild }}
+                    </div>
+                </div>
+            @endif
             @if(session('success'))
                 <div class="bg-brand-100 border border-brand-400 text-brand-700 px-4 py-3 rounded relative">
                     {{ session('success') }}
@@ -560,6 +574,8 @@
                 },
 
                 alertApiSummary(title, data) {
+                    // Alerts de debug só quando ativado via ?debugAlerts=1
+                    if (!this.debugAlerts) return;
                     try {
                         const summary = {
                             success: data?.success,
@@ -595,8 +611,10 @@
                 },
 
                 async connect() {
-                    // DEBUG: este alert precisa aparecer sempre que clicar no botão
-                    alert('DEBUG: connect() foi chamado');
+                    // DEBUG: só quando ativado via ?debugAlerts=1
+                    if (this.debugAlerts) {
+                        alert('DEBUG: connect() foi chamado');
+                    }
                     if (!this.configured || this.connectionStatus === 'not_configured') {
                         alert('{{ __('Evolution API não configurada. Verifique as variáveis no arquivo .env') }}');
                         return;
@@ -620,6 +638,7 @@
                         isOpen: false,
                         qrCode: '',
                         pairingCode: '',
+                        qrText: '',
                         whatsappNumber: cleanNumber,
                         loading: true
                     };
@@ -631,27 +650,10 @@
                     
                     this.loading = true;
                     try {
-                        // Collect webhook configuration from form
-                        const webhookUrlInput = document.getElementById('webhook_url');
-                        const webhookUrl = webhookUrlInput?.value?.trim() || '{{ route("evolution.webhook") }}';
-                        const webhookBase64Input = document.getElementById('webhook_base64');
-                        const webhookBase64 = webhookBase64Input?.checked || false;
-                        const checkedEvents = Array.from(document.querySelectorAll('input[name="events[]"]:checked'));
-                        const events = checkedEvents.map(cb => cb.value);
-                        
-                        // If no events selected, use default important events
-                        const finalEvents = events.length > 0 ? events : [
-                            'MESSAGES_UPSERT', 
-                            'MESSAGES_UPDATE', 
-                            'QRCODE_UPDATED', 
-                            'CONNECTION_UPDATE'
-                        ];
-
+                        // IMPORTANTE: webhook é configurado SEPARADAMENTE.
+                        // Aqui (connect) enviamos apenas o número para criar/conectar a instância e obter QR.
                         const formData = new FormData();
                         formData.append('whatsapp_number', cleanNumber);
-                        formData.append('webhook_url', webhookUrl);
-                        formData.append('webhook_base64', webhookBase64 ? '1' : '0');
-                        finalEvents.forEach(event => formData.append('events[]', event));
 
                         const response = await fetch('{{ route("whatsapp.connect") }}', {
                             method: 'POST',
@@ -745,7 +747,9 @@
                                 this.qrCode = null;
                                 this.showQrCode = false;
                                 if (this.connectionStatus === 'connecting') {
-                                    alert('Tentando carregar QR Code agora (GET /qrcode)...');
+                                    if (this.debugAlerts) {
+                                        alert('Tentando carregar QR Code agora (GET /qrcode)...');
+                                    }
                                     await this.getQrCode();
                                 }
                             }
@@ -781,11 +785,15 @@
                                 this.showSuccessMessage(data.message);
                             }
 
+                            // Não exibir alert de webhook/db para o usuário (isso é separado).
+                            // Se precisar, ative ?debugAlerts=1 para ver.
                             if (data.webhook_warning) {
-                                alert(data.webhook_warning);
+                                console.warn('Webhook warning:', data.webhook_warning);
+                                if (this.debugAlerts) alert(data.webhook_warning);
                             }
                             if (data.db_warning) {
-                                alert(data.db_warning);
+                                console.warn('DB warning:', data.db_warning);
+                                if (this.debugAlerts) alert(data.db_warning);
                             }
                         } else {
                             alert(data.error || 'Erro ao conectar WhatsApp');
@@ -825,7 +833,9 @@
 
                 async getQrCode() {
                     try {
-                        alert('Carregando QR Code (GET /qrcode)...');
+                        if (this.debugAlerts) {
+                            alert('Carregando QR Code (GET /qrcode)...');
+                        }
                         const response = await fetch('{{ route("whatsapp.qrcode") }}');
                         const data = await response.json();
 
