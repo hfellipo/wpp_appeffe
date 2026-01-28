@@ -30,12 +30,23 @@ class InstanceResource
         ]);
 
         $response = $this->client->post('/instance/create', $payload);
-        Log::info('JSON resposta', [
-            'instanceName' => $response
-        ]);
         $statusCode = $response->status();
         $responseBody = $response->json();
         $responseText = $response->body();
+
+        // Log do $response (serializável e útil)
+        // Evita logar base64 gigante inteiro: loga apenas tamanho/prefixo.
+        $qrcodeBase64 = is_array($responseBody) ? ($responseBody['qrcode']['base64'] ?? null) : null;
+        Log::info('Evolution API - InstanceResource::create $response (resumo)', [
+            'instanceName' => $instanceName,
+            'status_code' => $statusCode,
+            'successful' => $response->successful(),
+            'json_keys' => is_array($responseBody) ? array_keys($responseBody) : null,
+            'qrcode_base64_len' => is_string($qrcodeBase64) ? strlen($qrcodeBase64) : null,
+            'qrcode_base64_prefix' => is_string($qrcodeBase64) ? substr($qrcodeBase64, 0, 40) : null,
+            'body_length' => strlen($responseText),
+            'body_prefix' => substr($responseText, 0, 300),
+        ]);
         
         // Log da resposta completa da Evolution API
         Log::info('Evolution API - RESPOSTA COMPLETA da criação de instância', [
