@@ -930,6 +930,18 @@ class EvolutionApiController extends Controller
             $instanceName = $this->evolutionApi->getInstanceName();
         }
         $instanceName = preg_replace('/\s+/', '', (string) $instanceName);
+
+        // TRAVA DE FLUXO: webhook só depois de conectar (status open)
+        $statusData = $this->evolutionApi->getInstanceStatusForInstance($instanceName);
+        $status = $statusData['status'] ?? 'unknown';
+        if (!in_array($status, ['open', 'connected'], true)) {
+            \Log::warning('Tentativa de configurar webhook antes de conectar WhatsApp', [
+                'instance_name' => $instanceName,
+                'status' => $status,
+                'status_data' => $statusData,
+            ]);
+            return back()->with('error', 'Conecte o WhatsApp primeiro (status precisa estar OPEN). Depois configure o webhook.');
+        }
         
         // Gerar diagnóstico
         $diagnostics = $this->diagnoseWebhook($url);

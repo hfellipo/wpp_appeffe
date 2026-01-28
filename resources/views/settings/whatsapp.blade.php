@@ -340,8 +340,14 @@
                 </div>
             </div>
 
-            <!-- Configuração do Webhook -->
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+            <!-- Configuração do Webhook (etapa FINAL: só depois de conectar) -->
+            <div x-show="connectionStatus !== 'open'" class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
+                <div class="text-sm">
+                    {{ __('Webhook será configurado depois que o WhatsApp estiver conectado (status: Conectado).') }}
+                </div>
+            </div>
+
+            <div x-show="connectionStatus === 'open'" style="display:none" class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6">
                     <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
                         <svg class="w-5 h-5 mr-2 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

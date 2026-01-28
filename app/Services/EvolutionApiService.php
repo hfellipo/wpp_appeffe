@@ -239,6 +239,70 @@ class EvolutionApiService
     }
 
     /**
+     * Get instance status for a specific instance name (does not rely on session/last-instance).
+     */
+    public function getInstanceStatusForInstance(string $instanceName): array
+    {
+        if (!$this->isConfigured()) {
+            return ['status' => 'not_configured'];
+        }
+
+        $instanceName = trim($instanceName);
+        if ($instanceName === '') {
+            return ['status' => 'not_found'];
+        }
+
+        try {
+            // Try connectionState endpoint first
+            try {
+                $connectionState = $this->instances->connectionState($instanceName);
+
+                if (!isset($connectionState['error'])) {
+                    $state = $connectionState['state']
+                        ?? $connectionState['connectionStatus']
+                        ?? $connectionState['status']
+                        ?? null;
+
+                    if ($state !== null) {
+                        return [
+                            'status' => $state,
+                            'data' => $connectionState,
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Evolution API - Erro ao usar connectionState (instância explícita), tentando fetchInstances', [
+                    'error' => $e->getMessage(),
+                    'instanceName' => $instanceName,
+                ]);
+            }
+
+            // Fallback to fetchInstances
+            $instances = $this->instances->fetchInstances();
+            if (isset($instances['instances'])) {
+                $instances = $instances['instances'];
+            }
+
+            foreach ($instances as $instance) {
+                if (($instance['instanceName'] ?? null) === $instanceName) {
+                    return [
+                        'status' => $instance['state'] ?? $instance['status'] ?? 'unknown',
+                        'instance' => $instance,
+                    ];
+                }
+            }
+
+            return ['status' => 'not_found'];
+        } catch (\Exception $e) {
+            Log::error('Evolution API - Erro ao obter status (instância explícita)', [
+                'error' => $e->getMessage(),
+                'instanceName' => $instanceName,
+            ]);
+            return ['status' => 'error', 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Logout instance.
      */
     public function logoutInstance(): array
