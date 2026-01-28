@@ -625,8 +625,14 @@ class EvolutionApiController extends Controller
         // Generate route URL (absolute: false para não incluir domínio)
         $routePath = route('evolution.webhook', [], false);
         
+        // IMPORTANTE: Remover barra final se existir (muitas APIs rejeitam URLs com "/" no final)
+        $routePath = rtrim($routePath, '/');
+        
         // Combine
         $webhookUrl = $appUrl . $routePath;
+        
+        // Garantir que não termina com "/" (causa comum de Bad Request 400)
+        $webhookUrl = rtrim($webhookUrl, '/');
         
         \Log::info('URL do webhook gerada', [
             'app_url_config' => config('app.url'),

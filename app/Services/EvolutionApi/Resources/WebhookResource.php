@@ -87,20 +87,43 @@ class WebhookResource
         
         // Se erro 400, logar TODOS os detalhes e tentar formato alternativo
         if ($statusCode === 400) {
+            // Extrair mensagem de erro real da resposta
+            $errorMessage = 'Bad Request';
+            if (is_array($responseBody)) {
+                $errorMessage = $responseBody['message'] 
+                    ?? $responseBody['error'] 
+                    ?? $responseBody['errorMessage']
+                    ?? ($responseBody['response']['message'] ?? null)
+                    ?? (isset($responseBody['response']) && is_string($responseBody['response']) ? $responseBody['response'] : null)
+                    ?? json_encode($responseBody, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+            } elseif (!empty($responseText)) {
+                $decoded = json_decode($responseText, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    $errorMessage = $decoded['message'] ?? $decoded['error'] ?? $responseText;
+                } else {
+                    $errorMessage = $responseText;
+                }
+            }
+
             Log::error('Evolution API - Erro 400 Bad Request - DETALHES COMPLETOS', [
                 'status_code' => $statusCode,
+                'error_message' => $errorMessage,
                 'response_body' => $responseBody,
                 'response_text' => $responseText,
+                'response_text_raw' => $response->body(),
                 'response_headers' => $response->headers(),
                 'payload_enviado' => $payload,
-                'payload_json' => json_encode($payload, JSON_PRETTY_PRINT),
-                'url' => $url,
+                'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+                'url_webhook' => $url,
+                'url_webhook_ends_with_slash' => substr($url, -1) === '/',
                 'instance_name' => $instanceName,
                 'events' => $events,
                 'events_count' => count($events),
                 'base64' => $webhookBase64,
                 'enabled' => $enabled,
                 'byEvents' => $byEvents,
+                'endpoint' => "/webhook/set/{$instanceName}",
+                'full_endpoint_url' => $this->client->baseUrl() . "/webhook/set/{$instanceName}",
             ]);
             
             // Tentar formato oficial (sem objeto webhook envolvendo)
@@ -246,7 +269,12 @@ class WebhookResource
                 ?? (isset($responseBody['response']) && is_string($responseBody['response']) ? $responseBody['response'] : null);
                 
             if ($extractedMessage) {
-                $errorMessage = is_string($extractedMessage) ? $extractedMessage : json_encode($extractedMessage);
+                $errorMessage = is_string($extractedMessage) 
+                    ? $extractedMessage 
+                    : json_encode($extractedMessage, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+            } else {
+                // Se não encontrou mensagem específica, retornar o JSON completo para debug
+                $errorMessage = json_encode($responseBody, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
             }
         } elseif (!empty($responseText)) {
             $decoded = json_decode($responseText, true);
@@ -254,6 +282,9 @@ class WebhookResource
                 $extractedMessage = $decoded['message'] ?? $decoded['error'] ?? null;
                 if ($extractedMessage) {
                     $errorMessage = $extractedMessage;
+                } else {
+                    // Se não encontrou mensagem específica, retornar o JSON completo
+                    $errorMessage = json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
                 }
             } elseif (strlen(trim($responseText)) > 0) {
                 $errorMessage = $responseText;

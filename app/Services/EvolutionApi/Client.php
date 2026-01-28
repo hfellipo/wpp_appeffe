@@ -50,12 +50,52 @@ class Client
     {
         $url = "{$this->baseUrl}/" . ltrim($path, '/');
 
-        return Http::timeout(30)
-            ->withHeaders([
-                'apikey' => $this->apiKey,
-            ])
+        // Suporte para diferentes tipos de headers de autenticação
+        // Pode ser configurado via EVOLUTION_API_AUTH_TYPE no .env
+        // Valores: 'apikey' (padrão), 'bearer', 'x-api-key'
+        $authType = env('EVOLUTION_API_AUTH_TYPE', 'apikey');
+        
+        $headers = [];
+        switch (strtolower($authType)) {
+            case 'bearer':
+                $headers['Authorization'] = 'Bearer ' . $this->apiKey;
+                break;
+            case 'x-api-key':
+                $headers['x-api-key'] = $this->apiKey;
+                break;
+            case 'apikey':
+            default:
+                $headers['apikey'] = $this->apiKey;
+                break;
+        }
+
+        // Log detalhado do request (especialmente útil para debug de webhook)
+        Log::info('Evolution API - Request', [
+            'method' => strtoupper($method),
+            'url' => $url,
+            'path' => $path,
+            'auth_type' => $authType,
+            'headers' => array_keys($headers), // Não logar o token por segurança
+            'payload' => $payload,
+            'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+        ]);
+
+        $response = Http::timeout(30)
+            ->withHeaders($headers)
             ->asJson()
             ->{$method}($url, $payload);
+
+        // Log detalhado da resposta (especialmente útil para debug de erros 400)
+        Log::info('Evolution API - Response', [
+            'method' => strtoupper($method),
+            'url' => $url,
+            'status_code' => $response->status(),
+            'response_body' => $response->json(),
+            'response_text' => $response->body(),
+            'response_headers' => $response->headers(),
+        ]);
+
+        return $response;
     }
 
     public function baseUrl(): string
