@@ -30,7 +30,9 @@ class InstanceResource
         ]);
 
         $response = $this->client->post('/instance/create', $payload);
-        
+        Log::info('JSON resposta', [
+            'instanceName' => $response
+        ]);
         $statusCode = $response->status();
         $responseBody = $response->json();
         $responseText = $response->body();
