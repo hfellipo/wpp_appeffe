@@ -13,7 +13,20 @@
         </div>
     </x-slot>
 
-    <div class="py-12" x-data="whatsappConfig()">
+@php
+    // Ative com ?debugAlerts=1 na URL
+    $debugAlerts = request()->query('debugAlerts') === '1';
+@endphp
+
+<script>
+  // DEBUG fora do Alpine (provar que a view carregou)
+  window.__WHATSAPP_DEBUG_ALERTS__ = {!! $debugAlerts ? 'true' : 'false' !!};
+  if (window.__WHATSAPP_DEBUG_ALERTS__) {
+    alert('DEBUG: settings/whatsapp.blade.php foi carregado (debugAlerts=1)');
+  }
+</script>
+
+<div class="py-12" x-data="whatsappConfig()">
         <div class="max-w-4xl mx-auto sm:px-6 lg:px-8 space-y-6">
             @if(session('success'))
                 <div class="bg-brand-100 border border-brand-400 text-brand-700 px-4 py-3 rounded relative">
@@ -473,6 +486,7 @@
     <script>
         function whatsappConfig() {
             return {
+                debugAlerts: window.__WHATSAPP_DEBUG_ALERTS__ === true,
                 connectionStatus: '{{ $status['status'] ?? 'not_found' }}',
                 qrCode: null,
                 pairingCode: null,
