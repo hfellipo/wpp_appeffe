@@ -254,7 +254,10 @@ class EvolutionApiController extends Controller
 
         // Extract QR code and pairing code using helper method (como no exemplo PHP)
         $extracted = $this->extractQrCodeAndPairingCode($result);
-        $qrcode = $extracted['base64'];
+        $qrcode = $extracted['qrcode'];
+        echo '<pre>';
+        print_r($qrcode);
+        echo '</pre>';
         $pairingCode = $extracted['pairingCode'];
         $qrText = $extracted['qrText'] ?? null;
         
