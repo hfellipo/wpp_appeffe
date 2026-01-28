@@ -629,16 +629,6 @@
                                         qrCodeBase64 = base64Value;
                                         console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
                                     }
-                                } else if (base64Value && typeof base64Value === 'string') {
-                                    // Se vier só o base64 "iVBORw0K..." sem prefixo, montar o data URI.
-                                    // ⚠️ Não fazer isso se começar com "2@" (pairing code).
-                                    if (/^\d+@/.test(base64Value)) {
-                                        console.warn('⚠ qrcode.base64 veio como pairing code (começa com dígito@). Não renderizar como imagem.');
-                                        pairingFromBase64Payload = base64Value.split(',')[0];
-                                    } else {
-                                        qrCodeBase64 = 'data:image/png;base64,' + base64Value;
-                                        console.log('✓ QR Code recebido (base64 puro) - data URI montado:', qrCodeBase64.length, 'caracteres');
-                                    }
                                 } else {
                                     console.error('❌ qrcode.base64 não é uma imagem válida:', {
                                         temValor: !!base64Value,
@@ -801,16 +791,6 @@
                                     // ✅ Usar exatamente como vem (data URI completo)
                                     qrCodeBase64 = base64Value;
                                     console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
-                                }
-                            } else if (base64Value && typeof base64Value === 'string') {
-                                // Se vier só o base64 "iVBORw0K..." sem prefixo, montar o data URI.
-                                // ⚠️ Não fazer isso se começar com "2@" (pairing code).
-                                if (/^\d+@/.test(base64Value)) {
-                                    console.warn('⚠ qrcode.base64 veio como pairing code (começa com dígito@). Não renderizar como imagem.');
-                                    pairingFromBase64Payload = base64Value.split(',')[0];
-                                } else {
-                                    qrCodeBase64 = 'data:image/png;base64,' + base64Value;
-                                    console.log('✓ QR Code recebido (base64 puro) - data URI montado:', qrCodeBase64.length, 'caracteres');
                                 }
                             } else {
                                 console.error('❌ qrcode.base64 não é uma imagem válida no getQrCode');
