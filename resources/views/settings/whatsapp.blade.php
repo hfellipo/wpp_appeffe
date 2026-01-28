@@ -627,6 +627,15 @@
                                         qrCodeBase64 = base64Value;
                                         console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
                                     }
+                                } else if (base64Value && typeof base64Value === 'string') {
+                                    // Se vier só o base64 "iVBORw0K..." sem prefixo, montar o data URI.
+                                    // ⚠️ Não fazer isso se começar com "2@" (pairing code).
+                                    if (/^\d+@/.test(base64Value)) {
+                                        console.warn('⚠ qrcode.base64 veio como pairing code (começa com dígito@). Não renderizar como imagem.');
+                                    } else {
+                                        qrCodeBase64 = 'data:image/png;base64,' + base64Value;
+                                        console.log('✓ QR Code recebido (base64 puro) - data URI montado:', qrCodeBase64.length, 'caracteres');
+                                    }
                                 } else {
                                     console.error('❌ qrcode.base64 não é uma imagem válida:', {
                                         temValor: !!base64Value,
@@ -637,9 +646,9 @@
                                 }
                             }
                             
-                            // Extrair pairing code se disponível
-                            // Pode vir em data.pairingCode ou em data.qrcode.code (formato "2@...")
-                            const pairingCode = data.pairingCode || (data.qrcode?.code && /^\d+@/.test(data.qrcode.code) ? data.qrcode.code.split(',')[0] : null);
+                            // Extrair pairing code (somente se vier explicitamente)
+                            // ✅ NÃO usar data.qrcode.code para render de imagem
+                            const pairingCode = data.pairingCode || null;
                             
                             // Abrir modal com QR code ou pairing code
                             if (qrCodeBase64) {
@@ -788,13 +797,22 @@
                                     qrCodeBase64 = base64Value;
                                     console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
                                 }
+                            } else if (base64Value && typeof base64Value === 'string') {
+                                // Se vier só o base64 "iVBORw0K..." sem prefixo, montar o data URI.
+                                // ⚠️ Não fazer isso se começar com "2@" (pairing code).
+                                if (/^\d+@/.test(base64Value)) {
+                                    console.warn('⚠ qrcode.base64 veio como pairing code (começa com dígito@). Não renderizar como imagem.');
+                                } else {
+                                    qrCodeBase64 = 'data:image/png;base64,' + base64Value;
+                                    console.log('✓ QR Code recebido (base64 puro) - data URI montado:', qrCodeBase64.length, 'caracteres');
+                                }
                             } else {
                                 console.error('❌ qrcode.base64 não é uma imagem válida no getQrCode');
                             }
                         }
                         
-                        // Extrair pairing code
-                        const pairingCode = data.pairingCode || (data.qrcode?.code && /^\d+@/.test(data.qrcode.code) ? data.qrcode.code.split(',')[0] : null);
+                        // Extrair pairing code (somente se vier explicitamente)
+                        const pairingCode = data.pairingCode || null;
                         
                         // Atualizar modal
                         if (qrCodeBase64) {
