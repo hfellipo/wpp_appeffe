@@ -101,52 +101,130 @@
                             ></span>
                         </div>
 
-                        <!-- QR Code -->
-                        <div x-show="showQrCode && getValidQrCode()" class="mt-4 p-4 bg-gray-50 rounded-lg text-center">
-                            <p class="text-sm text-gray-600 mb-3">{{ __('Escaneie o QR Code com seu WhatsApp:') }}</p>
-                            <div class="flex justify-center">
-                                <img 
-                                    :src="getValidQrCode()" 
-                                    alt="QR Code"
-                                    class="border-2 border-gray-300 rounded-lg p-2 bg-white max-w-xs"
-                                    x-on:error="handleQrCodeError()"
-                                >
-                            </div>
-                            <p class="text-xs text-gray-500 mt-3">
-                                {{ __('1. Abra o WhatsApp no seu celular') }}<br>
-                                {{ __('2. Toque em Menu ou Configurações e selecione Aparelhos conectados') }}<br>
-                                {{ __('3. Toque em Conectar um aparelho') }}<br>
-                                {{ __('4. Aponte seu celular para esta tela para capturar o código') }}
-                            </p>
-                        </div>
-                        
-                        <!-- Pairing Code (código de pareamento) -->
-                        <div x-show="pairingCode && !qrCode" class="mt-4 p-6 bg-brand-50 rounded-lg text-center border-2 border-brand-200">
-                            <div class="mb-4">
-                                <svg class="w-16 h-16 mx-auto text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                                </svg>
-                            </div>
-                            <p class="text-base text-gray-700 mb-4 font-medium">{{ __('Use o código abaixo no seu WhatsApp') }}</p>
-                            <div class="bg-white border-3 border-brand-400 rounded-xl p-8 inline-block shadow-lg">
-                                <p class="text-sm text-gray-500 mb-2">{{ __('CÓDIGO DE PAREAMENTO') }}</p>
-                                <p class="text-3xl font-mono font-bold text-brand-600 tracking-wider select-all" x-text="formatPairingCode(pairingCode)"></p>
-                            </div>
-                            <div class="mt-6 text-left bg-white p-5 rounded-lg border border-gray-200 shadow-sm">
-                                <p class="text-sm text-gray-700 mb-3 font-semibold flex items-center">
-                                    <svg class="w-5 h-5 mr-2 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                    </svg>
-                                    {{ __('Como conectar:') }}
-                                </p>
-                                <ol class="text-sm text-gray-600 space-y-2 list-decimal list-inside ml-2">
-                                    <li>{{ __('Abra o WhatsApp no seu celular') }}</li>
-                                    <li>{{ __('Toque em "Menu" (⋮) ou "Configurações"') }}</li>
-                                    <li>{{ __('Selecione "Aparelhos conectados"') }}</li>
-                                    <li>{{ __('Toque em "Conectar um aparelho"') }}</li>
-                                    <li class="font-semibold text-brand-700">{{ __('Selecione "Conectar com número de telefone"') }}</li>
-                                    <li>{{ __('Digite o código exibido acima') }}</li>
-                                </ol>
+                        <!-- QR Code Modal (similar ao React) -->
+                        <div 
+                            x-show="qrModal.isOpen" 
+                            x-transition:enter="ease-out duration-300"
+                            x-transition:enter-start="opacity-0"
+                            x-transition:enter-end="opacity-100"
+                            x-transition:leave="ease-in duration-200"
+                            x-transition:leave-start="opacity-100"
+                            x-transition:leave-end="opacity-0"
+                            class="fixed inset-0 z-50 overflow-y-auto"
+                            style="display: none;"
+                            @click.away="qrModal.isOpen = false"
+                        >
+                            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                                <!-- Background overlay -->
+                                <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="qrModal.isOpen = false"></div>
+
+                                <!-- Modal panel -->
+                                <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                                        <!-- Header -->
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="text-lg font-medium text-gray-900">
+                                                {{ __('Conectar WhatsApp') }}
+                                            </h3>
+                                            <button 
+                                                @click="qrModal.isOpen = false"
+                                                class="text-gray-400 hover:text-gray-500"
+                                            >
+                                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        <!-- QR Code Image -->
+                                        <div x-show="qrModal.qrCode && !qrModal.pairingCode" class="text-center mb-4">
+                                            <p class="text-sm text-gray-600 mb-3">{{ __('Escaneie o QR Code com seu WhatsApp:') }}</p>
+                                            <div class="flex justify-center">
+                                                <img 
+                                                    :src="qrModal.qrCode" 
+                                                    alt="QR Code"
+                                                    class="border-2 border-gray-300 rounded-lg p-2 bg-white max-w-xs mx-auto"
+                                                    x-on:error="handleQrCodeError()"
+                                                >
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-3">
+                                                {{ __('1. Abra o WhatsApp no seu celular') }}<br>
+                                                {{ __('2. Toque em Menu ou Configurações e selecione Aparelhos conectados') }}<br>
+                                                {{ __('3. Toque em Conectar um aparelho') }}<br>
+                                                {{ __('4. Aponte seu celular para esta tela para capturar o código') }}
+                                            </p>
+                                        </div>
+
+                                        <!-- Pairing Code -->
+                                        <div x-show="qrModal.pairingCode && !qrModal.qrCode" class="text-center mb-4">
+                                            <div class="mb-4">
+                                                <svg class="w-16 h-16 mx-auto text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                                </svg>
+                                            </div>
+                                            <p class="text-base text-gray-700 mb-4 font-medium">{{ __('Use o código abaixo no seu WhatsApp') }}</p>
+                                            <div class="bg-white border-3 border-brand-400 rounded-xl p-8 inline-block shadow-lg">
+                                                <p class="text-sm text-gray-500 mb-2">{{ __('CÓDIGO DE PAREAMENTO') }}</p>
+                                                <p class="text-3xl font-mono font-bold text-brand-600 tracking-wider select-all" x-text="formatPairingCode(qrModal.pairingCode)"></p>
+                                            </div>
+                                            <div class="mt-6 text-left bg-white p-5 rounded-lg border border-gray-200 shadow-sm">
+                                                <p class="text-sm text-gray-700 mb-3 font-semibold flex items-center">
+                                                    <svg class="w-5 h-5 mr-2 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                    </svg>
+                                                    {{ __('Como conectar:') }}
+                                                </p>
+                                                <ol class="text-sm text-gray-600 space-y-2 list-decimal list-inside ml-2">
+                                                    <li>{{ __('Abra o WhatsApp no seu celular') }}</li>
+                                                    <li>{{ __('Toque em "Menu" (⋮) ou "Configurações"') }}</li>
+                                                    <li>{{ __('Selecione "Aparelhos conectados"') }}</li>
+                                                    <li>{{ __('Toque em "Conectar um aparelho"') }}</li>
+                                                    <li class="font-semibold text-brand-700">{{ __('Selecione "Conectar com número de telefone"') }}</li>
+                                                    <li>{{ __('Digite o código exibido acima') }}</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+
+                                        <!-- Loading state -->
+                                        <div x-show="qrModal.loading" class="text-center mb-4">
+                                            <svg class="animate-spin h-8 w-8 text-brand-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            <p class="text-sm text-gray-600 mt-2">{{ __('Carregando...') }}</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Footer with actions -->
+                                    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                                        <button 
+                                            @click="refreshQrCode()"
+                                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-brand-600 text-base font-medium text-white hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 sm:ml-3 sm:w-auto sm:text-sm"
+                                            :disabled="qrModal.loading"
+                                        >
+                                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                            </svg>
+                                            {{ __('Atualizar QR Code') }}
+                                        </button>
+                                        <button 
+                                            @click="checkConnectionStatus()"
+                                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                                            :disabled="qrModal.loading"
+                                        >
+                                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                            {{ __('Verificar Status') }}
+                                        </button>
+                                        <button 
+                                            @click="qrModal.isOpen = false"
+                                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 sm:mt-0 sm:w-auto sm:text-sm"
+                                        >
+                                            {{ __('Fechar') }}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
@@ -376,6 +454,14 @@
                 qrCode: null,
                 pairingCode: null,
                 showQrCode: false,
+                // QR Code Modal (similar ao React)
+                qrModal: {
+                    isOpen: false,
+                    qrCode: '',
+                    pairingCode: '',
+                    whatsappNumber: '',
+                    loading: false
+                },
                 loading: false,
                 configured: {!! $configuredJs !!},
                 statusCheckInterval: null,
@@ -478,6 +564,15 @@
                         alert('{{ __('Número do WhatsApp inválido. Digite o número com código do país') }}');
                         return;
                     }
+
+                    // Reset modal state
+                    this.qrModal = {
+                        isOpen: false,
+                        qrCode: '',
+                        pairingCode: '',
+                        whatsappNumber: cleanNumber,
+                        loading: true
+                    };
 
                     // Reset QR code and pairing code before new connection
                     this.qrCode = null;
@@ -588,15 +683,31 @@
                                 showQrCode: this.showQrCode
                             });
                             
+                            // Abrir modal com QR code ou pairing code
                             if (normalizedQr && normalizedQr.startsWith('data:image')) {
+                                // QR code válido - abrir modal
+                                this.qrModal = {
+                                    isOpen: true,
+                                    qrCode: normalizedQr,
+                                    pairingCode: '',
+                                    whatsappNumber: cleanNumber,
+                                    loading: false
+                                };
                                 this.qrCode = normalizedQr;
                                 this.showQrCode = true;
-                                console.log('✓ QR Code IMAGEM válido recebido e definido');
+                                console.log('✓ QR Code IMAGEM válido recebido - Modal aberto');
                             } else if (this.pairingCode) {
-                                // Pairing code foi definido dentro de normalizeQrCode
+                                // Pairing code - abrir modal com pairing code
+                                this.qrModal = {
+                                    isOpen: true,
+                                    qrCode: '',
+                                    pairingCode: this.pairingCode,
+                                    whatsappNumber: cleanNumber,
+                                    loading: false
+                                };
                                 this.qrCode = null; // GARANTIR que não há imagem
                                 this.showQrCode = false;
-                                console.log('✓ Pairing Code definido, imagem desativada:', this.pairingCode);
+                                console.log('✓ Pairing Code definido - Modal aberto:', this.pairingCode);
                             } else {
                                 this.qrCode = null;
                                 this.showQrCode = false;
@@ -607,8 +718,9 @@
                                 }
                             }
                             
-                            // If already connected, hide QR code
+                            // If already connected, close modal and hide QR code
                             if (this.connectionStatus === 'open') {
+                                this.qrModal.isOpen = false;
                                 this.showQrCode = false;
                             }
                             
@@ -624,7 +736,9 @@
                                     if (this.connectionStatus === 'open') {
                                         clearInterval(this.statusCheckInterval);
                                         this.statusCheckInterval = null;
+                                        this.qrModal.isOpen = false; // Fechar modal quando conectado
                                         this.showQrCode = false;
+                                        this.showSuccessMessage('WhatsApp conectado com sucesso!');
                                     }
                                 }, 3000); // Check every 3 seconds
                             }
@@ -649,6 +763,31 @@
                         alert('Erro ao conectar WhatsApp. Tente novamente.');
                     } finally {
                         this.loading = false;
+                    }
+                },
+
+                // Refresh QR Code (chamado pelo botão do modal)
+                async refreshQrCode() {
+                    this.qrModal.loading = true;
+                    try {
+                        await this.getQrCode();
+                    } finally {
+                        this.qrModal.loading = false;
+                    }
+                },
+
+                // Check connection status (chamado pelo botão do modal)
+                async checkConnectionStatus() {
+                    this.qrModal.loading = true;
+                    try {
+                        await this.checkStatus();
+                        if (this.connectionStatus === 'open') {
+                            // Fechar modal se conectado
+                            this.qrModal.isOpen = false;
+                            this.showSuccessMessage('WhatsApp conectado com sucesso!');
+                        }
+                    } finally {
+                        this.qrModal.loading = false;
                     }
                 },
 
@@ -684,13 +823,27 @@
                         
                         // IMPORTANTE: normalizeQrCode vai validar e NÃO retornar URL se for pairing code
                         const normalizedQr = this.normalizeQrCode(qrCodeData);
-                        if (normalizedQr) {
+                        if (normalizedQr && normalizedQr.startsWith('data:image')) {
+                            // QR code válido - atualizar modal
+                            this.qrModal.qrCode = normalizedQr;
+                            this.qrModal.pairingCode = '';
                             this.qrCode = normalizedQr;
                             this.showQrCode = true;
-                            console.log('✓ QR Code imagem obtido com sucesso');
+                            // Abrir modal se ainda não estiver aberto
+                            if (!this.qrModal.isOpen) {
+                                this.qrModal.isOpen = true;
+                            }
+                            console.log('✓ QR Code imagem obtido com sucesso - Modal atualizado');
                         } else if (this.pairingCode) {
+                            // Pairing code - atualizar modal
+                            this.qrModal.qrCode = '';
+                            this.qrModal.pairingCode = this.pairingCode;
                             this.showQrCode = false;
-                            console.log('✓ Usando pairing code (não é imagem)');
+                            // Abrir modal se ainda não estiver aberto
+                            if (!this.qrModal.isOpen) {
+                                this.qrModal.isOpen = true;
+                            }
+                            console.log('✓ Usando pairing code (não é imagem) - Modal atualizado');
                         } else {
                             console.log('⚠ Nenhum QR code ou pairing code disponível');
                         }
@@ -709,9 +862,13 @@
                             this.connectionStatus = data.status;
                             
                             if (data.status === 'open') {
+                                // Fechar modal quando conectado
+                                this.qrModal.isOpen = false;
                                 this.showQrCode = false;
                                 this.qrCode = null; // Limpar QR code quando conectado
                                 this.pairingCode = null; // Limpar pairing code quando conectado
+                                this.qrModal.qrCode = '';
+                                this.qrModal.pairingCode = '';
                             } else if (data.status === 'connecting' && previousStatus !== 'connecting') {
                                 // Only fetch QR code if we just entered connecting state
                                 await this.getQrCode();
@@ -761,11 +918,21 @@
                 },
 
                 handleQrCodeError() {
-                    console.error('Erro ao carregar imagem QR Code');
+                    console.error('Erro ao carregar imagem QR Code - pode ser pairing code sendo tratado como imagem');
                     this.showQrCode = false;
                     this.qrCode = null;
-                    // Se não temos pairing code, tentar obter novamente
-                    if (!this.pairingCode && this.connectionStatus === 'connecting') {
+                    this.qrModal.qrCode = ''; // Limpar QR code do modal
+                    
+                    // Se temos pairing code, atualizar modal para mostrar pairing code
+                    if (this.pairingCode) {
+                        this.qrModal.pairingCode = this.pairingCode;
+                        this.qrModal.qrCode = '';
+                        if (!this.qrModal.isOpen) {
+                            this.qrModal.isOpen = true;
+                        }
+                        console.log('Modal atualizado para mostrar pairing code');
+                    } else if (this.connectionStatus === 'connecting') {
+                        // Se não temos pairing code, tentar obter novamente
                         console.log('Tentando obter QR code novamente...');
                         setTimeout(() => this.getQrCode(), 2000);
                     }
@@ -869,50 +1036,51 @@
                         return null;
                     }
 
-                    // IMPORTANTE: Se já tem prefixo data:image, verificar se o conteúdo é válido
+                    // CRÍTICO: Verificar ANTES de qualquer processamento se é pairing code
+                    // Pairing codes podem vir com ou sem prefixo data:image
+                    // Formato: "2@..." ou "data:image/png;base64,2@..."
+                    
+                    // Primeiro, extrair o conteúdo real (após vírgula se houver)
+                    let contentToCheck = trimmed;
                     if (trimmed.startsWith('data:image')) {
-                        // Extrair o conteúdo após a vírgula
                         const commaIndex = trimmed.indexOf(',');
                         if (commaIndex !== -1) {
-                            const content = trimmed.substring(commaIndex + 1);
-                            
-                            // Se o conteúdo começa com número@, é pairing code!
-                            if (/^\d+@/.test(content)) {
-                                console.log('normalizeQrCode: ✗ Detectado PAIRING CODE dentro de data:image!');
-                                this.pairingCode = content;
-                                this.showQrCode = false;
-                                return null; // NÃO retornar como imagem
-                            }
-                            
-                            // Validar se é imagem válida
-                            if (content.length < 1000) {
-                                console.log('normalizeQrCode: ✗ Conteúdo muito curto para ser imagem');
-                                this.pairingCode = content;
-                                this.showQrCode = false;
-                                return null;
-                            }
+                            contentToCheck = trimmed.substring(commaIndex + 1);
+                        }
+                    }
+                    
+                    // Se o conteúdo começa com número@, É PAIRING CODE - NÃO É IMAGEM!
+                    if (/^\d+@/.test(contentToCheck)) {
+                        console.log('normalizeQrCode: ✗✗✗ PAIRING CODE DETECTADO (formato número@) - NÃO RENDERIZAR COMO IMAGEM!');
+                        // Extrair pairing code limpo (remover vírgulas se houver)
+                        const pairingCodeClean = contentToCheck.split(',')[0];
+                        this.pairingCode = pairingCodeClean;
+                        this.showQrCode = false;
+                        return null; // NUNCA retornar como imagem
+                    }
+                    
+                    // Se tem prefixo data:image e passou na verificação acima, verificar se é válido
+                    if (trimmed.startsWith('data:image')) {
+                        // Já verificamos que não é pairing code acima
+                        // Agora validar se é imagem válida
+                        if (contentToCheck.length < 1000) {
+                            console.log('normalizeQrCode: ✗ Conteúdo muito curto para ser imagem válida');
+                            // Pode ser pairing code sem @ no início
+                            this.pairingCode = contentToCheck;
+                            this.showQrCode = false;
+                            return null;
                         }
                         
-                        console.log('normalizeQrCode: ✓ já tem prefixo data:image e parece válido');
+                        console.log('normalizeQrCode: ✓ Imagem base64 válida');
                         return trimmed;
                     }
 
-                    // Check if it's a pairing code (starts with number@)
-                    // Pairing codes look like: 2@ZYHAyU9k... or 1@ABC123...
+                    // Se chegou aqui sem prefixo data:image, verificar se é pairing code direto
                     if (/^\d+@/.test(trimmed)) {
-                        console.log('normalizeQrCode: ✓ Detectado PAIRING CODE (formato número@)');
-                        // Extract and set pairing code
-                        this.pairingCode = trimmed;
-                        this.showQrCode = false; // IMPORTANTE: não mostrar como imagem
-                        return null; // Not an image
-                    }
-
-                    // Check if it contains commas and starts with number@ (pairing code format)
-                    if (trimmed.includes(',') && /^\d+@/.test(trimmed)) {
-                        console.log('normalizeQrCode: ✓ Detectado PAIRING CODE com vírgulas');
-                        this.pairingCode = trimmed.split(',')[0]; // Pegar primeira parte
+                        console.log('normalizeQrCode: ✗✗✗ PAIRING CODE DETECTADO (sem prefixo data:image)');
+                        this.pairingCode = trimmed.split(',')[0]; // Pegar primeira parte se tiver vírgulas
                         this.showQrCode = false;
-                        return null;
+                        return null; // NUNCA retornar como imagem
                     }
 
                     // Check if it's too short to be a QR code image
