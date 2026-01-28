@@ -36,10 +36,10 @@ class WebhookResource
         bool $byEvents = false,
         ?array $headers = null
     ): array {
-        // Formato conforme exemplo fornecido pelo usuário
-        // Payload direto, sem objeto "webhook" envolvendo
+        // Formato conforme exemplo fornecido pelo usuário (top-level, sem wrapper "webhook")
+        // Baseado em: api/set_webhook_top_level.php
         
-        // IMPORTANTE: Adicionar "/" no final da URL conforme exemplo
+        // IMPORTANTE: Garantir barra final na URL (conforme exemplo)
         if (substr($url, -1) !== '/') {
             $url .= '/';
         }
@@ -51,7 +51,7 @@ class WebhookResource
             ];
         }
         
-        // Payload no formato exato do exemplo
+        // Payload no formato top-level (exatamente como no exemplo que funciona)
         $payload = [
             'url' => $url,
             'events' => $events,
@@ -60,10 +60,10 @@ class WebhookResource
             'headers' => $headers,
         ];
 
-        Log::info('Evolution API - Configurando webhook', [
+        Log::info('Evolution API - Configurando webhook (formato top-level)', [
             'instance_name' => $instanceName,
             'url' => $url,
-            'url_with_slash' => $url, // URL já tem "/" no final
+            'url_with_slash' => $url,
             'events_count' => count($events),
             'events' => $events,
             'webhook_base64' => $webhookBase64,
@@ -75,6 +75,7 @@ class WebhookResource
             'full_url' => $this->client->baseUrl() . "/webhook/set/{$instanceName}",
         ]);
 
+        // Tentativa 1: formato top-level (recomendado)
         $response = $this->client->post("/webhook/set/{$instanceName}", $payload);
 
         $statusCode = $response->status();
@@ -85,15 +86,44 @@ class WebhookResource
             'status_code' => $statusCode,
             'response_body' => $responseBody,
             'response_text' => $responseText,
-            'response_text_length' => strlen($responseText),
             'url_enviada' => $url,
             'instance_name' => $instanceName,
             'payload_enviado' => $payload,
         ]);
         
-        // Se erro 400, logar TODOS os detalhes e tentar formato alternativo
+        // Se erro 400, tentar formato alternativo (wrapper "webhook")
         if ($statusCode === 400) {
-            // Extrair mensagem de erro real da resposta
+            Log::warning('Evolution API - Erro 400 com formato top-level, tentando formato wrapper', [
+                'instance_name' => $instanceName,
+                'url' => $url,
+            ]);
+            
+            // Tentativa 2: formato wrapper (algumas versões da Evolution API usam este formato)
+            $payloadWrapper = [
+                'webhook' => [
+                    'enabled' => $enabled,
+                    'url' => $url,
+                    'headers' => $headers,
+                    'byEvents' => $byEvents,
+                    'base64' => $webhookBase64,
+                    'events' => $events,
+                ]
+            ];
+            
+            $response = $this->client->post("/webhook/set/{$instanceName}", $payloadWrapper);
+            $statusCode = $response->status();
+            $responseBody = $response->json();
+            $responseText = $response->body();
+            
+            Log::info('Evolution API - Resposta do formato wrapper', [
+                'status_code' => $statusCode,
+                'response_body' => $responseBody,
+                'response_text' => $responseText,
+            ]);
+        }
+        
+        // Se ainda deu erro, logar TODOS os detalhes
+        if ($statusCode === 400) {
             $errorMessage = 'Bad Request';
             if (is_array($responseBody)) {
                 $errorMessage = $responseBody['message'] 
@@ -111,15 +141,11 @@ class WebhookResource
                 }
             }
 
-            Log::error('Evolution API - Erro 400 Bad Request - DETALHES COMPLETOS', [
+            Log::error('Evolution API - Erro 400 Bad Request após tentar ambos formatos', [
                 'status_code' => $statusCode,
                 'error_message' => $errorMessage,
                 'response_body' => $responseBody,
                 'response_text' => $responseText,
-                'response_text_raw' => $response->body(),
-                'response_headers' => $response->headers(),
-                'payload_enviado' => $payload,
-                'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
                 'url_webhook' => $url,
                 'url_webhook_ends_with_slash' => substr($url, -1) === '/',
                 'instance_name' => $instanceName,
@@ -127,13 +153,9 @@ class WebhookResource
                 'events_count' => count($events),
                 'webhook_base64' => $webhookBase64,
                 'webhook_by_events' => $byEvents,
-                'headers' => $headers,
                 'endpoint' => "/webhook/set/{$instanceName}",
                 'full_endpoint_url' => $this->client->baseUrl() . "/webhook/set/{$instanceName}",
             ]);
-            
-            // NOTA: Não tentamos formato alternativo pois já estamos usando o formato do exemplo fornecido
-            // Se ainda der erro 400, verificar os logs acima para identificar o problema
         }
 
         return $this->normalizeResponse($response, 'Erro ao configurar webhook');
