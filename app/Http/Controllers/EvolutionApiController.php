@@ -324,7 +324,7 @@ class EvolutionApiController extends Controller
             
             // Only update if we got something new
             if ($extracted['qrcode'] !== null) {
-                $qrcode = $extracted['qrcode'];
+                $qrcode = $extracted['qrcode']['base64'];
             }
             if ($extracted['pairingCode'] !== null) {
                 $pairingCode = $extracted['pairingCode'];
@@ -339,9 +339,6 @@ class EvolutionApiController extends Controller
         // 3. Ativar instância (quando conectar)
         // 4. Configurar webhook (separadamente, após estar conectado)
         $webhookWarning = null;
-echo '<pre>';
-print_r($metadata);
-echo '</pre>';
         if ($whatsappInstance) {
             $metadata = is_array($whatsappInstance->metadata) ? $whatsappInstance->metadata : [];
             // ⚠️ IMPORTANTE: qrcode.base64 é ENORME - campo metadata é LONGTEXT (suporta)
