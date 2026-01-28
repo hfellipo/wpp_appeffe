@@ -17,6 +17,26 @@ class WhatsAppEvolutionController extends Controller
     }
 
     /**
+     * GET /settings/whatsapp
+     * Página/endpoint simples para evitar 500/404 durante rebuild.
+     */
+    public function index(): JsonResponse
+    {
+        return response()->json([
+            'ok' => true,
+            'message' => 'WhatsApp Evolution API (novo) está ativo.',
+            'endpoints' => [
+                'POST /settings/whatsapp/instance' => [
+                    'body' => ['whatsapp_number' => '5511999999999'],
+                ],
+                'GET /settings/whatsapp/connect/{instance}' => [
+                    'example' => '/settings/whatsapp/connect/5511999999999',
+                ],
+            ],
+        ]);
+    }
+
+    /**
      * POST /settings/whatsapp/instance
      * Cria instância na Evolution e salva no banco (whatsapp_instances).
      */

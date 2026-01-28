@@ -102,6 +102,7 @@ Route::middleware('auth')->group(function () {
 
     // Evolution API / WhatsApp (novo, sem duplicidades)
     Route::prefix('settings/whatsapp')->name('whatsapp.')->group(function () {
+        Route::get('/', [WhatsAppEvolutionController::class, 'index'])->name('index');
         Route::post('/instance', [WhatsAppEvolutionController::class, 'createInstance'])->name('instance.create');
         Route::get('/connect/{instance}', [WhatsAppEvolutionController::class, 'connect'])->name('connect');
     });
