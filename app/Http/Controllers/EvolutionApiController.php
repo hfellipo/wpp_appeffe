@@ -132,14 +132,13 @@ class EvolutionApiController extends Controller
             'response' => $result,
             'response_keys' => array_keys($result),
             'has_error' => isset($result['error']),
-            'has_qrcode' => isset($result['qrcode']) || isset($result['base64']) || isset($result['code']),
+            'has_qrcode' => isset($result['qrcode']) || isset($result['base64']),
         ]);
         
         // IMPORTANTE: Mesmo com erro, pode haver QR code na resposta
         // A Evolution API pode retornar erro 400 mas ainda criar a instância e retornar QR code
         $hasQrCode = isset($result['qrcode']) 
             || isset($result['base64']) 
-            || isset($result['code'])
             || isset($result['pairingCode']);
         
         if (isset($result['error']) && !$hasQrCode) {
@@ -337,11 +336,22 @@ class EvolutionApiController extends Controller
             }
         }
 
-        // IMPORTANTE: Se há pairing code, garantir que qrcode seja null
-        // Isso evita que o frontend tente usar pairing code como imagem
-        if ($pairingCode !== null) {
+        // IMPORTANTE (PROD):
+        // A Evolution pode retornar AO MESMO TEMPO:
+        // - qrcode.base64 (imagem válida data:image/png;base64,iVBORw0K...)
+        // - qrcode.code (conteúdo bruto / "2@..." usado para pareamento)
+        //
+        // Para o "momento de parear", queremos retornar SOMENTE o base64 quando ele existir.
+        // Então: se temos imagem em qrcode.base64, ignoramos pairingCode.
+        if ($qrcode !== null && isset($qrcode['base64']) && is_string($qrcode['base64']) && str_starts_with($qrcode['base64'], 'data:image')) {
+            if ($pairingCode !== null) {
+                \Log::info('Imagem de QR disponível; ignorando pairingCode e retornando apenas qrcode.base64');
+            }
+            $pairingCode = null;
+        } elseif ($pairingCode !== null) {
+            // Se NÃO há imagem, aí sim mantemos o pairingCode e zeramos qrcode
             $qrcode = null;
-            \Log::info('Pairing code detectado, garantindo que qrcode seja null');
+            \Log::info('Pairing code detectado e sem imagem de QR; garantindo que qrcode seja null');
         }
         
         // Adicionar warning se houve erro na criação mas QR code está disponível
@@ -752,10 +762,16 @@ class EvolutionApiController extends Controller
         // Use helper function to extract QR code (como no exemplo PHP)
         $extracted = $this->extractQrCodeAndPairingCode($result);
         
-        // IMPORTANTE: Se há pairing code, garantir que qrcode seja null
-        if ($extracted['pairingCode'] !== null) {
+        // Mesma regra do connect():
+        // Se temos imagem em qrcode.base64, retornamos SOMENTE o base64 (ignoramos pairingCode).
+        if ($extracted['qrcode'] !== null && isset($extracted['qrcode']['base64']) && is_string($extracted['qrcode']['base64']) && str_starts_with($extracted['qrcode']['base64'], 'data:image')) {
+            if ($extracted['pairingCode'] !== null) {
+                \Log::info('Imagem de QR disponível no /qrcode; ignorando pairingCode e retornando apenas qrcode.base64');
+            }
+            $extracted['pairingCode'] = null;
+        } elseif ($extracted['pairingCode'] !== null) {
             $extracted['qrcode'] = null;
-            \Log::info('Pairing code detectado no /qrcode, garantindo que qrcode seja null');
+            \Log::info('Pairing code detectado no /qrcode e sem imagem; garantindo que qrcode seja null');
         }
         
         $response = [];
