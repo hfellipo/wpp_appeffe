@@ -100,6 +100,43 @@ Route::middleware('auth')->group(function () {
     // Settings routes
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
 
+    // Rota temporária para limpar cache (apenas admin) - REMOVER após resolver o problema
+    Route::middleware('admin')->post('/admin/clear-cache', function () {
+        try {
+            \Artisan::call('optimize:clear');
+            \Artisan::call('route:clear');
+            \Artisan::call('config:clear');
+            \Artisan::call('cache:clear');
+            \Artisan::call('view:clear');
+            \Artisan::call('event:clear');
+            
+            // Remover arquivos de cache compilados
+            $cacheFiles = [
+                base_path('bootstrap/cache/config.php'),
+                base_path('bootstrap/cache/routes-v7.php'),
+                base_path('bootstrap/cache/services.php'),
+                base_path('bootstrap/cache/packages.php'),
+            ];
+            
+            foreach ($cacheFiles as $file) {
+                if (file_exists($file)) {
+                    unlink($file);
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Cache limpo com sucesso!',
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao limpar cache: ' . $e->getMessage(),
+            ], 500);
+        }
+    })->name('admin.clear-cache');
+
     // Evolution API / WhatsApp (novo, sem duplicidades)
     Route::prefix('settings/whatsapp')->name('whatsapp.')->group(function () {
         Route::get('/', [WhatsAppEvolutionController::class, 'index'])->name('index');
