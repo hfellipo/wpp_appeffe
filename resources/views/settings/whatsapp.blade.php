@@ -141,7 +141,7 @@
                                             <p class="text-sm text-gray-600 mb-3">{{ __('Escaneie o QR Code com seu WhatsApp:') }}</p>
                                             <div class="flex justify-center">
                                                 <img 
-                                                    :src="qrModal.qrCode" 
+                                                    :src="qrModal.qrCode ? 'data:image/png;base64,' + qrModal.qrCode : ''" 
                                                     alt="QR Code"
                                                     class="border-2 border-gray-300 rounded-lg p-2 bg-white max-w-xs mx-auto"
                                                     x-on:error="handleQrCodeError()"
@@ -478,13 +478,15 @@
                         }
                     }, 5000);
                     
-                    // Watch qrCode para garantir que só aceita imagens válidas
+                    // Watch qrCode para garantir que só aceita base64 válido
                     this.$watch('qrCode', (value) => {
                         if (!value) return;
                         
-                        // Se não começa com data:image, é inválido - limpar
-                        if (!value.startsWith('data:image')) {
-                            console.warn('⚠ QR Code inválido (não começa com data:image), limpando...');
+                        // Agora qrCode armazena apenas a parte base64 (sem prefixo data:image)
+                        // Validar se é base64 válido (caracteres alfanuméricos, +, /, =)
+                        const base64Regex = /^[A-Za-z0-9+/=]+$/;
+                        if (!base64Regex.test(value)) {
+                            console.warn('⚠ QR Code inválido (não é base64 válido), limpando...');
                             this.qrCode = null;
                             this.showQrCode = false;
                         }
@@ -605,14 +607,21 @@
                             this.connectionStatus = data.status || 'connecting';
                             
                             // Extrair QR code de forma simples
-                            // O QR code vem em qrcode.base64 já pronto para exibir (data:image/png;base64,...)
+                            // O QR code vem em qrcode.base64 (data:image/png;base64,...)
+                            // Extrair apenas a parte base64 após a vírgula
                             let qrCodeBase64 = null;
                             
                             if (data.qrcode && typeof data.qrcode === 'object' && data.qrcode.base64) {
                                 // Verificar se é uma imagem válida (começa com data:image)
                                 if (data.qrcode.base64.startsWith('data:image')) {
-                                    qrCodeBase64 = data.qrcode.base64;
-                                    console.log('✓ QR Code imagem recebido:', qrCodeBase64.substring(0, 50) + '...');
+                                    // Extrair apenas a parte base64 após a vírgula
+                                    const commaIndex = data.qrcode.base64.indexOf(',');
+                                    if (commaIndex !== -1) {
+                                        qrCodeBase64 = data.qrcode.base64.substring(commaIndex + 1);
+                                        console.log('✓ QR Code base64 extraído:', qrCodeBase64.substring(0, 50) + '...');
+                                    } else {
+                                        qrCodeBase64 = data.qrcode.base64;
+                                    }
                                 } else {
                                     console.log('⚠ qrcode.base64 não é uma imagem válida:', data.qrcode.base64.substring(0, 50));
                                 }
@@ -623,15 +632,15 @@
                             
                             // Abrir modal com QR code ou pairing code
                             if (qrCodeBase64) {
-                                // QR code válido - abrir modal
+                                // QR code válido - abrir modal (armazenar apenas base64, montar data URI na exibição)
                                 this.qrModal = {
                                     isOpen: true,
-                                    qrCode: qrCodeBase64,
+                                    qrCode: qrCodeBase64, // Apenas a parte base64
                                     pairingCode: '',
                                     whatsappNumber: cleanNumber,
                                     loading: false
                                 };
-                                this.qrCode = qrCodeBase64;
+                                this.qrCode = qrCodeBase64; // Apenas a parte base64
                                 this.showQrCode = true;
                                 console.log('✓ QR Code exibido no modal');
                             } else if (pairingCode) {
@@ -746,10 +755,17 @@
                         }
                         
                         // Extrair QR code de forma simples
+                        // Extrair apenas a parte base64 após a vírgula
                         let qrCodeBase64 = null;
                         if (data.qrcode && typeof data.qrcode === 'object' && data.qrcode.base64) {
                             if (data.qrcode.base64.startsWith('data:image')) {
-                                qrCodeBase64 = data.qrcode.base64;
+                                // Extrair apenas a parte base64 após a vírgula
+                                const commaIndex = data.qrcode.base64.indexOf(',');
+                                if (commaIndex !== -1) {
+                                    qrCodeBase64 = data.qrcode.base64.substring(commaIndex + 1);
+                                } else {
+                                    qrCodeBase64 = data.qrcode.base64;
+                                }
                             }
                         }
                         
@@ -758,9 +774,9 @@
                         
                         // Atualizar modal
                         if (qrCodeBase64) {
-                            this.qrModal.qrCode = qrCodeBase64;
+                            this.qrModal.qrCode = qrCodeBase64; // Apenas a parte base64
                             this.qrModal.pairingCode = '';
-                            this.qrCode = qrCodeBase64;
+                            this.qrCode = qrCodeBase64; // Apenas a parte base64
                             this.showQrCode = true;
                             this.pairingCode = null;
                             if (!this.qrModal.isOpen) {
