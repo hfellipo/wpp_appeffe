@@ -166,6 +166,14 @@
                                             </p>
                                         </div>
 
+                                        <!-- QR Code via biblioteca (fallback) -->
+                                        <div x-show="qrModal.qrText && !qrModal.qrCode && !qrModal.pairingCode" class="text-center mb-4">
+                                            <p class="text-sm text-gray-600 mb-3">{{ __('Escaneie o QR Code com seu WhatsApp:') }}</p>
+                                            <div class="flex justify-center">
+                                                <div x-ref="qrLibContainer" class="bg-white border-2 border-gray-300 rounded-lg p-2"></div>
+                                            </div>
+                                        </div>
+
                                         <!-- Pairing Code -->
                                         <div x-show="qrModal.pairingCode && !qrModal.qrCode" class="text-center mb-4">
                                             <div class="mb-4">
@@ -458,6 +466,9 @@
         $configuredJs = $isConfigured ? 'true' : 'false';
     @endphp
     
+    {{-- Biblioteca QRCode (gera QR a partir de texto quando base64 não vier) --}}
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
     <script>
         function whatsappConfig() {
             return {
@@ -470,6 +481,7 @@
                     isOpen: false,
                     qrCode: '',
                     pairingCode: '',
+                    qrText: '',
                     whatsappNumber: '',
                     loading: false
                 },
@@ -508,6 +520,28 @@
                             this.statusCheckInterval = null;
                         }
                     });
+                },
+
+                renderQrFromText() {
+                    try {
+                        const container = this.$refs.qrLibContainer;
+                        if (!container) return;
+                        container.innerHTML = '';
+                        if (!this.qrModal.qrText) return;
+                        if (typeof QRCode === 'undefined') {
+                            console.error('QRCode library not loaded');
+                            return;
+                        }
+                        // Render QR into container
+                        new QRCode(container, {
+                            text: this.qrModal.qrText,
+                            width: 256,
+                            height: 256,
+                            correctLevel: QRCode.CorrectLevel.M
+                        });
+                    } catch (e) {
+                        console.error('Erro ao renderizar QR via biblioteca:', e);
+                    }
                 },
 
                 getStatusLabel(status) {
@@ -620,6 +654,7 @@
                             // - pairingCode (string)
                             const qrCodeBase64 = data.qrcode?.base64 || null;
                             const pairingCode = data.pairingCode || null;
+                            const qrText = data.qrText || null;
                             
                             // Abrir modal com QR code ou pairing code
                             if (qrCodeBase64) {
@@ -628,6 +663,7 @@
                                     isOpen: true,
                                     qrCode: qrCodeBase64, // data:image/png;base64,...
                                     pairingCode: '',
+                                    qrText: '',
                                     whatsappNumber: cleanNumber,
                                     loading: false
                                 };
@@ -639,12 +675,27 @@
                                     isOpen: true,
                                     qrCode: '',
                                     pairingCode: pairingCode,
+                                    qrText: '',
                                     whatsappNumber: cleanNumber,
                                     loading: false
                                 };
                                 this.pairingCode = pairingCode;
                                 this.qrCode = null;
                                 this.showQrCode = false;
+                            } else if (qrText) {
+                                // Gerar QR via biblioteca usando texto cru
+                                this.qrModal = {
+                                    isOpen: true,
+                                    qrCode: '',
+                                    pairingCode: '',
+                                    qrText: qrText,
+                                    whatsappNumber: cleanNumber,
+                                    loading: false
+                                };
+                                this.qrCode = null;
+                                this.pairingCode = null;
+                                this.showQrCode = false;
+                                this.$nextTick(() => this.renderQrFromText());
                             } else {
                                 // Tentar obter QR code se status é connecting
                                 this.qrCode = null;
@@ -739,11 +790,13 @@
                         // Backend já devolve normalizado: qrcode.base64 OU pairingCode
                         const qrCodeBase64 = data.qrcode?.base64 || null;
                         const pairingCode = data.pairingCode || null;
+                        const qrText = data.qrText || null;
                         
                         // Atualizar modal
                         if (qrCodeBase64) {
                             this.qrModal.qrCode = qrCodeBase64; // data:image/png;base64,...
                             this.qrModal.pairingCode = '';
+                            this.qrModal.qrText = '';
                             this.qrCode = qrCodeBase64; // data URI completo
                             this.showQrCode = true;
                             this.pairingCode = null;
@@ -753,16 +806,29 @@
                         } else if (pairingCode) {
                             this.qrModal.qrCode = '';
                             this.qrModal.pairingCode = pairingCode;
+                            this.qrModal.qrText = '';
                             this.pairingCode = pairingCode;
                             this.qrCode = null;
                             this.showQrCode = false;
                             if (!this.qrModal.isOpen) {
                                 this.qrModal.isOpen = true;
                             }
+                        } else if (qrText) {
+                            this.qrModal.qrCode = '';
+                            this.qrModal.pairingCode = '';
+                            this.qrModal.qrText = qrText;
+                            this.qrCode = null;
+                            this.pairingCode = null;
+                            this.showQrCode = false;
+                            if (!this.qrModal.isOpen) {
+                                this.qrModal.isOpen = true;
+                            }
+                            this.$nextTick(() => this.renderQrFromText());
                         } else {
                             // Evitar manter um QR antigo inválido na tela
                             this.qrModal.qrCode = '';
                             this.qrModal.pairingCode = '';
+                            this.qrModal.qrText = '';
                             this.qrCode = null;
                             this.showQrCode = false;
                         }

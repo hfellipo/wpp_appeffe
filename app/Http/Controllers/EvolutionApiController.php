@@ -252,6 +252,7 @@ class EvolutionApiController extends Controller
         $extracted = $this->extractQrCodeAndPairingCode($result);
         $qrcode = $extracted['qrcode'];
         $pairingCode = $extracted['pairingCode'];
+        $qrText = $extracted['qrText'] ?? null;
         
         \Log::info('Evolution API - Resultado da extração', [
             'has_qrcode_image' => $qrcode !== null,
@@ -366,6 +367,8 @@ class EvolutionApiController extends Controller
             'status' => $status,
             'qrcode' => $qrcode, // Será null se há pairing code
             'pairingCode' => $pairingCode,
+            // Se não houver imagem, podemos retornar o texto cru para gerar QR via biblioteca no frontend
+            'qrText' => $qrcode === null ? $qrText : null,
             'instanceName' => $whatsappNumber,
             'note' => 'Configure o webhook separadamente após conectar o WhatsApp',
             'db_warning' => $dbWarning,
@@ -395,12 +398,13 @@ class EvolutionApiController extends Controller
      * - Instance Connect returns: base64 (direct)
      * 
      * @param array $result Response from Evolution API
-     * @return array ['qrcode' => array|null, 'pairingCode' => string|null]
+     * @return array ['qrcode' => array|null, 'pairingCode' => string|null, 'qrText' => string|null]
      */
     private function extractQrCodeAndPairingCode(array $result): array
     {
         $qrcode = null;
         $pairingCode = null;
+        $qrText = null;
         
         \Log::info('Evolution API - Processando resposta para extrair QR code', [
             'result_keys' => array_keys($result),
@@ -416,6 +420,13 @@ class EvolutionApiController extends Controller
         } elseif (isset($result['pairing_code'])) {
             $pairingCode = $result['pairing_code'];
             \Log::info('Pairing code encontrado em result[pairing_code]', ['code' => $pairingCode]);
+        }
+
+        // QR text (conteúdo bruto do QR) — útil para gerar QR via biblioteca no frontend quando base64 não vier.
+        if (isset($result['qrcode']['code']) && is_string($result['qrcode']['code']) && $result['qrcode']['code'] !== '') {
+            $qrText = $result['qrcode']['code'];
+        } elseif (isset($result['code']) && is_string($result['code']) && $result['code'] !== '') {
+            $qrText = $result['code'];
         }
         
         // Try to extract QR code image (conforme Postman Collection v2.3)
@@ -512,6 +523,7 @@ class EvolutionApiController extends Controller
         return [
             'qrcode' => $qrcode,
             'pairingCode' => $pairingCode,
+            'qrText' => $qrText,
         ];
     }
 
@@ -782,6 +794,10 @@ class EvolutionApiController extends Controller
         
         if ($extracted['pairingCode'] !== null) {
             $response['pairingCode'] = $extracted['pairingCode'];
+        }
+
+        if (!empty($extracted['qrText']) && $extracted['qrcode'] === null) {
+            $response['qrText'] = $extracted['qrText'];
         }
         
         // Se nada foi extraído, NÃO devolver o $result cru (em prod ele pode vir "data:image...,2@..."
