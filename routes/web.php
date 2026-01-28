@@ -5,6 +5,7 @@ use App\Http\Controllers\ContactFieldController;
 use App\Http\Controllers\ContactImportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\WhatsAppEvolutionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -99,7 +100,11 @@ Route::middleware('auth')->group(function () {
     // Settings routes
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
 
-    // Evolution API / WhatsApp routes - REMOVIDAS (será refeito do zero)
+    // Evolution API / WhatsApp (novo, sem duplicidades)
+    Route::prefix('settings/whatsapp')->name('whatsapp.')->group(function () {
+        Route::post('/instance', [WhatsAppEvolutionController::class, 'createInstance'])->name('instance.create');
+        Route::get('/connect/{instance}', [WhatsAppEvolutionController::class, 'connect'])->name('connect');
+    });
 
     // Contact Fields routes (MUST be before resource to avoid conflicts)
     Route::prefix('contacts/fields')->name('contacts.fields.')->group(function () {
