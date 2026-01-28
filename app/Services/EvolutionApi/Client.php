@@ -73,15 +73,23 @@ class Client
                 break;
         }
 
+        $payloadJson = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        
         // Log detalhado do request (especialmente útil para debug de webhook)
-        Log::info('Evolution API - Request', [
+        Log::info('Evolution API - CLIENT REQUEST - INÍCIO', [
+            'timestamp' => now()->toIso8601String(),
             'method' => strtoupper($method),
             'url' => $url,
             'path' => $path,
+            'base_url' => $this->baseUrl,
             'auth_type' => $authType,
             'headers' => array_keys($headers), // Não logar o token por segurança
+            'has_api_key' => !empty($this->apiKey),
+            'api_key_length' => strlen($this->apiKey ?? ''),
             'payload' => $payload,
-            'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+            'payload_json' => $payloadJson,
+            'payload_json_length' => strlen($payloadJson),
+            'payload_keys' => is_array($payload) ? array_keys($payload) : null,
         ]);
 
         $response = Http::timeout(30)
@@ -89,14 +97,24 @@ class Client
             ->asJson()
             ->{$method}($url, $payload);
 
+        $statusCode = $response->status();
+        $responseBody = $response->json();
+        $responseText = $response->body();
+        $responseHeaders = $response->headers();
+
         // Log detalhado da resposta (especialmente útil para debug de erros 400)
-        Log::info('Evolution API - Response', [
+        Log::info('Evolution API - CLIENT REQUEST - RESPOSTA', [
+            'timestamp' => now()->toIso8601String(),
             'method' => strtoupper($method),
             'url' => $url,
-            'status_code' => $response->status(),
-            'response_body' => $response->json(),
-            'response_text' => $response->body(),
-            'response_headers' => $response->headers(),
+            'status_code' => $statusCode,
+            'successful' => $response->successful(),
+            'response_body' => $responseBody,
+            'response_body_type' => gettype($responseBody),
+            'response_text' => $responseText,
+            'response_text_length' => strlen($responseText),
+            'response_headers' => $responseHeaders,
+            'curl_error' => null, // Laravel Http não expõe curl_error diretamente
         ]);
 
         return $response;

@@ -361,22 +361,47 @@ class EvolutionApiService
      */
     public function setWebhookForInstance(string $instanceName, string $url, array $events = [], bool $webhookBase64 = false): array
     {
+        Log::info('Evolution API - setWebhookForInstance - CHAMADO', [
+            'timestamp' => now()->toIso8601String(),
+            'instance_name' => $instanceName,
+            'url' => $url,
+            'events' => $events,
+            'events_count' => count($events),
+            'webhook_base64' => $webhookBase64,
+            'called_from' => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5),
+        ]);
+
         if (!$this->isConfigured()) {
+            Log::error('Evolution API - setWebhookForInstance - API não configurada');
             return ['error' => 'Evolution API não configurada'];
         }
 
         $instanceName = trim($instanceName);
         if ($instanceName === '') {
+            Log::error('Evolution API - setWebhookForInstance - Instance name vazio');
             return ['error' => 'Nome da instância é obrigatório para configurar o webhook'];
         }
 
         try {
             $data = $this->webhooks->set($instanceName, $url, $events, $webhookBase64);
+            
+            Log::info('Evolution API - setWebhookForInstance - RESULTADO', [
+                'timestamp' => now()->toIso8601String(),
+                'instance_name' => $instanceName,
+                'has_error' => isset($data['error']),
+                'error' => $data['error'] ?? null,
+                'success' => $data['success'] ?? null,
+                'response_keys' => is_array($data) ? array_keys($data) : null,
+            ]);
+            
             return is_array($data) ? $data : [];
         } catch (\Exception $e) {
             Log::error('Evolution API - Erro ao configurar webhook (instância explícita)', [
+                'timestamp' => now()->toIso8601String(),
                 'error' => $e->getMessage(),
+                'error_trace' => $e->getTraceAsString(),
                 'instance_name' => $instanceName,
+                'url' => $url,
             ]);
             return ['error' => $e->getMessage()];
         }
