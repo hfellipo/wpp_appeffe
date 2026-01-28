@@ -618,8 +618,15 @@
                                 
                                 // Verificar se é uma imagem válida (começa com data:image)
                                 if (base64Value && typeof base64Value === 'string' && base64Value.startsWith('data:image')) {
-                                    qrCodeBase64 = base64Value;
-                                    console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
+                                    // Se o payload após a vírgula começar com "2@" (ou outro dígito@), isso NÃO é imagem.
+                                    const commaIndex = base64Value.indexOf(',');
+                                    const payload = commaIndex !== -1 ? base64Value.substring(commaIndex + 1) : '';
+                                    if (/^\d+@/.test(payload)) {
+                                        console.warn('⚠ qrcode.base64 veio como data:image mas contém pairing code no payload. Não renderizar como imagem.');
+                                    } else {
+                                        qrCodeBase64 = base64Value;
+                                        console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
+                                    }
                                 } else {
                                     console.error('❌ qrcode.base64 não é uma imagem válida:', {
                                         temValor: !!base64Value,
@@ -631,7 +638,8 @@
                             }
                             
                             // Extrair pairing code se disponível
-                            const pairingCode = data.pairingCode || null;
+                            // Pode vir em data.pairingCode ou em data.qrcode.code (formato "2@...")
+                            const pairingCode = data.pairingCode || (data.qrcode?.code && /^\d+@/.test(data.qrcode.code) ? data.qrcode.code.split(',')[0] : null);
                             
                             // Abrir modal com QR code ou pairing code
                             if (qrCodeBase64) {
@@ -770,16 +778,23 @@
                             console.log('📦 QR Code recebido no getQrCode - tipo:', typeof base64Value, 'tamanho:', base64Value?.length);
                             
                             if (base64Value && typeof base64Value === 'string' && base64Value.startsWith('data:image')) {
-                                // ✅ Usar exatamente como vem (data URI completo)
-                                qrCodeBase64 = base64Value;
-                                console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
+                                // Se o payload após a vírgula começar com "2@" (ou outro dígito@), isso NÃO é imagem.
+                                const commaIndex = base64Value.indexOf(',');
+                                const payload = commaIndex !== -1 ? base64Value.substring(commaIndex + 1) : '';
+                                if (/^\d+@/.test(payload)) {
+                                    console.warn('⚠ qrcode.base64 veio como data:image mas contém pairing code no payload. Não renderizar como imagem.');
+                                } else {
+                                    // ✅ Usar exatamente como vem (data URI completo)
+                                    qrCodeBase64 = base64Value;
+                                    console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
+                                }
                             } else {
                                 console.error('❌ qrcode.base64 não é uma imagem válida no getQrCode');
                             }
                         }
                         
                         // Extrair pairing code
-                        const pairingCode = data.pairingCode || null;
+                        const pairingCode = data.pairingCode || (data.qrcode?.code && /^\d+@/.test(data.qrcode.code) ? data.qrcode.code.split(',')[0] : null);
                         
                         // Atualizar modal
                         if (qrCodeBase64) {

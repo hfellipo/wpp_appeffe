@@ -428,6 +428,16 @@ class EvolutionApiController extends Controller
                 if (preg_match('/^\d+@/', $base64Value)) {
                     $pairingCode = explode(',', $base64Value)[0];
                     \Log::info('qrcode.base64 detectado como pairing code', ['code' => $pairingCode]);
+                } elseif (strpos($base64Value, 'data:image') === 0) {
+                    // Se for data URI, checar se o payload (após vírgula) é pairing code (ex: data:image...,2@...)
+                    $commaIndex = strpos($base64Value, ',');
+                    if ($commaIndex !== false) {
+                        $payload = substr($base64Value, $commaIndex + 1);
+                        if (preg_match('/^\d+@/', $payload)) {
+                            $pairingCode = explode(',', $payload)[0];
+                            \Log::info('qrcode.base64 (data URI) contém pairing code no payload', ['code' => $pairingCode]);
+                        }
+                    }
                 } elseif ($this->isValidBase64Image($base64Value)) {
                     // ✅ Passar base64 COMPLETO (sem truncar)
                     $qrcode = ['base64' => $base64Value];
@@ -440,6 +450,13 @@ class EvolutionApiController extends Controller
                         'starts_with_data_image' => strpos($base64Value, 'data:image') === 0,
                     ]);
                 }
+            }
+        }
+        // 1b. Check qrcode.code (raw QR content / pairing code)
+        if ($pairingCode === null && isset($result['qrcode']['code']) && is_string($result['qrcode']['code'])) {
+            if (preg_match('/^\d+@/', $result['qrcode']['code'])) {
+                $pairingCode = explode(',', $result['qrcode']['code'])[0];
+                \Log::info('Pairing code encontrado em qrcode[code]', ['code' => $pairingCode]);
             }
         }
         // 2. Check base64 (direct - Instance Connect format)
@@ -622,15 +639,39 @@ class EvolutionApiController extends Controller
 
     private function isValidBase64Image(string $base64): bool
     {
-        // Se começa com data:image, é válido (já é um data URI completo)
+        // Se começa com data:image, validar o conteúdo APÓS a vírgula.
+        // ⚠️ Caso comum de bug: "data:image/png;base64,2@...." (pairing code) — NÃO é imagem.
         if (strpos($base64, 'data:image') === 0) {
-            // Verificar se tem vírgula e conteúdo base64 após ela
             $commaIndex = strpos($base64, ',');
-            if ($commaIndex !== false && $commaIndex < strlen($base64) - 1) {
-                // Tem conteúdo base64 após a vírgula - válido
+            if ($commaIndex === false || $commaIndex >= strlen($base64) - 1) {
+                return false;
+            }
+
+            $payload = substr($base64, $commaIndex + 1);
+
+            // Se o payload começa com dígito@, é pairing code (não imagem)
+            if (preg_match('/^\d+@/', $payload)) {
+                return false;
+            }
+
+            // Validar base64 do payload (sem o prefixo data:image)
+            if (strlen($payload) < 1000) {
+                return false;
+            }
+
+            $decoded = base64_decode($payload, true);
+            if ($decoded === false) {
+                return false;
+            }
+
+            $header = substr($decoded, 0, 8);
+            if ($header === "\x89PNG\r\n\x1a\n") {
                 return true;
             }
-            // Se não tem vírgula ou não tem conteúdo, pode ser inválido
+            if (substr($header, 0, 3) === "\xFF\xD8\xFF") {
+                return true;
+            }
+
             return false;
         }
         
