@@ -352,6 +352,7 @@
 
                     <form action="{{ route('whatsapp.webhook.configure') }}" method="POST">
                         @csrf
+                        <input type="hidden" name="instance_name" :value="currentInstanceName || '{{ $instanceName }}'">
 
                         <div class="space-y-4">
                             @php

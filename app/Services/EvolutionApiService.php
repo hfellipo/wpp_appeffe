@@ -293,6 +293,32 @@ class EvolutionApiService
     }
 
     /**
+     * Set webhook for a specific instance (avoids relying on session/last-instance).
+     */
+    public function setWebhookForInstance(string $instanceName, string $url, array $events = [], bool $webhookBase64 = false): array
+    {
+        if (!$this->isConfigured()) {
+            return ['error' => 'Evolution API não configurada'];
+        }
+
+        $instanceName = trim($instanceName);
+        if ($instanceName === '') {
+            return ['error' => 'Nome da instância é obrigatório para configurar o webhook'];
+        }
+
+        try {
+            $data = $this->webhooks->set($instanceName, $url, $events, $webhookBase64);
+            return is_array($data) ? $data : [];
+        } catch (\Exception $e) {
+            Log::error('Evolution API - Erro ao configurar webhook (instância explícita)', [
+                'error' => $e->getMessage(),
+                'instance_name' => $instanceName,
+            ]);
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Set webhook configuration with advanced options.
      * 
      * @param string $url Webhook URL

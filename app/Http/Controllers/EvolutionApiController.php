@@ -889,6 +889,7 @@ class EvolutionApiController extends Controller
     {
         $request->validate([
             'url' => 'nullable|url', // Opcional: usa URL padrão se não fornecida
+            'instance_name' => 'nullable|string',
             'events' => 'nullable|array',
             'webhook_base64' => 'nullable|boolean',
         ]);
@@ -921,10 +922,19 @@ class EvolutionApiController extends Controller
         }
 
         $webhookBase64 = $request->boolean('webhook_base64', false);
+
+        // Definir explicitamente a instância alvo do webhook (evita usar instância errada)
+        $instanceName = $request->input('instance_name');
+        if (empty($instanceName)) {
+            // Fallback: usa a instância atual resolvida (session/DB)
+            $instanceName = $this->evolutionApi->getInstanceName();
+        }
+        $instanceName = preg_replace('/\s+/', '', (string) $instanceName);
         
         // Gerar diagnóstico
         $diagnostics = $this->diagnoseWebhook($url);
         \Log::info('Configurando webhook separadamente (após criação da instância)', [
+            'instance_name' => $instanceName,
             'url' => $url,
             'events' => $events,
             'events_count' => count($events),
@@ -932,11 +942,12 @@ class EvolutionApiController extends Controller
             'diagnostics' => $diagnostics,
         ]);
 
-        $result = $this->evolutionApi->setWebhook($url, $events, $webhookBase64);
+        $result = $this->evolutionApi->setWebhookForInstance($instanceName, $url, $events, $webhookBase64);
         
         if (isset($result['error'])) {
             \Log::error('Erro ao configurar webhook manualmente', [
                 'error' => $result['error'],
+                'instance_name' => $instanceName,
                 'url' => $url,
                 'events' => $events,
                 'diagnostics' => $diagnostics,
@@ -946,7 +957,6 @@ class EvolutionApiController extends Controller
 
         // Salvar no banco de dados
         if (auth()->check()) {
-            $instanceName = $this->evolutionApi->getInstanceName();
             WhatsAppInstance::updateOrCreate(
                 ['instance_name' => $instanceName],
                 [
