@@ -136,7 +136,7 @@ class EvolutionApiController extends Controller
             'response' => $result,
             'response_keys' => array_keys($result),
             'has_error' => isset($result['error']),
-            'has_qrcode' => isset($result['qrcode']) || isset($result['base64']),
+            'has_qrcode' => isset($result['qrcode']['base64']),
         ]);
         
         // IMPORTANTE: Mesmo com erro, pode haver QR code na resposta
