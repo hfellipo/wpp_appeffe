@@ -581,13 +581,12 @@
                 },
 
                 alertApiSummary(title, data) {
-                    // Alerts de debug só quando ativado via ?debugAlerts=1
-                    if (!this.debugAlerts) return;
                     try {
                         const summary = {
                             success: data?.success,
                             status: data?.status,
                             instanceName: data?.instanceName,
+                            build: data?.build,
                             hasQrcodeObj: !!data?.qrcode,
                             qrcodeBase64IsString: typeof data?.qrcode?.base64 === 'string',
                             qrcodeBase64StartsWith: typeof data?.qrcode?.base64 === 'string' ? data.qrcode.base64.substring(0, 30) : null,
@@ -618,10 +617,7 @@
                 },
 
                 async connect() {
-                    // DEBUG: só quando ativado via ?debugAlerts=1
-                    if (this.debugAlerts) {
-                        alert('DEBUG: connect() foi chamado');
-                    }
+                    alert('DEBUG: connect() foi chamado');
                     if (!this.configured || this.connectionStatus === 'not_configured') {
                         alert('{{ __('Evolution API não configurada. Verifique as variáveis no arquivo .env') }}');
                         return;
@@ -754,9 +750,7 @@
                                 this.qrCode = null;
                                 this.showQrCode = false;
                                 if (this.connectionStatus === 'connecting') {
-                                    if (this.debugAlerts) {
-                                        alert('Tentando carregar QR Code agora (GET /qrcode)...');
-                                    }
+                                    alert('Tentando carregar QR Code agora (GET /qrcode)...');
                                     await this.getQrCode();
                                 }
                             }
@@ -796,11 +790,9 @@
                             // Se precisar, ative ?debugAlerts=1 para ver.
                             if (data.webhook_warning) {
                                 console.warn('Webhook warning:', data.webhook_warning);
-                                if (this.debugAlerts) alert(data.webhook_warning);
                             }
                             if (data.db_warning) {
                                 console.warn('DB warning:', data.db_warning);
-                                if (this.debugAlerts) alert(data.db_warning);
                             }
                         } else {
                             alert(data.error || 'Erro ao conectar WhatsApp');
@@ -840,9 +832,7 @@
 
                 async getQrCode() {
                     try {
-                        if (this.debugAlerts) {
-                            alert('Carregando QR Code (GET /qrcode)...');
-                        }
+                        alert('Carregando QR Code (GET /qrcode)...');
                         const response = await fetch('{{ route("whatsapp.qrcode") }}');
                         const data = await response.json();
 

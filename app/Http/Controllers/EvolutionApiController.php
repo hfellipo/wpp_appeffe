@@ -96,6 +96,9 @@ class EvolutionApiController extends Controller
      */
     public function connect(Request $request): JsonResponse|RedirectResponse
     {
+        // Build marker para confirmar versão em produção
+        $connectBuild = 'wa-connect-2026-01-28-02';
+
         // Get WhatsApp number from request
         $whatsappNumber = $request->input('whatsapp_number');
         
@@ -120,6 +123,7 @@ class EvolutionApiController extends Controller
 
         // Create instance with WhatsApp number
         \Log::info('Evolution API - ANTES de criar instância', [
+            'connect_build' => $connectBuild,
             'instanceName' => $whatsappNumber,
             'user_id' => auth()->id(),
             'user_authenticated' => auth()->check(),
@@ -263,8 +267,8 @@ class EvolutionApiController extends Controller
         // IMPORTANTE: Aguardar um pouco para a instância estar pronta
         sleep(2);
 
-        // Check status primeiro para garantir que a instância existe
-        $statusData = $this->evolutionApi->getInstanceStatus();
+        // Check status da instância correta (não depender de session/última instância)
+        $statusData = $this->evolutionApi->getInstanceStatusForInstance($whatsappNumber);
         $status = $statusData['status'] ?? 'not_found';
         
         // Normalize status
@@ -364,6 +368,7 @@ class EvolutionApiController extends Controller
         $responseData = [
             'success' => true,
             'message' => 'Instância criada com sucesso! Escaneie o QR Code para conectar.',
+            'build' => $connectBuild,
             'status' => $status,
             'qrcode' => $qrcode, // Será null se há pairing code
             'pairingCode' => $pairingCode,
