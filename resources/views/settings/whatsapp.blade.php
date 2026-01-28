@@ -261,6 +261,7 @@
                         <!-- Actions -->
                         <div class="flex space-x-3 mt-4">
                             <button 
+                                type="button"
                                 @click="connect()"
                                 x-show="connectionStatus === 'close' || connectionStatus === 'not_found'"
                                 class="btn-primary"
@@ -580,6 +581,8 @@
                 },
 
                 async connect() {
+                    // DEBUG: este alert precisa aparecer sempre que clicar no botão
+                    alert('DEBUG: connect() foi chamado');
                     if (!this.configured || this.connectionStatus === 'not_configured') {
                         alert('{{ __('Evolution API não configurada. Verifique as variáveis no arquivo .env') }}');
                         return;
