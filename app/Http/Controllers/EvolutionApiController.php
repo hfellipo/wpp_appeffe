@@ -252,14 +252,36 @@ class EvolutionApiController extends Controller
             ]);
         }
 
-        // Extract QR code and pairing code using helper method (como no exemplo PHP)
-        $extracted = $this->extractQrCodeAndPairingCode($result);
-        $qrcode = $extracted['qrcode'];
-        echo '<pre>';
-        print_r($qrcode);
-        echo '</pre>';
-        $pairingCode = $extracted['pairingCode'];
-        $qrText = $extracted['qrText'] ?? null;
+        // QR Code: prioridade TOTAL para o campo do JSON de criação:
+        // $result['qrcode']['base64'] (como vem da Evolution API no create instance)
+        //
+        // - Se vier data:image/... => usar como imagem
+        // - Se vier "2@..." => isso é pairing code (não é imagem)
+        $qrcode = null;
+        $pairingCode = null;
+        $qrText = null;
+
+        $base64FromCreate = $result['qrcode']['base64'] ?? null;
+        if (is_string($base64FromCreate) && $base64FromCreate !== '') {
+            if (str_starts_with($base64FromCreate, 'data:image')) {
+                $qrcode = ['base64' => $base64FromCreate];
+            } elseif (preg_match('/^\d+@/', $base64FromCreate)) {
+                $pairingCode = explode(',', $base64FromCreate)[0];
+            }
+        }
+
+        // Também capturar o texto cru do QR (para gerar via biblioteca no frontend quando não vier imagem)
+        if (isset($result['qrcode']['code']) && is_string($result['qrcode']['code']) && $result['qrcode']['code'] !== '') {
+            $qrText = $result['qrcode']['code'];
+        }
+
+        // Fallback: se não veio nada em qrcode.base64, usar o extrator para cobrir outros formatos
+        if ($qrcode === null && $pairingCode === null) {
+            $extracted = $this->extractQrCodeAndPairingCode($result);
+            $qrcode = $extracted['qrcode'];
+            $pairingCode = $extracted['pairingCode'];
+            $qrText = $qrText ?? ($extracted['qrText'] ?? null);
+        }
         
         \Log::info('Evolution API - Resultado da extração', [
             'has_qrcode_image' => $qrcode !== null,
