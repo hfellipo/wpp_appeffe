@@ -143,7 +143,7 @@
                                                 {{-- ✅ Usar EXATAMENTE qrcode.base64 como vem da API (data:image/png;base64,...) --}}
                                                 {{-- ❌ NÃO usar qrcode.code aqui - isso quebraria a imagem --}}
                                                 <img 
-                                                    :src="qrModal.qrCode || ''" 
+                                                    :src="(qrModal.qrCode && typeof qrModal.qrCode === 'string' && qrModal.qrCode.startsWith('data:image')) ? qrModal.qrCode : ''" 
                                                     alt="QR Code"
                                                     class="border-2 border-gray-300 rounded-lg p-2 bg-white max-w-xs mx-auto"
                                                     x-on:error="handleQrCodeError($event)"
@@ -611,6 +611,7 @@
                             // ✅ Usar qrcode.base64 (correto) - ❌ NÃO usar qrcode.code (errado para imagem)
                             // ✅ Usar EXATAMENTE como vem (data:image/png;base64,...). Não remover prefixo.
                             let qrCodeBase64 = null;
+                            let pairingFromBase64Payload = null;
                             
                             if (data.qrcode && typeof data.qrcode === 'object' && data.qrcode.base64) {
                                 const base64Value = data.qrcode.base64;
@@ -623,6 +624,7 @@
                                     const payload = commaIndex !== -1 ? base64Value.substring(commaIndex + 1) : '';
                                     if (/^\d+@/.test(payload)) {
                                         console.warn('⚠ qrcode.base64 veio como data:image mas contém pairing code no payload. Não renderizar como imagem.');
+                                        pairingFromBase64Payload = payload.split(',')[0];
                                     } else {
                                         qrCodeBase64 = base64Value;
                                         console.log('✓ QR Code recebido (data URI completo):', qrCodeBase64.length, 'caracteres');
@@ -632,6 +634,7 @@
                                     // ⚠️ Não fazer isso se começar com "2@" (pairing code).
                                     if (/^\d+@/.test(base64Value)) {
                                         console.warn('⚠ qrcode.base64 veio como pairing code (começa com dígito@). Não renderizar como imagem.');
+                                        pairingFromBase64Payload = base64Value.split(',')[0];
                                     } else {
                                         qrCodeBase64 = 'data:image/png;base64,' + base64Value;
                                         console.log('✓ QR Code recebido (base64 puro) - data URI montado:', qrCodeBase64.length, 'caracteres');
@@ -648,7 +651,7 @@
                             
                             // Extrair pairing code (somente se vier explicitamente)
                             // ✅ NÃO usar data.qrcode.code para render de imagem
-                            const pairingCode = data.pairingCode || null;
+                            const pairingCode = data.pairingCode || pairingFromBase64Payload || null;
                             
                             // Abrir modal com QR code ou pairing code
                             if (qrCodeBase64) {
@@ -782,6 +785,7 @@
                         // ⚠️ IMPORTANTE: qrcode.base64 é ENORME - NÃO truncar
                         // ✅ Usar qrcode.base64 (correto) - ❌ NÃO usar qrcode.code (errado para imagem)
                         let qrCodeBase64 = null;
+                        let pairingFromBase64Payload = null;
                         if (data.qrcode && typeof data.qrcode === 'object' && data.qrcode.base64) {
                             const base64Value = data.qrcode.base64;
                             console.log('📦 QR Code recebido no getQrCode - tipo:', typeof base64Value, 'tamanho:', base64Value?.length);
@@ -792,6 +796,7 @@
                                 const payload = commaIndex !== -1 ? base64Value.substring(commaIndex + 1) : '';
                                 if (/^\d+@/.test(payload)) {
                                     console.warn('⚠ qrcode.base64 veio como data:image mas contém pairing code no payload. Não renderizar como imagem.');
+                                    pairingFromBase64Payload = payload.split(',')[0];
                                 } else {
                                     // ✅ Usar exatamente como vem (data URI completo)
                                     qrCodeBase64 = base64Value;
@@ -802,6 +807,7 @@
                                 // ⚠️ Não fazer isso se começar com "2@" (pairing code).
                                 if (/^\d+@/.test(base64Value)) {
                                     console.warn('⚠ qrcode.base64 veio como pairing code (começa com dígito@). Não renderizar como imagem.');
+                                    pairingFromBase64Payload = base64Value.split(',')[0];
                                 } else {
                                     qrCodeBase64 = 'data:image/png;base64,' + base64Value;
                                     console.log('✓ QR Code recebido (base64 puro) - data URI montado:', qrCodeBase64.length, 'caracteres');
@@ -812,7 +818,7 @@
                         }
                         
                         // Extrair pairing code (somente se vier explicitamente)
-                        const pairingCode = data.pairingCode || null;
+                        const pairingCode = data.pairingCode || pairingFromBase64Payload || null;
                         
                         // Atualizar modal
                         if (qrCodeBase64) {
@@ -836,6 +842,11 @@
                             }
                             console.log('✓ Pairing Code atualizado no modal');
                         } else {
+                            // Evitar manter um QR antigo inválido na tela
+                            this.qrModal.qrCode = '';
+                            this.qrModal.pairingCode = '';
+                            this.qrCode = null;
+                            this.showQrCode = false;
                             console.log('⚠ Nenhum QR code ou pairing code disponível');
                         }
                     } catch (e) {
