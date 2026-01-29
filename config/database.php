@@ -63,7 +63,9 @@ return [
         ],
 
         'mariadb' => [
-            'driver' => 'mariadb',
+            // Laravel 10 does not have a dedicated "mariadb" connector.
+            // MariaDB works via the MySQL PDO connector, so we use "mysql".
+            'driver' => 'mysql',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '3306'),
@@ -125,10 +127,18 @@ return [
     |
     */
 
-    'migrations' => [
-        'table' => 'migrations',
-        'update_date_on_publish' => true,
-    ],
+    /*
+    |--------------------------------------------------------------------------
+    | Migration Repository Table
+    |--------------------------------------------------------------------------
+    |
+    | This table keeps track of all the migrations that have already run for
+    | your application. Using this information, we can determine which of
+    | the migrations on disk haven't actually been run on the database.
+    |
+    */
+
+    'migrations' => 'migrations',
 
     /*
     |--------------------------------------------------------------------------

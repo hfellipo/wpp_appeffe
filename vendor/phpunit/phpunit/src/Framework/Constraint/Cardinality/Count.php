@@ -12,7 +12,6 @@ namespace PHPUnit\Framework\Constraint;
 use function count;
 use function is_countable;
 use function iterator_count;
-use function spl_object_id;
 use function sprintf;
 use EmptyIterator;
 use Generator;
@@ -67,17 +66,7 @@ class Count extends Constraint
         }
 
         if ($other instanceof Traversable) {
-            $traversableSeen = [];
-
             while ($other instanceof IteratorAggregate) {
-                $id = spl_object_id($other);
-
-                if (isset($traversableSeen[$id])) {
-                    throw new Exception('IteratorAggregate::getIterator() returned an object that was already seen');
-                }
-
-                $traversableSeen[$id] = true;
-
                 try {
                     $other = $other->getIterator();
                 } catch (\Exception $e) {

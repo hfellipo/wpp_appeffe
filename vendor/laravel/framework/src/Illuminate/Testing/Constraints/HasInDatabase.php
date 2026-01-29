@@ -25,7 +25,7 @@ class HasInDatabase extends Constraint
     /**
      * The data that will be used to narrow the search in the database table.
      *
-     * @var array<string, mixed>
+     * @var array
      */
     protected $data;
 
@@ -33,7 +33,7 @@ class HasInDatabase extends Constraint
      * Create a new constraint instance.
      *
      * @param  \Illuminate\Database\Connection  $database
-     * @param  array<string, mixed>  $data
+     * @param  array  $data
      * @return void
      */
     public function __construct(Connection $database, array $data)
@@ -51,9 +51,7 @@ class HasInDatabase extends Constraint
      */
     public function matches($table): bool
     {
-        return $this->database->table($table)
-            ->where($this->data)
-            ->exists();
+        return $this->database->table($table)->where($this->data)->count() > 0;
     }
 
     /**

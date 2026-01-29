@@ -101,11 +101,11 @@ class LazyString implements \Stringable, \JsonSerializable
         }
     }
 
-    public function __serialize(): array
+    public function __sleep(): array
     {
         $this->__toString();
 
-        return ['value' => $this->value];
+        return ['value'];
     }
 
     public function jsonSerialize(): string
@@ -129,7 +129,7 @@ class LazyString implements \Stringable, \JsonSerializable
         } elseif ($callback instanceof \Closure) {
             $r = new \ReflectionFunction($callback);
 
-            if ($r->isAnonymous() || !$class = $r->getClosureCalledClass()) {
+            if (str_contains($r->name, '{closure') || !$class = \PHP_VERSION_ID >= 80111 ? $r->getClosureCalledClass() : $r->getClosureScopeClass()) {
                 return $r->name;
             }
 

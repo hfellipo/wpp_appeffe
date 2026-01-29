@@ -16,12 +16,9 @@ use PHPUnit\Event\Test\PrintedUnexpectedOutputSubscriber;
 use PHPUnit\Event\UnknownSubscriberTypeException;
 use PHPUnit\TextUI\Output\Printer;
 
-/**
- * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
- */
-final readonly class UnexpectedOutputPrinter implements PrintedUnexpectedOutputSubscriber
+final class UnexpectedOutputPrinter implements PrintedUnexpectedOutputSubscriber
 {
-    private Printer $printer;
+    private readonly Printer $printer;
 
     /**
      * @throws EventFacadeIsSealedException
