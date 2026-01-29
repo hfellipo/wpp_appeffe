@@ -453,22 +453,29 @@
                     setFromPayload(payload) {
                         this.instanceName = payload?.instanceName || this.instanceName;
 
-                        // contrato novo:
-                        // - qrcode.base64 => SOMENTE se for data:image...
-                        // - qrText => texto (2@...) quando não há imagem
-                        this.qrImage = payload?.qrcode?.base64 || '';
-                        this.qrText = payload?.qrText || '';
-                        this.pairingCode = payload?.pairingCode || '';
+                        // Aceita múltiplos formatos vindos do backend/Evolution:
+                        // - qrcode.base64 = data:image/... OU base64 puro (sem prefixo)
+                        // - qrText / qrcode.code = texto (2@...) quando não há imagem
+                        // - pairingCode (quando aplicável)
+                        const maybeQrImage =
+                            payload?.qrcode?.base64 ??
+                            payload?.qrcode ??
+                            payload?.base64 ??
+                            '';
 
-                        // evita ERR_INVALID_URL se backend mandar algo errado
-                        if (this.qrImage && !String(this.qrImage).startsWith('data:image')) {
-                            this.qrImage = '';
-                        }
-                        if (this.qrText && String(this.qrText).startsWith('data:image')) {
-                            // se por algum motivo vier "data:image...2@..." tratamos como texto
-                            const maybe = String(this.qrText);
-                            const idx = maybe.indexOf('base64,');
-                            this.qrText = idx >= 0 ? maybe.slice(idx + 'base64,'.length) : maybe;
+                        this.qrImage = (typeof maybeQrImage === 'string') ? String(maybeQrImage).trim() : '';
+                        this.qrText = payload?.qrText || payload?.qrcode?.code || payload?.code || '';
+                        this.pairingCode = payload?.pairingCode || payload?.qrcode?.pairingCode || '';
+
+                        // Normaliza base64 puro para data:image (para o <img> funcionar no modal)
+                        if (this.qrImage) {
+                            if (this.qrImage.startsWith('data:image')) {
+                                // ok
+                            } else {
+                                const raw = this.qrImage.replace(/\s/g, '');
+                                const looksLikeBase64 = /^[A-Za-z0-9+/=]+$/.test(raw) && raw.length > 200;
+                                this.qrImage = looksLikeBase64 ? `data:image/png;base64,${raw}` : '';
+                            }
                         }
 
                         this.$nextTick(() => this.renderQr());

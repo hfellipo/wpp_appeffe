@@ -188,24 +188,51 @@ class WhatsAppEvolutionController extends Controller
         }
 
         if (auth()->check()) {
-            WhatsAppInstance::updateOrCreate(
-                ['instance_name' => $instanceNameFromApi],
-                [
-                    'user_id' => auth()->user()->accountId(),
-                    'whatsapp_number' => $whatsappNumber,
-                    'instance_name' => $instanceNameFromApi,
-                    'instance_token' => $instanceToken,
-                    'status' => $data['instance']['status'] ?? 'connecting',
-                    'metadata' => [
-                        'build' => $build,
-                        'evolution' => [
-                            'http_status' => $resp['status'],
-                            'response' => $data,
-                            'response_text' => $resp['text'],
-                        ],
-                    ],
-                ]
-            );
+            $accountId = auth()->user()->accountId();
+
+            // Se a instância já existe (inclusive soft-deleted), reaproveita o registro.
+            // Isso evita violação de unique (instance_name) ao "recriar" o mesmo número.
+            $wa = WhatsAppInstance::withTrashed()
+                ->where('instance_name', $instanceNameFromApi)
+                ->first();
+
+            // Segurança: impedir "tomar" número de outra conta (unique é global).
+            if ($wa && (int) $wa->user_id !== (int) $accountId) {
+                return response()->json([
+                    'success' => false,
+                    'build' => $build,
+                    'error' => 'Este número já está vinculado a outra conta.',
+                ], 409);
+            }
+
+            if (! $wa) {
+                $wa = new WhatsAppInstance();
+            } elseif ($wa->trashed()) {
+                $wa->restore();
+            }
+
+            $meta = is_array($wa->metadata) ? $wa->metadata : [];
+            $meta['last_create'] = [
+                'at' => now()->toIso8601String(),
+                'build' => $build,
+                'auto_disconnect' => $auto,
+                'evolution' => [
+                    'http_status' => $resp['status'],
+                    'response' => $data,
+                    'response_text' => $resp['text'],
+                ],
+            ];
+
+            $wa->fill([
+                'user_id' => $accountId,
+                'whatsapp_number' => $whatsappNumber,
+                'instance_name' => $instanceNameFromApi,
+                'instance_token' => $instanceToken,
+                'status' => $data['instance']['status'] ?? 'connecting',
+                'metadata' => $meta,
+            ]);
+
+            $wa->save();
         }
 
         return response()->json([

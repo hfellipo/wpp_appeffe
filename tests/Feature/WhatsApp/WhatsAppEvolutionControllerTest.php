@@ -268,5 +268,60 @@ class WhatsAppEvolutionControllerTest extends TestCase
             'id' => $wa->id,
         ]);
     }
+
+    public function test_can_recreate_same_number_after_soft_delete_by_restoring_record(): void
+    {
+        Http::fake([
+            'http://evolution.test/instance/delete/*' => Http::response([], 200),
+            'http://evolution.test/instance/create' => Http::response([
+                'instance' => [
+                    'instanceName' => '5531973372872',
+                    'status' => 'connecting',
+                ],
+                'hash' => 'hash-xyz',
+                'qrcode' => [
+                    'base64' => 'data:image/png;base64,AAA',
+                ],
+            ], 200),
+        ]);
+
+        $user = $this->makeRootUser();
+        $accountId = $user->accountId();
+
+        $wa = WhatsAppInstance::create([
+            'user_id' => $accountId,
+            'instance_name' => '5531973372872',
+            'whatsapp_number' => '5531973372872',
+            'status' => 'open',
+            'instance_token' => 'token-old',
+            'metadata' => [],
+        ]);
+
+        // deleta (soft delete)
+        $this->actingAs($user)->postJson(route('whatsapp.delete', ['instance' => $wa->instance_name]))
+            ->assertOk()
+            ->assertJson([
+                'success' => true,
+                'deleted' => true,
+            ]);
+
+        $this->assertSoftDeleted('whatsapp_instances', ['id' => $wa->id]);
+
+        // recria o mesmo número (deve restaurar / atualizar o registro, sem violar unique)
+        $this->actingAs($user)->postJson(route('whatsapp.instance.create'), [
+            'whatsapp_number' => '5531973372872',
+        ])->assertOk()->assertJson([
+            'success' => true,
+            'instanceName' => '5531973372872',
+        ]);
+
+        $this->assertSame(1, WhatsAppInstance::withTrashed()->where('instance_name', '5531973372872')->count());
+
+        $waRestored = WhatsAppInstance::withTrashed()->where('instance_name', '5531973372872')->first();
+        $this->assertNotNull($waRestored);
+        $this->assertNull($waRestored->deleted_at);
+        $this->assertSame('connecting', $waRestored->status);
+        $this->assertSame($accountId, (int) $waRestored->user_id);
+    }
 }
 
