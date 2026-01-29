@@ -51,6 +51,12 @@
                             {{ __('Configurações') }}
                         </x-dropdown-link>
 
+                        @if(Auth::user()->isAdmin())
+                            <x-dropdown-link :href="route('settings.users.index')">
+                                {{ __('Gerenciar usuários') }}
+                            </x-dropdown-link>
+                        @endif
+
                         <!-- Authentication -->
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
@@ -108,6 +114,12 @@
                 <x-responsive-nav-link :href="route('settings.index')">
                     {{ __('Configurações') }}
                 </x-responsive-nav-link>
+
+                @if(Auth::user()->isAdmin())
+                    <x-responsive-nav-link :href="route('settings.users.index')">
+                        {{ __('Gerenciar usuários') }}
+                    </x-responsive-nav-link>
+                @endif
 
                 <!-- Authentication -->
                 <form method="POST" action="{{ route('logout') }}">

@@ -16,14 +16,16 @@ class ContactController extends Controller
      */
     public function index(Request $request): View
     {
-        $contacts = Contact::forUser(auth()->id())
+        $accountId = auth()->user()->accountId();
+
+        $contacts = Contact::forUser($accountId)
             ->with('fieldValues.field')
             ->search($request->search)
             ->orderBy('name')
             ->paginate(15)
             ->withQueryString();
 
-        $customFields = ContactField::forUser(auth()->id())
+        $customFields = ContactField::forUser($accountId)
             ->active()
             ->showInList()
             ->ordered()
@@ -37,7 +39,7 @@ class ContactController extends Controller
      */
     public function create(): View
     {
-        $customFields = ContactField::forUser(auth()->id())
+        $customFields = ContactField::forUser(auth()->user()->accountId())
             ->active()
             ->ordered()
             ->get();
@@ -51,7 +53,7 @@ class ContactController extends Controller
     public function store(ContactRequest $request): RedirectResponse
     {
         $contact = Contact::create([
-            'user_id' => auth()->id(),
+            'user_id' => auth()->user()->accountId(),
             'name' => $request->name,
             'phone' => $this->formatPhoneForStorage($request->phone),
             'email' => $request->email,
@@ -81,7 +83,7 @@ class ContactController extends Controller
 
         $contact->load('fieldValues.field');
         
-        $customFields = ContactField::forUser(auth()->id())
+        $customFields = ContactField::forUser(auth()->user()->accountId())
             ->active()
             ->ordered()
             ->get();
@@ -98,7 +100,7 @@ class ContactController extends Controller
 
         $contact->load('fieldValues');
         
-        $customFields = ContactField::forUser(auth()->id())
+        $customFields = ContactField::forUser(auth()->user()->accountId())
             ->active()
             ->ordered()
             ->get();

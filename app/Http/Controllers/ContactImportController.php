@@ -93,7 +93,7 @@ class ContactImportController extends Controller
             $preview = array_slice($rows, 0, 5);
 
             // Get user's custom fields
-            $customFields = ContactField::forUser(auth()->id())
+            $customFields = ContactField::forUser(auth()->user()->accountId())
                 ->active()
                 ->ordered()
                 ->get();
@@ -243,14 +243,15 @@ class ContactImportController extends Controller
     private function createNewFields(array $columns): array
     {
         $newFields = [];
-        $maxOrder = ContactField::forUser(auth()->id())->max('order') ?? 0;
+        $accountId = auth()->user()->accountId();
+        $maxOrder = ContactField::forUser($accountId)->max('order') ?? 0;
 
         foreach ($columns as $colIndex => $config) {
             if ($config['mapTo'] === 'new') {
                 $fieldName = !empty($config['header']) ? $config['header'] : "Campo {$colIndex}";
                 
                 // Check if field with same name already exists
-                $existingField = ContactField::forUser(auth()->id())
+                $existingField = ContactField::forUser($accountId)
                     ->where('name', $fieldName)
                     ->first();
 
@@ -259,7 +260,7 @@ class ContactImportController extends Controller
                 } else {
                     $maxOrder++;
                     $field = ContactField::create([
-                        'user_id' => auth()->id(),
+                        'user_id' => $accountId,
                         'name' => $fieldName,
                         'slug' => Str::slug($fieldName),
                         'type' => 'text',
@@ -320,7 +321,7 @@ class ContactImportController extends Controller
         $headers = ['Nome', 'Telefone', 'E-mail', 'Observações'];
 
         // Add custom field headers
-        $customFields = ContactField::forUser(auth()->id())
+        $customFields = ContactField::forUser(auth()->user()->accountId())
             ->active()
             ->ordered()
             ->get();
@@ -448,7 +449,7 @@ class ContactImportController extends Controller
 
             // Load existing contacts once (store as array of IDs keyed by normalized phone)
             if ($chunk === 0) {
-                $existingContactsData = Contact::where('user_id', auth()->id())
+                $existingContactsData = Contact::where('user_id', auth()->user()->accountId())
                     ->get()
                     ->mapWithKeys(function ($contact) {
                         $normalizedPhone = preg_replace('/\D/', '', $contact->phone);
@@ -549,7 +550,7 @@ class ContactImportController extends Controller
         }
 
         $contactData = [
-            'user_id' => auth()->id(),
+            'user_id' => auth()->user()->accountId(),
             'name' => null,
             'phone' => null,
             'email' => null,

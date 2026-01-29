@@ -6,6 +6,7 @@ use App\Http\Controllers\ContactImportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\WhatsAppEvolutionController;
+use App\Http\Controllers\Admin\AccountUsersController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -100,6 +101,14 @@ Route::middleware('auth')->group(function () {
     // Settings routes
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
 
+    // Gestão de usuários da conta (apenas admin)
+    Route::middleware('admin')->prefix('settings/users')->name('settings.users.')->group(function () {
+        Route::get('/', [AccountUsersController::class, 'index'])->name('index');
+        Route::post('/', [AccountUsersController::class, 'store'])->name('store');
+        Route::put('/{user}', [AccountUsersController::class, 'update'])->name('update');
+        Route::delete('/{user}', [AccountUsersController::class, 'destroy'])->name('destroy');
+    });
+
     // Rota temporária para limpar cache (apenas admin) - REMOVER após resolver o problema
     Route::middleware('admin')->post('/admin/clear-cache', function () {
         try {
@@ -143,6 +152,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/api', [WhatsAppEvolutionController::class, 'apiIndex'])->name('api');
         Route::post('/instance', [WhatsAppEvolutionController::class, 'createInstance'])->name('instance.create');
         Route::get('/connect/{instance}', [WhatsAppEvolutionController::class, 'connect'])->name('connect');
+        Route::get('/state/{instance}', [WhatsAppEvolutionController::class, 'state'])->name('state');
+        Route::post('/disconnect/{instance}', [WhatsAppEvolutionController::class, 'disconnect'])->name('disconnect');
+        Route::post('/delete/{instance}', [WhatsAppEvolutionController::class, 'delete'])->name('delete');
     });
 
     // Contact Fields routes (MUST be before resource to avoid conflicts)

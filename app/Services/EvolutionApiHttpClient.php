@@ -62,5 +62,12 @@ class EvolutionApiHttpClient
         $response = Http::timeout(30)->withHeaders($this->headers())->get($url, $query);
         return $this->normalize($response);
     }
+
+    public function delete(string $path, array $query = []): array
+    {
+        $url = "{$this->baseUrl}/" . ltrim($path, '/');
+        $response = Http::timeout(30)->withHeaders($this->headers())->delete($url, $query);
+        return $this->normalize($response);
+    }
 }
 

@@ -15,7 +15,7 @@ class ContactFieldController extends Controller
      */
     public function index(): View
     {
-        $fields = ContactField::forUser(auth()->id())
+        $fields = ContactField::forUser(auth()->user()->accountId())
             ->ordered()
             ->get();
 
@@ -37,10 +37,11 @@ class ContactFieldController extends Controller
      */
     public function store(ContactFieldRequest $request): RedirectResponse
     {
-        $maxOrder = ContactField::forUser(auth()->id())->max('order') ?? 0;
+        $accountId = auth()->user()->accountId();
+        $maxOrder = ContactField::forUser($accountId)->max('order') ?? 0;
 
         ContactField::create([
-            'user_id' => auth()->id(),
+            'user_id' => $accountId,
             'name' => $request->name,
             'type' => $request->type,
             'options' => $request->type === 'select' ? $this->parseOptions($request->options) : null,
@@ -127,7 +128,7 @@ class ContactFieldController extends Controller
 
         foreach ($request->fields as $order => $fieldId) {
             ContactField::where('id', $fieldId)
-                ->where('user_id', auth()->id())
+                ->where('user_id', auth()->user()->accountId())
                 ->update(['order' => $order]);
         }
 
@@ -153,7 +154,7 @@ class ContactFieldController extends Controller
      */
     private function authorizeField(ContactField $field): void
     {
-        if ($field->user_id !== auth()->id()) {
+        if ($field->user_id !== auth()->user()->accountId()) {
             abort(403);
         }
     }

@@ -9,6 +9,7 @@ use App\Models\WhatsAppInstance;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -28,6 +29,7 @@ class User extends Authenticatable
         'password',
         'role',
         'status',
+        'account_id',
     ];
 
     /**
@@ -111,5 +113,26 @@ class User extends Authenticatable
     public function activeWhatsappInstance(): HasOne
     {
         return $this->hasOne(WhatsAppInstance::class)->where('status', 'open');
+    }
+
+    /**
+     * ID da conta "dona" dos dados (compartilhamento entre usuários filho).
+     */
+    public function accountId(): int
+    {
+        return (int) ($this->account_id ?: $this->id);
+    }
+
+    public function accountOwner(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'account_id');
+    }
+
+    /**
+     * Usuários "filho" desta conta (exclui o próprio dono).
+     */
+    public function childUsers(): HasMany
+    {
+        return $this->hasMany(self::class, 'account_id', 'id')->whereColumn('users.id', '!=', 'users.account_id');
     }
 }

@@ -41,6 +41,12 @@ class RegisteredUserController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
+        // Conta raiz: o próprio usuário é dono dos dados
+        if ($user->account_id === null) {
+            $user->account_id = $user->id;
+            $user->save();
+        }
+
         event(new Registered($user));
 
         Auth::login($user);

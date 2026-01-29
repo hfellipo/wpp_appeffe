@@ -136,16 +136,16 @@
                                 <p class="text-gray-700 mb-4">
                                     {{ __('Funcionalidades administrativas disponíveis.') }}
                                 </p>
-                                <div class="space-y-2">
-                                    <p class="text-sm text-gray-600">
-                                        {{ __('• Gerenciar usuários') }}
-                                    </p>
-                                    <p class="text-sm text-gray-600">
-                                        {{ __('• Configurações do sistema') }}
-                                    </p>
-                                    <p class="text-sm text-gray-600">
-                                        {{ __('• Relatórios e estatísticas') }}
-                                    </p>
+                                <div class="space-y-3">
+                                    <div class="text-sm text-gray-700">
+                                        {{ __('Gerencie usuários que acessam os mesmos dados desta conta.') }}
+                                    </div>
+                                    <a href="{{ route('settings.users.index') }}" class="btn-primary inline-flex items-center">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 10-8 0 4 4 0 008 0zM15 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                                        </svg>
+                                        {{ __('Gerenciar usuários') }}
+                                    </a>
                                 </div>
                             </div>
                         </div>
