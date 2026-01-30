@@ -2,6 +2,14 @@
 
 use Illuminate\Support\Str;
 
+$connectTimeoutSeconds = (int) env('DB_CONNECT_TIMEOUT', env('APP_ENV') === 'local' ? 5 : 15);
+$connectTimeoutSeconds = max(1, $connectTimeoutSeconds);
+
+$persistent = filter_var(
+    env('DB_PERSISTENT', env('APP_ENV') === 'local' ? 'true' : 'false'),
+    FILTER_VALIDATE_BOOLEAN
+);
+
 return [
 
     /*
@@ -59,6 +67,10 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Prevent long hangs when DB is unreachable (especially in web requests)
+                PDO::ATTR_TIMEOUT => $connectTimeoutSeconds,
+                // Reduce connection overhead for polling-heavy UIs in local dev
+                PDO::ATTR_PERSISTENT => $persistent ? 1 : 0,
             ]) : [],
         ],
 
@@ -81,6 +93,8 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => $connectTimeoutSeconds,
+                PDO::ATTR_PERSISTENT => $persistent ? 1 : 0,
             ]) : [],
         ],
 
