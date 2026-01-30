@@ -112,6 +112,9 @@ class WhatsAppEvolutionController extends Controller
                 'POST /settings/whatsapp/instance' => [
                     'body' => ['whatsapp_number' => '5511999999999'],
                 ],
+                'GET /settings/whatsapp/status' => [
+                    'example' => '/settings/whatsapp/status',
+                ],
                 'GET /settings/whatsapp/connect/{instance}' => [
                     'example' => '/settings/whatsapp/connect/5511999999999',
                 ],
@@ -125,6 +128,52 @@ class WhatsAppEvolutionController extends Controller
                     'example' => '/settings/whatsapp/delete/5511999999999',
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * GET /settings/whatsapp/status
+     * Status do WhatsApp "padrão" do usuário (última instância).
+     *
+     * Observação: aqui não força chamada na Evolution (somente DB),
+     * para ser rápido/estável e não travar o Chat.
+     */
+    public function status(): JsonResponse
+    {
+        $build = 'wa-api-status-2026-01-30-01';
+
+        $accountId = auth()->user()->accountId();
+        $connectedStates = ['open', 'connected', 'online', 'ready'];
+
+        $latest = WhatsAppInstance::query()
+            ->where('user_id', $accountId)
+            ->orderByDesc('updated_at')
+            ->first(['id', 'instance_name', 'status', 'updated_at']);
+
+        if (!$latest) {
+            return response()->json([
+                'success' => true,
+                'build' => $build,
+                'configured' => $this->client->isConfigured(),
+                'hasInstance' => false,
+                'connected' => false,
+                'instanceName' => null,
+                'state' => null,
+            ]);
+        }
+
+        $instance = preg_replace('/\D/', '', (string) $latest->instance_name);
+        $state = (string) ($latest->status ?? '');
+        $connected = $instance !== '' && in_array(strtolower(trim($state)), $connectedStates, true);
+
+        return response()->json([
+            'success' => true,
+            'build' => $build,
+            'configured' => $this->client->isConfigured(),
+            'hasInstance' => true,
+            'connected' => $connected,
+            'instanceName' => $instance,
+            'state' => $state !== '' ? $state : null,
         ]);
     }
 

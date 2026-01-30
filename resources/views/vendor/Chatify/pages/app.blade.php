@@ -120,6 +120,92 @@
         <script>
             document.title = @json(config('chatify.name'));
         </script>
+        <script>
+            // WhatsApp (Evolution) - ao abrir o Chat:
+            // - identifica a última instância do usuário
+            // - checa o estado na Evolution
+            // - se não estiver conectado, tenta "connect" (pode exigir QR) e re-checa
+            // - atualiza o header (badge) via evento whatsapp-connection-changed
+            (function () {
+                const connectedStates = new Set(['connected', 'open', 'online', 'ready']);
+
+                const isConnected = (state) => {
+                    const s = String(state || '').trim().toLowerCase();
+                    return connectedStates.has(s);
+                };
+
+                const emitHeader = (connected) => {
+                    window.dispatchEvent(new CustomEvent('whatsapp-connection-changed', {
+                        detail: { connected: !!connected },
+                    }));
+                };
+
+                const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+                const fetchJson = async (url) => {
+                    const resp = await fetch(url, {
+                        headers: { 'Accept': 'application/json' },
+                        credentials: 'same-origin',
+                    });
+                    const payload = await resp.json().catch(() => ({}));
+                    return { ok: resp.ok, status: resp.status, payload };
+                };
+
+                const run = async () => {
+                    try {
+                        // 1) status (qual instância usar)
+                        const statusUrl = @json('/settings/whatsapp/status');
+                        const statusRes = await fetchJson(statusUrl);
+                        const data = statusRes.payload || {};
+
+                        if (!statusRes.ok) {
+                            emitHeader(false);
+                            return;
+                        }
+
+                        const inst = data.instanceName ? String(data.instanceName) : '';
+                        if (!inst) {
+                            emitHeader(false);
+                            return;
+                        }
+
+                        // 2) sempre re-checa o estado real na Evolution via endpoint existente
+                        const stateUrlBase = @json('/settings/whatsapp/state');
+                        const state1 = await fetchJson(stateUrlBase + '/' + encodeURIComponent(inst));
+                        const stateVal1 = state1.payload?.state ?? data.state ?? null;
+
+                        if (isConnected(stateVal1)) {
+                            window.__activeWhatsAppInstance = inst;
+                            emitHeader(true);
+                            return;
+                        }
+
+                        // 3) tentativa best-effort de "connect" (pode gerar QR; não garante conexão automática)
+                        const connectUrlBase = @json('/settings/whatsapp/connect');
+                        await fetchJson(connectUrlBase + '/' + encodeURIComponent(inst));
+
+                        // 4) re-checa após pequeno delay
+                        await sleep(900);
+                        const state2 = await fetchJson(stateUrlBase + '/' + encodeURIComponent(inst));
+                        const stateVal2 = state2.payload?.state ?? null;
+
+                        const connected = isConnected(stateVal2);
+                        if (connected) {
+                            window.__activeWhatsAppInstance = inst;
+                        }
+                        emitHeader(connected);
+                    } catch (e) {
+                        emitHeader(false);
+                    }
+                };
+
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', run, { once: true });
+                } else {
+                    run();
+                }
+            })();
+        </script>
         @include('Chatify::layouts.footerLinks')
     @endpush
 </x-app-layout>
