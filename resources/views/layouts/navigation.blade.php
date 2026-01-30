@@ -26,6 +26,9 @@
                     <x-nav-link :href="route('contacts.index')" :active="request()->routeIs('contacts.*')">
                         {{ __('Contatos') }}
                     </x-nav-link>
+                    <x-nav-link :href="route(config('chatify.routes.prefix'))" :active="request()->is(config('chatify.routes.prefix') . '*')">
+                        {{ __('Chat') }}
+                    </x-nav-link>
                 </div>
             </div>
 
@@ -112,6 +115,9 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('contacts.index')" :active="request()->routeIs('contacts.*')">
                 {{ __('Contatos') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route(config('chatify.routes.prefix'))" :active="request()->is(config('chatify.routes.prefix') . '*')">
+                {{ __('Chat') }}
             </x-responsive-nav-link>
         </div>
 

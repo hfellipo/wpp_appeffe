@@ -17,16 +17,17 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         'a4a119a56e50fbb293281d9a48007e0e' => __DIR__ . '/..' . '/symfony/polyfill-php80/bootstrap.php',
         '667aeda72477189d0494fecd327c3641' => __DIR__ . '/..' . '/symfony/var-dumper/Resources/functions/dump.php',
         '662a729f963d39afe703c9d9b7ab4a8c' => __DIR__ . '/..' . '/symfony/polyfill-php83/bootstrap.php',
-        '2cffec82183ee1cea088009cef9a6fc3' => __DIR__ . '/..' . '/ezyang/htmlpurifier/library/HTMLPurifier.composer.php',
-        '35a6ad97d21e794e7e22a17d806652e4' => __DIR__ . '/..' . '/nunomaduro/termwind/src/Functions.php',
         '7b11c4dc42b3b3023073cb14e519683c' => __DIR__ . '/..' . '/ralouphie/getallheaders/src/getallheaders.php',
+        '2cffec82183ee1cea088009cef9a6fc3' => __DIR__ . '/..' . '/ezyang/htmlpurifier/library/HTMLPurifier.composer.php',
+        '37a3dc5111fe8f707ab4c132ef1dbc62' => __DIR__ . '/..' . '/guzzlehttp/guzzle/src/functions_include.php',
+        '35a6ad97d21e794e7e22a17d806652e4' => __DIR__ . '/..' . '/nunomaduro/termwind/src/Functions.php',
+        '3109cb1a231dcd04bee1f9f620d46975' => __DIR__ . '/..' . '/paragonie/sodium_compat/autoload.php',
         '09f6b20656683369174dd6fa83b7e5fb' => __DIR__ . '/..' . '/symfony/polyfill-uuid/bootstrap.php',
         'a1105708a18b76903365ca1c4aa61b02' => __DIR__ . '/..' . '/symfony/translation/Resources/functions.php',
         '47e1160838b5e5a10346ac4084b58c23' => __DIR__ . '/..' . '/laravel/prompts/src/helpers.php',
         '6124b4c8570aa390c21fafd04a26c69f' => __DIR__ . '/..' . '/myclabs/deep-copy/src/DeepCopy/deep_copy.php',
         '801c31d8ed748cfa537fa45402288c95' => __DIR__ . '/..' . '/psy/psysh/src/functions.php',
         'e39a8b23c42d4e1452234d762b03835a' => __DIR__ . '/..' . '/ramsey/uuid/src/functions.php',
-        '37a3dc5111fe8f707ab4c132ef1dbc62' => __DIR__ . '/..' . '/guzzlehttp/guzzle/src/functions_include.php',
         '476ca15b8d69b04665cd879be9cb4c68' => __DIR__ . '/..' . '/laravel/framework/src/Illuminate/Collections/functions.php',
         '265b4faa2b3a9766332744949e83bf97' => __DIR__ . '/..' . '/laravel/framework/src/Illuminate/Collections/helpers.php',
         'c7a3c339e7e14b60e06a2d7fcce9476b' => __DIR__ . '/..' . '/laravel/framework/src/Illuminate/Events/functions.php',
@@ -95,6 +96,7 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         ),
         'P' => 
         array (
+            'Pusher\\' => 7,
             'Psy\\' => 4,
             'Psr\\SimpleCache\\' => 16,
             'Psr\\Log\\' => 8,
@@ -106,6 +108,7 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
             'PhpParser\\' => 10,
             'PhpOption\\' => 10,
             'PhpOffice\\PhpSpreadsheet\\' => 25,
+            'ParagonIE\\Sodium\\' => 17,
         ),
         'N' => 
         array (
@@ -170,6 +173,7 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
             'Composer\\Semver\\' => 16,
             'Composer\\Pcre\\' => 14,
             'Complex\\' => 8,
+            'Chatify\\' => 8,
             'Carbon\\Doctrine\\' => 16,
             'Carbon\\' => 7,
         ),
@@ -324,6 +328,10 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         array (
             0 => __DIR__ . '/..' . '/ramsey/collection/src',
         ),
+        'Pusher\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/pusher/pusher-php-server/src',
+        ),
         'Psy\\' => 
         array (
             0 => __DIR__ . '/..' . '/psy/psysh/src',
@@ -368,6 +376,10 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         'PhpOffice\\PhpSpreadsheet\\' => 
         array (
             0 => __DIR__ . '/..' . '/phpoffice/phpspreadsheet/src/PhpSpreadsheet',
+        ),
+        'ParagonIE\\Sodium\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced',
         ),
         'NunoMaduro\\Collision\\' => 
         array (
@@ -521,6 +533,10 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         'Complex\\' => 
         array (
             0 => __DIR__ . '/..' . '/markbaker/complex/classes/src',
+        ),
+        'Chatify\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/munafio/chatify/src',
         ),
         'Carbon\\Doctrine\\' => 
         array (
@@ -700,6 +716,14 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         'Carbon\\Translator' => __DIR__ . '/..' . '/nesbot/carbon/src/Carbon/Translator.php',
         'Carbon\\TranslatorImmutable' => __DIR__ . '/..' . '/nesbot/carbon/src/Carbon/TranslatorImmutable.php',
         'Carbon\\TranslatorStrongTypeInterface' => __DIR__ . '/..' . '/nesbot/carbon/src/Carbon/TranslatorStrongTypeInterface.php',
+        'Chatify\\ChatifyMessenger' => __DIR__ . '/..' . '/munafio/chatify/src/ChatifyMessenger.php',
+        'Chatify\\ChatifyServiceProvider' => __DIR__ . '/..' . '/munafio/chatify/src/ChatifyServiceProvider.php',
+        'Chatify\\Console\\InstallCommand' => __DIR__ . '/..' . '/munafio/chatify/src/Console/InstallCommand.php',
+        'Chatify\\Console\\PublishCommand' => __DIR__ . '/..' . '/munafio/chatify/src/Console/PublishCommand.php',
+        'Chatify\\Facades\\ChatifyMessenger' => __DIR__ . '/..' . '/munafio/chatify/src/Facades/ChatifyMessenger.php',
+        'Chatify\\Http\\Controllers\\Api\\MessagesController' => __DIR__ . '/..' . '/munafio/chatify/src/Http/Controllers/Api/MessagesController.php',
+        'Chatify\\Http\\Controllers\\MessagesController' => __DIR__ . '/..' . '/munafio/chatify/src/Http/Controllers/MessagesController.php',
+        'Chatify\\Traits\\UUID' => __DIR__ . '/..' . '/munafio/chatify/src/Traits/UUID.php',
         'Complex\\Complex' => __DIR__ . '/..' . '/markbaker/complex/classes/src/Complex.php',
         'Complex\\Exception' => __DIR__ . '/..' . '/markbaker/complex/classes/src/Exception.php',
         'Complex\\Functions' => __DIR__ . '/..' . '/markbaker/complex/classes/src/Functions.php',
@@ -4935,6 +4959,32 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         'PHPUnit\\Util\\Xml' => __DIR__ . '/..' . '/phpunit/phpunit/src/Util/Xml/Xml.php',
         'PHPUnit\\Util\\Xml\\Loader' => __DIR__ . '/..' . '/phpunit/phpunit/src/Util/Xml/Loader.php',
         'PHPUnit\\Util\\Xml\\XmlException' => __DIR__ . '/..' . '/phpunit/phpunit/src/Util/Exception/XmlException.php',
+        'ParagonIE\\Sodium\\Compat' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Compat.php',
+        'ParagonIE\\Sodium\\Core\\BLAKE2b' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/BLAKE2b.php',
+        'ParagonIE\\Sodium\\Core\\ChaCha20' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/ChaCha20.php',
+        'ParagonIE\\Sodium\\Core\\ChaCha20\\Ctx' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/ChaCha20/Ctx.php',
+        'ParagonIE\\Sodium\\Core\\ChaCha20\\IetfCtx' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/ChaCha20/IetfCtx.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519\\Fe' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519/Fe.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519\\Ge\\Cached' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519/Ge/Cached.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519\\Ge\\P1p1' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519/Ge/P1p1.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519\\Ge\\P2' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519/Ge/P2.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519\\Ge\\P3' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519/Ge/P3.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519\\Ge\\Precomp' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519/Ge/Precomp.php',
+        'ParagonIE\\Sodium\\Core\\Curve25519\\H' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Curve25519/H.php',
+        'ParagonIE\\Sodium\\Core\\Ed25519' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Ed25519.php',
+        'ParagonIE\\Sodium\\Core\\HChaCha20' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/HChaCha20.php',
+        'ParagonIE\\Sodium\\Core\\HSalsa20' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/HSalsa20.php',
+        'ParagonIE\\Sodium\\Core\\Poly1305' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Poly1305.php',
+        'ParagonIE\\Sodium\\Core\\Poly1305\\State' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Poly1305/State.php',
+        'ParagonIE\\Sodium\\Core\\Salsa20' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Salsa20.php',
+        'ParagonIE\\Sodium\\Core\\SipHash' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/SipHash.php',
+        'ParagonIE\\Sodium\\Core\\Util' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Util.php',
+        'ParagonIE\\Sodium\\Core\\X25519' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/X25519.php',
+        'ParagonIE\\Sodium\\Core\\XChaCha20' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/XChaCha20.php',
+        'ParagonIE\\Sodium\\Core\\Xsalsa20' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Core/Xsalsa20.php',
+        'ParagonIE\\Sodium\\Crypto' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/Crypto.php',
+        'ParagonIE\\Sodium\\File' => __DIR__ . '/..' . '/paragonie/sodium_compat/namespaced/File.php',
         'PharIo\\Manifest\\Application' => __DIR__ . '/..' . '/phar-io/manifest/src/values/Application.php',
         'PharIo\\Manifest\\ApplicationName' => __DIR__ . '/..' . '/phar-io/manifest/src/values/ApplicationName.php',
         'PharIo\\Manifest\\Author' => __DIR__ . '/..' . '/phar-io/manifest/src/values/Author.php',
@@ -6049,6 +6099,13 @@ class ComposerStaticInit626b9e7ddd47fb7eff9aaa53cce0c9ad
         'Psy\\VersionUpdater\\IntervalChecker' => __DIR__ . '/..' . '/psy/psysh/src/VersionUpdater/IntervalChecker.php',
         'Psy\\VersionUpdater\\NoopChecker' => __DIR__ . '/..' . '/psy/psysh/src/VersionUpdater/NoopChecker.php',
         'Psy\\VersionUpdater\\SelfUpdate' => __DIR__ . '/..' . '/psy/psysh/src/VersionUpdater/SelfUpdate.php',
+        'Pusher\\ApiErrorException' => __DIR__ . '/..' . '/pusher/pusher-php-server/src/ApiErrorException.php',
+        'Pusher\\Pusher' => __DIR__ . '/..' . '/pusher/pusher-php-server/src/Pusher.php',
+        'Pusher\\PusherCrypto' => __DIR__ . '/..' . '/pusher/pusher-php-server/src/PusherCrypto.php',
+        'Pusher\\PusherException' => __DIR__ . '/..' . '/pusher/pusher-php-server/src/PusherException.php',
+        'Pusher\\PusherInstance' => __DIR__ . '/..' . '/pusher/pusher-php-server/src/PusherInstance.php',
+        'Pusher\\PusherInterface' => __DIR__ . '/..' . '/pusher/pusher-php-server/src/PusherInterface.php',
+        'Pusher\\Webhook' => __DIR__ . '/..' . '/pusher/pusher-php-server/src/Webhook.php',
         'Ramsey\\Collection\\AbstractArray' => __DIR__ . '/..' . '/ramsey/collection/src/AbstractArray.php',
         'Ramsey\\Collection\\AbstractCollection' => __DIR__ . '/..' . '/ramsey/collection/src/AbstractCollection.php',
         'Ramsey\\Collection\\AbstractSet' => __DIR__ . '/..' . '/ramsey/collection/src/AbstractSet.php',
