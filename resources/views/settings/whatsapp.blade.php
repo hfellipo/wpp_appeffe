@@ -282,6 +282,7 @@
                     loading: false,
                     _checkTimer: null,
                     _checking: false,
+                    _headerConnected: null,
                     confirmDisconnectOpen: false,
                     confirmDisconnectInstance: '',
                     qrModalOpen: false,
@@ -318,6 +319,15 @@
                         // Ao atualizar a página, sempre checa o status na Evolution.
                         // (silencioso; só mostra mensagem se estiver conectado)
                         this.refreshAllStates({ silent: true });
+                    },
+
+                    emitHeaderConnection(connected) {
+                        const next = !!connected;
+                        if (this._headerConnected === next) return;
+                        this._headerConnected = next;
+                        window.dispatchEvent(new CustomEvent('whatsapp-connection-changed', {
+                            detail: { connected: next },
+                        }));
                     },
 
                     isConnectedStatus(status) {
@@ -374,7 +384,10 @@
 
                         try {
                             const instances = this.getKnownInstances();
-                            if (!instances.length) return;
+                            if (!instances.length) {
+                                this.emitHeaderConnection(false);
+                                return;
+                            }
 
                             let anyConnected = false;
                             for (const inst of instances) {
@@ -387,6 +400,8 @@
                                 // eslint-disable-next-line no-await-in-loop
                                 await new Promise((r) => setTimeout(r, 150));
                             }
+
+                            this.emitHeaderConnection(anyConnected);
 
                             if (!silent && anyConnected) {
                                 this.successMessage = 'WhatsApp conectado com sucesso.';
