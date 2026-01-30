@@ -26,6 +26,11 @@
                     <x-nav-link :href="route('contacts.index')" :active="request()->routeIs('contacts.*')">
                         {{ __('Contatos') }}
                     </x-nav-link>
+                    @if(Route::has('whatsapp.inbox.index'))
+                        <x-nav-link :href="route('whatsapp.inbox.index')" :active="request()->is('whatsapp*')">
+                            {{ __('WhatsApp') }}
+                        </x-nav-link>
+                    @endif
                     <x-nav-link :href="route(config('chatify.routes.prefix'))" :active="request()->is(config('chatify.routes.prefix') . '*')">
                         {{ __('Chat') }}
                     </x-nav-link>
@@ -116,6 +121,11 @@
             <x-responsive-nav-link :href="route('contacts.index')" :active="request()->routeIs('contacts.*')">
                 {{ __('Contatos') }}
             </x-responsive-nav-link>
+            @if(Route::has('whatsapp.inbox.index'))
+                <x-responsive-nav-link :href="route('whatsapp.inbox.index')" :active="request()->is('whatsapp*')">
+                    {{ __('WhatsApp') }}
+                </x-responsive-nav-link>
+            @endif
             <x-responsive-nav-link :href="route(config('chatify.routes.prefix'))" :active="request()->is(config('chatify.routes.prefix') . '*')">
                 {{ __('Chat') }}
             </x-responsive-nav-link>

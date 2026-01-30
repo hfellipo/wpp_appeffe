@@ -6,6 +6,8 @@ use App\Http\Controllers\ContactImportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\WhatsAppEvolutionController;
+use App\Http\Controllers\WhatsAppInboxController;
+use App\Http\Controllers\EvolutionWebhookController;
 use App\Http\Controllers\Admin\AccountUsersController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +49,17 @@ Route::match(['get', 'post'], '/public/debug/test', function (Request $request) 
 })->name('debug.test.public');
 
 // Evolution API Webhook routes - REMOVIDAS (será refeito do zero)
+Route::post('/webhook/evolution', [EvolutionWebhookController::class, 'handle'])->name('webhook.evolution');
+Route::match(['get', 'post'], '/webhook/evolution/test', function (Request $request) {
+    return response()->json([
+        'ok' => true,
+        'method' => $request->method(),
+        'path' => $request->getPathInfo(),
+        'received' => $request->all(),
+        'headers' => $request->headers->all(),
+        'timestamp' => now()->toIso8601String(),
+    ]);
+})->name('webhook.evolution.test');
 
 // API de teste simples - retorna apenas status básico
 Route::get('/api/ping', function () {
@@ -93,6 +106,14 @@ Route::get('/debug/db-test', function () {
 });
 
 Route::middleware('auth')->group(function () {
+    // WhatsApp Inbox (separado do Chatify)
+    Route::prefix('whatsapp')->name('whatsapp.inbox.')->group(function () {
+        Route::get('/', [WhatsAppInboxController::class, 'index'])->name('index');
+        Route::get('/api/conversations', [WhatsAppInboxController::class, 'conversations'])->name('api.conversations');
+        Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');
+        Route::post('/api/conversations/{conversation}/send', [WhatsAppInboxController::class, 'send'])->name('api.send');
+    });
+
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
