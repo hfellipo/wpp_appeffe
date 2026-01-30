@@ -52,22 +52,49 @@ class EvolutionApiHttpClient
     public function post(string $path, array $payload): array
     {
         $url = "{$this->baseUrl}/" . ltrim($path, '/');
-        $response = Http::timeout(30)->withHeaders($this->headers())->asJson()->post($url, $payload);
-        return $this->normalize($response);
+        try {
+            $response = Http::timeout(15)->withHeaders($this->headers())->asJson()->post($url, $payload);
+            return $this->normalize($response);
+        } catch (\Throwable $e) {
+            return [
+                'status' => 0,
+                'json' => null,
+                'text' => $e->getMessage(),
+                'headers' => [],
+            ];
+        }
     }
 
     public function get(string $path, array $query = []): array
     {
         $url = "{$this->baseUrl}/" . ltrim($path, '/');
-        $response = Http::timeout(30)->withHeaders($this->headers())->get($url, $query);
-        return $this->normalize($response);
+        try {
+            $response = Http::timeout(10)->withHeaders($this->headers())->get($url, $query);
+            return $this->normalize($response);
+        } catch (\Throwable $e) {
+            return [
+                'status' => 0,
+                'json' => null,
+                'text' => $e->getMessage(),
+                'headers' => [],
+            ];
+        }
     }
 
     public function delete(string $path, array $query = []): array
     {
         $url = "{$this->baseUrl}/" . ltrim($path, '/');
-        $response = Http::timeout(30)->withHeaders($this->headers())->delete($url, $query);
-        return $this->normalize($response);
+        try {
+            $response = Http::timeout(10)->withHeaders($this->headers())->delete($url, $query);
+            return $this->normalize($response);
+        } catch (\Throwable $e) {
+            return [
+                'status' => 0,
+                'json' => null,
+                'text' => $e->getMessage(),
+                'headers' => [],
+            ];
+        }
     }
 }
 

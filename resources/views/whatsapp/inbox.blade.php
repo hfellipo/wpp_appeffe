@@ -201,6 +201,8 @@
                     _statusTimer: null,
                     _isAtBottom: true,
                     _lastMessageId: 0,
+                    _pollInFlight: false,
+                    _timersRunning: false,
 
                     get filteredConversations() {
                         const q = String(this.search || '').toLowerCase().trim();
@@ -228,14 +230,40 @@
                         await this.refreshStatus();
                         await this.refreshConversations();
 
-                        this._pollTimer = setInterval(() => this.poll(), 2500);
-                        this._statusTimer = setInterval(() => this.refreshStatus(), 10000);
+                        this.startTimers();
+
+                        // Pause polling when the tab is hidden (avoids hammering DB)
+                        document.addEventListener('visibilitychange', () => {
+                            if (document.hidden) this.stopTimers();
+                            else this.startTimers();
+                        });
+                    },
+
+                    startTimers() {
+                        if (this._timersRunning) return;
+                        this._timersRunning = true;
+                        this._pollTimer = setInterval(() => this.poll(), 7000);
+                        this._statusTimer = setInterval(() => this.refreshStatus(), 15000);
+                    },
+
+                    stopTimers() {
+                        this._timersRunning = false;
+                        if (this._pollTimer) clearInterval(this._pollTimer);
+                        if (this._statusTimer) clearInterval(this._statusTimer);
+                        this._pollTimer = null;
+                        this._statusTimer = null;
                     },
 
                     async poll() {
-                        await this.refreshConversations();
-                        if (this.activeConversation) {
-                            await this.pollMessages(this.activeConversation);
+                        if (this._pollInFlight) return;
+                        this._pollInFlight = true;
+                        try {
+                            await this.refreshConversations(true);
+                            if (this.activeConversation) {
+                                await this.pollMessages(this.activeConversation);
+                            }
+                        } finally {
+                            this._pollInFlight = false;
                         }
                     },
 
@@ -257,14 +285,14 @@
                         }
                     },
 
-                    async refreshConversations() {
-                        this.loadingConversations = true;
+                    async refreshConversations(silent = false) {
+                        if (!silent) this.loadingConversations = true;
                         try {
                             const resp = await fetch('/whatsapp/api/conversations', { headers: { 'Accept': 'application/json' } });
                             const data = await resp.json().catch(() => ({}));
                             this.conversations = Array.isArray(data.items) ? data.items : [];
                         } finally {
-                            this.loadingConversations = false;
+                            if (!silent) this.loadingConversations = false;
                         }
                     },
 
@@ -290,7 +318,7 @@
                     async pollMessages(c) {
                         try {
                             const after = this._lastMessageId || 0;
-                            const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages?after_id=${encodeURIComponent(after)}`, { headers: { 'Accept': 'application/json' } });
+                            const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages?after=${encodeURIComponent(after)}`, { headers: { 'Accept': 'application/json' } });
                             const data = await resp.json().catch(() => ({}));
                             const items = Array.isArray(data.items) ? data.items : [];
                             if (!items.length) return;

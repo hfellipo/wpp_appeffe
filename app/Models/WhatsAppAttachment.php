@@ -4,34 +4,28 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-class WhatsAppMessage extends Model
+class WhatsAppAttachment extends Model
 {
     use HasFactory;
 
-    protected $table = 'whatsapp_messages';
+    protected $table = 'whatsapp_attachments';
 
     protected $fillable = [
         'public_id',
-        'conversation_id',
-        'direction', // in|out
-        'message_type', // text|image|video|document|audio|unknown
-        'body',
-        'remote_id',
-        'status',
-        'sent_at',
-        'delivered_at',
-        'read_at',
+        'message_id',
+        'type',
+        'mime',
+        'size',
+        'storage_disk',
+        'storage_path',
+        'remote_url',
+        'caption_preview',
         'raw_payload',
     ];
 
     protected $casts = [
-        'body' => 'encrypted',
-        'sent_at' => 'datetime',
-        'delivered_at' => 'datetime',
-        'read_at' => 'datetime',
         'raw_payload' => 'encrypted:array',
     ];
 
@@ -48,10 +42,4 @@ class WhatsAppMessage extends Model
             }
         });
     }
-
-    public function conversation(): BelongsTo
-    {
-        return $this->belongsTo(WhatsAppConversation::class, 'conversation_id');
-    }
 }
-

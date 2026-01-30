@@ -4,40 +4,28 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-class WhatsAppConversation extends Model
+class WhatsAppContact extends Model
 {
     use HasFactory;
 
-    protected $table = 'whatsapp_conversations';
+    protected $table = 'whatsapp_contacts';
 
     protected $fillable = [
         'public_id',
         'user_id',
         'instance_name',
-        'kind',
-        'peer_jid',
+        'contact_jid',
         'contact_number',
-        'contact_name',
-        'last_message_at',
-        'last_message_preview',
-        'unread_count',
+        'display_name',
+        'avatar_url',
         'metadata',
     ];
 
     protected $casts = [
-        'last_message_at' => 'datetime',
-        'unread_count' => 'integer',
         'metadata' => 'array',
     ];
-
-    public function messages(): HasMany
-    {
-        return $this->hasMany(WhatsAppMessage::class, 'conversation_id');
-    }
 
     public function getRouteKeyName(): string
     {
@@ -52,10 +40,4 @@ class WhatsAppConversation extends Model
             }
         });
     }
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
 }
-

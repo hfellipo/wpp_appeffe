@@ -34,7 +34,7 @@ class WhatsAppInboxController extends Controller
             ->orderByDesc('updated_at')
             ->limit(100)
             ->get([
-                'id',
+                'public_id',
                 'instance_name',
                 'contact_number',
                 'contact_name',
@@ -45,7 +45,18 @@ class WhatsAppInboxController extends Controller
 
         return response()->json([
             'success' => true,
-            'items' => $items,
+            // Do not expose internal numeric IDs
+            'items' => $items->map(function (WhatsAppConversation $c) {
+                return [
+                    'id' => $c->public_id,
+                    'instance_name' => $c->instance_name,
+                    'contact_number' => $c->contact_number,
+                    'contact_name' => $c->contact_name,
+                    'last_message_at' => optional($c->last_message_at)->toIso8601String(),
+                    'last_message_preview' => $c->last_message_preview,
+                    'unread_count' => (int) $c->unread_count,
+                ];
+            })->values(),
         ]);
     }
 
@@ -56,19 +67,20 @@ class WhatsAppInboxController extends Controller
             return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
         }
 
-        $afterId = (int) request()->query('after_id', 0);
+        $after = (string) request()->query('after', '');
 
         $q = WhatsAppMessage::query()
             ->where('conversation_id', $conversation->id);
 
-        if ($afterId > 0) {
-            $q->where('id', '>', $afterId)->orderBy('id');
+        if ($after !== '') {
+            // ULID is lexicographically sortable; use public_id cursor
+            $q->where('public_id', '>', $after)->orderBy('public_id');
         } else {
-            $q->orderByDesc('created_at')->limit(200);
+            $q->orderByDesc('public_id')->limit(200);
         }
 
         $items = $q->get([
-            'id',
+            'public_id',
             'direction',
             'message_type',
             'body',
@@ -77,7 +89,7 @@ class WhatsAppInboxController extends Controller
             'created_at',
         ]);
 
-        if ($afterId <= 0) {
+        if ($after === '') {
             $items = $items->reverse()->values();
         }
 
@@ -89,7 +101,18 @@ class WhatsAppInboxController extends Controller
 
         return response()->json([
             'success' => true,
-            'items' => $items,
+            // Do not expose internal numeric IDs
+            'items' => $items->map(function (WhatsAppMessage $m) {
+                return [
+                    'id' => $m->public_id,
+                    'direction' => $m->direction,
+                    'message_type' => $m->message_type,
+                    'body' => $m->body,
+                    'status' => $m->status,
+                    'sent_at' => optional($m->sent_at)->toIso8601String(),
+                    'created_at' => optional($m->created_at)->toIso8601String(),
+                ];
+            })->values(),
         ]);
     }
 
@@ -163,7 +186,15 @@ class WhatsAppInboxController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $msg,
+            'message' => [
+                'id' => $msg->public_id,
+                'direction' => $msg->direction,
+                'message_type' => $msg->message_type,
+                'body' => $msg->body,
+                'status' => $msg->status,
+                'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                'created_at' => optional($msg->created_at)->toIso8601String(),
+            ],
         ]);
     }
 }
