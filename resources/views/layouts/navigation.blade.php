@@ -75,7 +75,7 @@
                             {{ __('Configurações') }}
                         </x-dropdown-link>
 
-                        @if(Auth::user()->isAdmin())
+                        @if(Auth::user()->isAdmin() && Route::has('settings.users.index'))
                             <x-dropdown-link :href="route('settings.users.index')">
                                 {{ __('Gerenciar usuários') }}
                             </x-dropdown-link>
@@ -158,7 +158,7 @@
                     {{ __('Configurações') }}
                 </x-responsive-nav-link>
 
-                @if(Auth::user()->isAdmin())
+                @if(Auth::user()->isAdmin() && Route::has('settings.users.index'))
                     <x-responsive-nav-link :href="route('settings.users.index')">
                         {{ __('Gerenciar usuários') }}
                     </x-responsive-nav-link>
