@@ -10,6 +10,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $driver = Schema::getConnection()->getDriverName();
+
         // Conversations
         Schema::table('whatsapp_conversations', function (Blueprint $table) {
             $table->char('public_id', 26)->nullable()->after('id');
@@ -27,8 +29,14 @@ return new class extends Migration
                 }
             });
 
+        // Avoid Blueprint::change() (requires doctrine/dbal). Enforce NOT NULL best-effort by driver.
+        if ($driver === 'mysql') {
+            DB::statement('ALTER TABLE `whatsapp_conversations` MODIFY `public_id` CHAR(26) NOT NULL');
+        } elseif ($driver === 'pgsql') {
+            DB::statement('ALTER TABLE "whatsapp_conversations" ALTER COLUMN "public_id" SET NOT NULL');
+        }
+
         Schema::table('whatsapp_conversations', function (Blueprint $table) {
-            $table->char('public_id', 26)->nullable(false)->change();
             $table->unique('public_id', 'wa_conv_public_id_unique');
             $table->index(['user_id', 'public_id'], 'wa_conv_user_public_idx');
         });
@@ -50,8 +58,13 @@ return new class extends Migration
                 }
             });
 
+        if ($driver === 'mysql') {
+            DB::statement('ALTER TABLE `whatsapp_messages` MODIFY `public_id` CHAR(26) NOT NULL');
+        } elseif ($driver === 'pgsql') {
+            DB::statement('ALTER TABLE "whatsapp_messages" ALTER COLUMN "public_id" SET NOT NULL');
+        }
+
         Schema::table('whatsapp_messages', function (Blueprint $table) {
-            $table->char('public_id', 26)->nullable(false)->change();
             $table->unique('public_id', 'wa_msg_public_id_unique');
             $table->index(['conversation_id', 'public_id'], 'wa_msg_conv_public_idx');
         });

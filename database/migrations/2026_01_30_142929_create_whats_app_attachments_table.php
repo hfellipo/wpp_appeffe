@@ -16,7 +16,9 @@ return new class extends Migration
 
             $table->char('public_id', 26)->unique('wa_attach_public_id_unique');
 
-            $table->foreignId('message_id')->constrained('whatsapp_messages')->cascadeOnDelete();
+            // This migration runs before whatsapp_messages in fresh installs/tests.
+            // We create the column without FK here to avoid migration-order failures.
+            $table->unsignedBigInteger('message_id')->index('wa_attach_message_id_idx');
 
             $table->string('type')->nullable(); // image|video|document|audio|sticker|unknown
             $table->string('mime')->nullable();
@@ -33,7 +35,7 @@ return new class extends Migration
             $table->string('caption_preview', 500)->nullable();
 
             // encrypt large/sensitive payloads
-            $table->json('raw_payload')->nullable();
+            $table->longText('raw_payload')->nullable();
 
             $table->timestamps();
 

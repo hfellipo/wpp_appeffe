@@ -14,7 +14,11 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id');
 
             $table->string('instance_name');
-            $table->string('contact_number');
+            // direct|group (we still keep the legacy contact_* fields for the UI)
+            $table->string('kind')->default('direct');
+            $table->string('peer_jid'); // e.g. 5511...@s.whatsapp.net OR 123-456@g.us
+
+            $table->string('contact_number')->nullable();
             $table->string('contact_name')->nullable();
 
             $table->timestamp('last_message_at')->nullable();
@@ -27,7 +31,8 @@ return new class extends Migration
 
             $table->index(['user_id', 'last_message_at']);
             $table->index(['user_id', 'instance_name']);
-            $table->unique(['user_id', 'instance_name', 'contact_number'], 'wa_conv_unique');
+            $table->index('peer_jid', 'wa_conv_peer_jid_idx');
+            $table->unique(['user_id', 'instance_name', 'peer_jid'], 'wa_conv_peer_unique');
         });
     }
 

@@ -24,7 +24,8 @@ return new class extends Migration
             $table->timestamp('delivered_at')->nullable();
             $table->timestamp('read_at')->nullable();
 
-            $table->json('raw_payload')->nullable();
+            // We store encrypted payloads, so JSON column type cannot be used.
+            $table->longText('raw_payload')->nullable();
 
             $table->timestamps();
 
