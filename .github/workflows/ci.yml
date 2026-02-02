@@ -1,23 +1,10 @@
-# Deploy via rsync para o servidor. Dispara em push para main/master ou manualmente.
-name: 🚀 Deploy Full (Server Sync)
+name: 🚀 Deploy Incremental (rsync only)
 
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      deploy_env:
-        description: "Enviar .env a partir do secret ENV_FILE (use no deploy do zero)"
-        required: false
-        default: false
-        type: boolean
-      clean_remote:
-        description: "Deletar arquivos remotos que não existem mais no repo (CUIDADO)"
-        required: false
-        default: false
-        type: boolean
 
-# Evita fila / travamento: se entrar novo deploy no mesmo branch, cancela o anterior
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
@@ -25,183 +12,36 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
-      - name: 📥 Checkout Code
+      - name: 📥 Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: 🔐 Validate deploy secrets
         run: |
-          if [ -z "${{ secrets.SFTP_HOST }}" ] || [ -z "${{ secrets.SFTP_USERNAME }}" ] || [ -z "${{ secrets.SFTP_PASSWORD }}" ]; then
-            echo "Missing one of: SFTP_HOST / SFTP_USERNAME / SFTP_PASSWORD"
-            exit 1
-          fi
-          if [ -z "${{ secrets.SFTP_REMOTE_DIR }}" ]; then
-            echo "Missing secret: SFTP_REMOTE_DIR"
-            exit 1
-          fi
+          set -e
+          for k in SFTP_HOST SFTP_USERNAME SFTP_PASSWORD SFTP_REMOTE_DIR; do
+            if [ -z "${{ secrets[k] }}" ]; then
+              echo "❌ Missing secret: $k"
+              exit 1
+            fi
+          done
           case "${{ secrets.SFTP_REMOTE_DIR }}" in
             "~"* )
-              echo "SFTP_REMOTE_DIR cannot start with '~'. Use an absolute path like /var/www/.../web."
+              echo "❌ SFTP_REMOTE_DIR must be absolute (ex: /var/www/.../web)"
               exit 1
               ;;
           esac
 
-      - name: 🧰 Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: 📦 Install Frontend Dependencies
-        run: npm ci
-
-      - name: 🏗️ Build Frontend (Vite)
-        run: npm run build
-
-      - name: 🐘 Setup PHP (for Composer)
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.1'
-          tools: composer:v2
-
-      - name: 📦 Install PHP Dependencies (Composer)
-        run: composer install --no-interaction --no-dev --prefer-dist --optimize-autoloader
-
-      - name: 📁 Ensure Remote Directory Exists (Server)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SFTP_HOST }}
-          username: ${{ secrets.SFTP_USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          script: |
-            set -e
-            mkdir -p "${{ secrets.SFTP_REMOTE_DIR }}"
-            cd "${{ secrets.SFTP_REMOTE_DIR }}"
-            mkdir -p \
-              public/build/assets \
-              storage/framework/views \
-              storage/framework/cache/data \
-              storage/framework/sessions \
-              storage/framework/testing \
-              storage/logs \
-              bootstrap/cache || true
-            echo "Remote dir ok: ${{ secrets.SFTP_REMOTE_DIR }}"
-
-      - name: 🛠️ Ensure public/build is writable (Server)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SFTP_HOST }}
-          username: ${{ secrets.SFTP_USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          script: |
-            cd "${{ secrets.SFTP_REMOTE_DIR }}"
-            echo "== whoami ==" && whoami || true
-            rm -rf public/build 2>/dev/null || true
-            mkdir -p public/build/assets || true
-            chmod -R u+rwX public/build storage bootstrap/cache 2>/dev/null || true
-            chmod -R g+rwX public/build storage bootstrap/cache 2>/dev/null || true
-            ls -ld public public/build public/build/assets storage storage/framework storage/framework/views storage/logs bootstrap/cache 2>/dev/null || true
-
-      - name: 🔧 Prepare Deploy (full)
-        run: |
-          set -e
-          rm -rf deploy_temp
-          mkdir -p deploy_temp
-
-<<<<<<< HEAD
-          echo "📦 Copiando projeto (sem .git/node_modules/vendor/build/storage/bootstrap/cache)"
-          tar \
-            --exclude='./.git' \
-            --exclude='./node_modules' \
-            --exclude='./vendor' \
-            --exclude='./public/build' \
-            --exclude='./storage' \
-            --exclude='./bootstrap/cache' \
-            -cf - . | tar -x -C deploy_temp
-=======
-          echo "📦 Exportando repo inteiro (git archive)"
-          git archive --format=tar HEAD | tar -x -C deploy_temp
->>>>>>> parent of a7a02b9e (Update ci.yml)
-
-          # Include Vite build
-          if [ ! -f public/build/manifest.json ]; then
-            echo "❌ public/build/manifest.json não encontrado. O build do Vite falhou?"
-            exit 1
-          fi
-          mkdir -p deploy_temp/public
-          rm -rf deploy_temp/public/build
-          cp -a public/build deploy_temp/public/build
-          echo "📦 Incluído: public/build"
-
-          # Include vendor
-          if [ ! -d vendor ]; then
-            echo "❌ vendor/ não encontrado. O composer install falhou?"
-            exit 1
-          fi
-          rm -rf deploy_temp/vendor
-          cp -a vendor deploy_temp/vendor
-          echo "📦 Incluído: vendor/"
-
-          # Optional .env from secret
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.deploy_env }}" = "true" ]; then
-            if [ -n "${{ secrets.ENV_FILE }}" ]; then
-              echo "${{ secrets.ENV_FILE }}" > deploy_temp/.env
-              echo "🔐 Incluído: .env a partir do secret ENV_FILE"
-            else
-              echo "⚠️ deploy_env=true mas secret ENV_FILE não está configurado."
-            fi
-          fi
-
-      - name: ✅ Check Deploy Files
-        id: check_deploy
-        run: |
-          if [ -d deploy_temp ] && find deploy_temp -maxdepth 2 -type f -print -quit | grep -q .; then
-            echo "has_deploy_files=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_deploy_files=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: 🧰 Install rsync + sshpass
-        if: steps.check_deploy.outputs.has_deploy_files == 'true'
-<<<<<<< HEAD
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync sshpass
 
-      - name: 🔎 Preview deploy changes (rsync dry-run)
-        if: steps.check_deploy.outputs.has_deploy_files == 'true'
-        env:
-          SSHPASS: ${{ secrets.SFTP_PASSWORD }}
-        run: |
-          set -e
-          PORT="${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}"
-          HOST="${{ secrets.SFTP_HOST }}"
-          USER="${{ secrets.SFTP_USERNAME }}"
-          REMOTE_DIR="${{ secrets.SFTP_REMOTE_DIR }}"
-
-          # Delete só se for manual + clean_remote=true
-          DELETE_FLAG=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.clean_remote }}" = "true" ]; then
-            DELETE_FLAG="--delete"
-          fi
-
-          echo "== DRY RUN (what would change) =="
-          sshpass -e rsync -azn ${DELETE_FLAG} --itemize-changes \
-            -e "ssh -p ${PORT} -o StrictHostKeyChecking=no" \
-            --exclude ".env" \
-            --exclude "storage/***" \
-            --exclude "bootstrap/cache/***" \
-            --exclude "public/storage/***" \
-            "./deploy_temp/" "${USER}@${HOST}:${REMOTE_DIR}/" | sed -n '1,250p'
-
       - name: 🚀 Deploy incremental (rsync)
-        if: steps.check_deploy.outputs.has_deploy_files == 'true'
         env:
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
@@ -211,75 +51,14 @@ jobs:
           USER="${{ secrets.SFTP_USERNAME }}"
           REMOTE_DIR="${{ secrets.SFTP_REMOTE_DIR }}"
 
-          # Delete só se for manual + clean_remote=true
-          DELETE_FLAG=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.clean_remote }}" = "true" ]; then
-            DELETE_FLAG="--delete"
-          fi
+          echo "🚀 Deploying to ${USER}@${HOST}:${REMOTE_DIR}"
 
-          echo "== DEPLOY =="
-          sshpass -e rsync -az ${DELETE_FLAG} --info=stats2 --human-readable \
+          sshpass -e rsync -az --human-readable --stats \
             -e "ssh -p ${PORT} -o StrictHostKeyChecking=no" \
+            --exclude ".git" \
             --exclude ".env" \
+            --exclude "node_modules/***" \
+            --exclude "vendor/***" \
             --exclude "storage/***" \
             --exclude "bootstrap/cache/***" \
-            --exclude "public/storage/***" \
-            "./deploy_temp/" "${USER}@${HOST}:${REMOTE_DIR}/"
-=======
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
-        with:
-          server: ${{ secrets.SFTP_HOST }}
-          username: ${{ secrets.SFTP_USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          local_path: './deploy_temp/*'
-          remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
-          sftp_only: false
-          delete_remote_files: ${{ github.event.inputs.clean_remote }}
->>>>>>> parent of a7a02b9e (Update ci.yml)
-
-      - name: 🧹 Post-deploy (Server)
-        if: steps.check_deploy.outputs.has_deploy_files == 'true'
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SFTP_HOST }}
-          username: ${{ secrets.SFTP_USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          script: |
-            cd "${{ secrets.SFTP_REMOTE_DIR }}"
-            rm -f public/hot || true
-            mkdir -p \
-              storage/framework/views \
-              storage/framework/cache/data \
-              storage/framework/sessions \
-              storage/framework/testing \
-              storage/logs \
-              bootstrap/cache || true
-
-            # Fix permissions so PHP can write compiled views/cache
-            # (common on shared hosting / PHP-FPM pools with different users)
-            chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
-            chmod -R 775 storage bootstrap/cache 2>/dev/null || true
-
-            # If still not writable, fall back to 777 for required subdirs only.
-            if ! ( : > storage/framework/views/.permtest 2>/dev/null ); then
-              chmod -R 777 \
-                storage/framework/views \
-                storage/framework/cache \
-                storage/framework/sessions \
-                storage/logs \
-                bootstrap/cache 2>/dev/null || true
-              : > storage/framework/views/.permtest 2>/dev/null || true
-            fi
-            rm -f storage/framework/views/.permtest 2>/dev/null || true
-
-            # If config/views caches were generated when paths were invalid, Laravel/Artisan may crash.
-            # Remove them explicitly before running Artisan.
-            rm -f bootstrap/cache/config.php bootstrap/cache/packages.php bootstrap/cache/services.php 2>/dev/null || true
-            rm -rf storage/framework/views/* 2>/dev/null || true
-            php artisan optimize:clear || true
-
-      - name: 🧹 Cleanup
-        if: always()
-        run: rm -rf deploy_temp
+            "./" "${USER}@${HOST}:${REMOTE_DIR}/"
