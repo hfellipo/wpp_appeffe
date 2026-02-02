@@ -45,16 +45,24 @@ jobs:
           FULL_DEPLOY="${{ github.event.inputs.full_deploy }}"
 
           BEFORE_SHA="${{ github.event.before }}"
+
           if [ "$FULL_DEPLOY" = "true" ]; then
             BEFORE_SHA=""
-          fi
-          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-              BEFORE_SHA="$(git rev-parse HEAD~1)"
-            else
-              BEFORE_SHA=""
+            echo "full_deploy=true" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "has_changed_files=true" >> $GITHUB_OUTPUT
+          else
+            echo "full_deploy=false" >> $GITHUB_OUTPUT
+
+            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              if [ "${{ github.event_name }}" = "workflow_dispatch" ] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+                BEFORE_SHA="$(git rev-parse HEAD~1)"
+              else
+                BEFORE_SHA=""
+              fi
             fi
           fi
+
           if [ -n "$BEFORE_SHA" ]; then
             CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only "$BEFORE_SHA" HEAD || true)
             DELETED_FILES=$(git diff --diff-filter=D --name-only "$BEFORE_SHA" HEAD || true)
@@ -62,13 +70,21 @@ jobs:
             CHANGED_FILES=$(git ls-tree -r --name-only HEAD || true)
             DELETED_FILES=""
           fi
-          if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            if [ -n "$CHANGED_FILES" ]; then
-              echo "has_changed_files=true" >> $GITHUB_OUTPUT
+          if [ "$FULL_DEPLOY" != "true" ]; then
+            if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
+              echo "has_changes=true" >> $GITHUB_OUTPUT
+              if [ -n "$CHANGED_FILES" ]; then
+                echo "has_changed_files=true" >> $GITHUB_OUTPUT
+              else
+                echo "has_changed_files=false" >> $GITHUB_OUTPUT
+              fi
             else
+              echo "has_changes=false" >> $GITHUB_OUTPUT
               echo "has_changed_files=false" >> $GITHUB_OUTPUT
             fi
+          fi
+
+          if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
             {
               echo "changed_files<<EOF"
               echo "$CHANGED_FILES"
@@ -79,9 +95,6 @@ jobs:
               echo "$DELETED_FILES"
               echo "EOF"
             } >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "has_changed_files=false" >> $GITHUB_OUTPUT
           fi
 
       - name: ⏭️ Skip Deploy (No Changes)
@@ -140,17 +153,47 @@ jobs:
             mkdir -p "${{ secrets.SFTP_REMOTE_DIR }}"
             echo "Remote dir ok: ${{ secrets.SFTP_REMOTE_DIR }}"
 
+      - name: 🛠️ Ensure public/build is writable (Server)
+        if: steps.changes.outputs.has_changed_files == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USERNAME }}
+          password: ${{ secrets.SFTP_PASSWORD }}
+          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
+          script: |
+            cd "${{ secrets.SFTP_REMOTE_DIR }}"
+            echo "== whoami ==" && whoami || true
+            echo "== perms before ==" && ls -ld public public/build public/build/assets 2>/dev/null || true
+
+            # If build dir exists but is not writable (often created by root), try to remove/recreate.
+            rm -rf public/build 2>/dev/null || true
+            mkdir -p public/build/assets || true
+
+            # Best-effort permissions (may fail if not allowed)
+            chmod -R u+rwX public/build 2>/dev/null || true
+            chmod -R g+rwX public/build 2>/dev/null || true
+
+            echo "== perms after ==" && ls -ld public public/build public/build/assets 2>/dev/null || true
+
       - name: 🔧 Prepare Deploy
         if: steps.changes.outputs.has_changed_files == 'true'
         run: |
+          rm -rf deploy_temp
           mkdir -p deploy_temp
-          while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              mkdir -p "deploy_temp/$(dirname "$file")"
-              cp "$file" "deploy_temp/$file"
-              echo "📄 Preparado: $file"
-            fi
-          done <<< "${{ steps.changes.outputs.changed_files }}"
+
+          if [ "${{ steps.changes.outputs.full_deploy }}" = "true" ]; then
+            echo "📦 Full deploy: exportando repo inteiro (git archive)"
+            git archive --format=tar HEAD | tar -x -C deploy_temp
+          else
+            while IFS= read -r file; do
+              if [ -f "$file" ]; then
+                mkdir -p "deploy_temp/$(dirname "$file")"
+                cp "$file" "deploy_temp/$file"
+                echo "📄 Preparado: $file"
+              fi
+            done <<< "${{ steps.changes.outputs.changed_files }}"
+          fi
 
           # Always ship Vite build outputs, otherwise production may miss CSS/JS.
           if [ ! -f public/build/manifest.json ]; then
