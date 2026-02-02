@@ -65,13 +65,16 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
+            'options' => extension_loaded('pdo_mysql') ? array_filter(array_merge([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-                // Prevent long hangs when DB is unreachable (especially in web requests)
+                // Prevent long hangs when DB is unreachable (driver-dependent).
                 PDO::ATTR_TIMEOUT => $connectTimeoutSeconds,
                 // Reduce connection overhead for polling-heavy UIs in local dev
                 PDO::ATTR_PERSISTENT => $persistent ? 1 : 0,
-            ]) : [],
+            ], defined('PDO::MYSQL_ATTR_CONNECT_TIMEOUT')
+                ? [constant('PDO::MYSQL_ATTR_CONNECT_TIMEOUT') => $connectTimeoutSeconds]
+                : []
+            )) : [],
         ],
 
         'mariadb' => [
@@ -91,11 +94,14 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
+            'options' => extension_loaded('pdo_mysql') ? array_filter(array_merge([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
                 PDO::ATTR_TIMEOUT => $connectTimeoutSeconds,
                 PDO::ATTR_PERSISTENT => $persistent ? 1 : 0,
-            ]) : [],
+            ], defined('PDO::MYSQL_ATTR_CONNECT_TIMEOUT')
+                ? [constant('PDO::MYSQL_ATTR_CONNECT_TIMEOUT') => $connectTimeoutSeconds]
+                : []
+            )) : [],
         ],
 
         'pgsql' => [

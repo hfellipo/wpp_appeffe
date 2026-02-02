@@ -39,12 +39,20 @@ class WhatsAppStreamController extends Controller
                 'last_id' => $current,
             ]);
 
-            $events = WhatsAppEvent::query()
-                ->where('user_id', $accountId)
-                ->where('id', '>', $current)
-                ->orderBy('id')
-                ->limit(100)
-                ->get(['id', 'type', 'payload', 'created_at']);
+            try {
+                $events = WhatsAppEvent::query()
+                    ->where('user_id', $accountId)
+                    ->where('id', '>', $current)
+                    ->orderBy('id')
+                    ->limit(100)
+                    ->get(['id', 'type', 'payload', 'created_at']);
+            } catch (\Throwable $e) {
+                $body .= $this->format('wa.error', [
+                    'code' => 'db_unavailable',
+                    'message' => 'Banco de dados indisponível no momento.',
+                ]);
+                return response($body, 503, $headers);
+            }
 
             foreach ($events as $e) {
                 $current = (int) $e->id;
@@ -73,12 +81,24 @@ class WhatsAppStreamController extends Controller
             ]);
 
             while (!connection_aborted() && (microtime(true) - $startedAt) < 55) {
-                $events = WhatsAppEvent::query()
-                    ->where('user_id', $accountId)
-                    ->where('id', '>', $current)
-                    ->orderBy('id')
-                    ->limit(50)
-                    ->get(['id', 'type', 'payload', 'created_at']);
+                try {
+                    $events = WhatsAppEvent::query()
+                        ->where('user_id', $accountId)
+                        ->where('id', '>', $current)
+                        ->orderBy('id')
+                        ->limit(50)
+                        ->get(['id', 'type', 'payload', 'created_at']);
+                } catch (\Throwable $e) {
+                    // Best-effort: notify client then back off a bit
+                    echo $this->format('wa.error', [
+                        'code' => 'db_unavailable',
+                        'message' => 'Banco de dados indisponível no momento.',
+                    ]);
+                    @ob_flush();
+                    @flush();
+                    usleep(1200000); // ~1.2s
+                    continue;
+                }
 
                 if ($events->isEmpty()) {
                     // Heartbeat to keep proxies/browsers from timing out
