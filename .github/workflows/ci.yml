@@ -114,6 +114,7 @@ jobs:
           rm -rf deploy_temp
           mkdir -p deploy_temp
 
+<<<<<<< HEAD
           echo "📦 Copiando projeto (sem .git/node_modules/vendor/build/storage/bootstrap/cache)"
           tar \
             --exclude='./.git' \
@@ -123,6 +124,10 @@ jobs:
             --exclude='./storage' \
             --exclude='./bootstrap/cache' \
             -cf - . | tar -x -C deploy_temp
+=======
+          echo "📦 Exportando repo inteiro (git archive)"
+          git archive --format=tar HEAD | tar -x -C deploy_temp
+>>>>>>> parent of a7a02b9e (Update ci.yml)
 
           # Include Vite build
           if [ ! -f public/build/manifest.json ]; then
@@ -164,6 +169,7 @@ jobs:
 
       - name: 🧰 Install rsync + sshpass
         if: steps.check_deploy.outputs.has_deploy_files == 'true'
+<<<<<<< HEAD
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync sshpass
@@ -219,6 +225,18 @@ jobs:
             --exclude "bootstrap/cache/***" \
             --exclude "public/storage/***" \
             "./deploy_temp/" "${USER}@${HOST}:${REMOTE_DIR}/"
+=======
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USERNAME }}
+          password: ${{ secrets.SFTP_PASSWORD }}
+          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
+          local_path: './deploy_temp/*'
+          remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
+          sftp_only: false
+          delete_remote_files: ${{ github.event.inputs.clean_remote }}
+>>>>>>> parent of a7a02b9e (Update ci.yml)
 
       - name: 🧹 Post-deploy (Server)
         if: steps.check_deploy.outputs.has_deploy_files == 'true'
