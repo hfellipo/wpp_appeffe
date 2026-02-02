@@ -11,6 +11,7 @@ use App\Models\WhatsAppMessage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class EvolutionWebhookProcessor
 {
@@ -43,11 +44,17 @@ class EvolutionWebhookProcessor
                 ?? '')
         );
         if ($instance === '') {
+            Log::channel('single')->warning('Evolution webhook: instance name empty, payload keys: ' . implode(', ', array_keys($data)));
             return;
         }
 
         $wa = WhatsAppInstance::query()->where('instance_name', $instance)->first();
         if (!$wa) {
+            Log::channel('single')->warning('Evolution webhook: WhatsAppInstance not found', [
+                'instance_normalized' => $instance,
+                'event' => $event,
+                'hint' => 'Create/connect this instance in /settings/whatsapp so instance_name matches.',
+            ]);
             return;
         }
 

@@ -237,6 +237,28 @@ jobs:
               storage/framework/testing \
               storage/logs \
               bootstrap/cache || true
+
+            # Fix permissions so PHP can write compiled views/cache
+            # (common on shared hosting / PHP-FPM pools with different users)
+            chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
+            chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+
+            # If still not writable, fall back to 777 for required subdirs only.
+            if ! ( : > storage/framework/views/.permtest 2>/dev/null ); then
+              chmod -R 777 \
+                storage/framework/views \
+                storage/framework/cache \
+                storage/framework/sessions \
+                storage/logs \
+                bootstrap/cache 2>/dev/null || true
+              : > storage/framework/views/.permtest 2>/dev/null || true
+            fi
+            rm -f storage/framework/views/.permtest 2>/dev/null || true
+
+            # If config/views caches were generated when paths were invalid, Laravel/Artisan may crash.
+            # Remove them explicitly before running Artisan.
+            rm -f bootstrap/cache/config.php bootstrap/cache/packages.php bootstrap/cache/services.php 2>/dev/null || true
+            rm -rf storage/framework/views/* 2>/dev/null || true
             php artisan optimize:clear || true
 
       - name: 🧹 Cleanup

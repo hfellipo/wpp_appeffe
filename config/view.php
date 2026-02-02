@@ -1,5 +1,11 @@
 <?php
 
+// Important:
+// - Some hosts end up with VIEW_COMPILED_PATH="" in .env, which would crash Blade.
+// - On fresh servers storage/framework/views may not exist yet, so realpath() returns false.
+$compiledFromEnv = trim((string) env('VIEW_COMPILED_PATH', ''));
+$defaultCompiledPath = realpath(storage_path('framework/views')) ?: storage_path('framework/views');
+
 return [
 
     /*
@@ -28,11 +34,7 @@ return [
     |
     */
 
-    'compiled' => env(
-        'VIEW_COMPILED_PATH',
-        // On fresh servers the directory may not exist yet; avoid returning false.
-        realpath(storage_path('framework/views')) ?: storage_path('framework/views')
-    ),
+    'compiled' => $compiledFromEnv !== '' ? $compiledFromEnv : $defaultCompiledPath,
 
 ];
 
