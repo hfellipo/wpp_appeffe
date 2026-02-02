@@ -21,7 +21,7 @@
                     <div class="flex justify-between h-16 items-center">
                         <div class="flex items-center">
                             <x-application-logo class="block h-10 w-auto fill-current text-white" />
-                            <span class="ml-3 text-2xl font-bold text-white">Secretário</span>
+                            <span class="ml-3 text-2xl font-bold text-white">TESTE DE ROTA</span>
                         </div>
                         @if (Route::has('login'))
                             <div class="flex items-center space-x-4">
