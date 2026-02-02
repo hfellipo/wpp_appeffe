@@ -51,7 +51,7 @@
                     <div class="text-center">
                         <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight">
                             Organize sua vida com
-                            <span class="text-golden-400">inteligência</span>
+                            <span class="text-golden-400">TESTE DE ROTA</span>
                         </h1>
                         <p class="mt-6 text-xl text-brand-100 max-w-2xl mx-auto">
                             O Secretário é seu assistente pessoal para gerenciar tarefas, compromissos e muito mais. 
