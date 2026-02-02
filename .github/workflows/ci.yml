@@ -11,7 +11,7 @@ on:
         default: false
         type: boolean
       clean_remote:
-        description: "Deletar arquivos remotos antes do upload (CUIDADO)"
+        description: "Deletar arquivos remotos que não existem mais no repo (CUIDADO)"
         required: false
         default: false
         type: boolean
@@ -107,8 +107,8 @@ jobs:
           mkdir -p deploy_temp
 
           echo "📦 Copiando projeto (sem node_modules/vendor/build)"
-          # NOTE: node_modules está versionado neste repo, então precisamos EXCLUIR do deploy.
-          # Também excluímos vendor e public/build porque serão incluídos abaixo.
+          # Exclui node_modules, vendor e public/build porque serão incluídos abaixo.
+          # Também exclui storage e bootstrap/cache para não sobrescrever conteúdo de produção.
           tar \
             --exclude='./.git' \
             --exclude='./node_modules' \
@@ -156,19 +156,67 @@ jobs:
             echo "has_deploy_files=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: 🚀 Deploy Full (SFTP)
+      # =========================================
+      # ✅ DEPLOY INCREMENTAL + DELETE (SAFE)
+      # - push: sem delete
+      # - workflow_dispatch + clean_remote=true: com delete
+      # =========================================
+
+      - name: 🧰 Install rsync + sshpass
         if: steps.check_deploy.outputs.has_deploy_files == 'true'
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
-        with:
-          server: ${{ secrets.SFTP_HOST }}
-          username: ${{ secrets.SFTP_USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          local_path: './deploy_temp/*'
-          remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
-          sftp_only: false
-          # For push events, inputs are empty; keep it explicit
-          delete_remote_files: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.clean_remote || 'false' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync sshpass
+
+      - name: 🔎 Preview deploy changes (rsync dry-run)
+        if: steps.check_deploy.outputs.has_deploy_files == 'true'
+        env:
+          SSHPASS: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          PORT="${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}"
+          HOST="${{ secrets.SFTP_HOST }}"
+          USER="${{ secrets.SFTP_USERNAME }}"
+          REMOTE_DIR="${{ secrets.SFTP_REMOTE_DIR }}"
+
+          # Delete só se for manual + clean_remote=true
+          DELETE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.clean_remote }}" = "true" ]; then
+            DELETE_FLAG="--delete"
+          fi
+
+          echo "== DRY RUN (what would change) =="
+          sshpass -e rsync -azn ${DELETE_FLAG} --itemize-changes \
+            -e "ssh -p ${PORT} -o StrictHostKeyChecking=no" \
+            --exclude ".env" \
+            --exclude "storage/***" \
+            --exclude "bootstrap/cache/***" \
+            --exclude "public/storage/***" \
+            "./deploy_temp/" "${USER}@${HOST}:${REMOTE_DIR}/" | sed -n '1,250p'
+
+      - name: 🚀 Deploy incremental (rsync)
+        if: steps.check_deploy.outputs.has_deploy_files == 'true'
+        env:
+          SSHPASS: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          PORT="${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}"
+          HOST="${{ secrets.SFTP_HOST }}"
+          USER="${{ secrets.SFTP_USERNAME }}"
+          REMOTE_DIR="${{ secrets.SFTP_REMOTE_DIR }}"
+
+          # Delete só se for manual + clean_remote=true
+          DELETE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.clean_remote }}" = "true" ]; then
+            DELETE_FLAG="--delete"
+          fi
+
+          echo "== DEPLOY =="
+          sshpass -e rsync -az ${DELETE_FLAG} --info=stats2 --human-readable \
+            -e "ssh -p ${PORT} -o StrictHostKeyChecking=no" \
+            --exclude ".env" \
+            --exclude "storage/***" \
+            --exclude "bootstrap/cache/***" \
+            --exclude "public/storage/***" \
+            "./deploy_temp/" "${USER}@${HOST}:${REMOTE_DIR}/"
 
       - name: 🧹 Post-deploy (Server)
         if: steps.check_deploy.outputs.has_deploy_files == 'true'
