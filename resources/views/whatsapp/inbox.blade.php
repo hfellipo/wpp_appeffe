@@ -81,7 +81,10 @@
                                 >
                                     <tr data-action="0" @click="openConversation(c)">
                                         <td style="position: relative">
-                                            <div class="avatar av-m" style="background-image: url('');"></div>
+                                            <div
+                                                class="avatar av-m"
+                                                :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
+                                            ></div>
                                         </td>
                                         <td>
                                             <p>
@@ -107,7 +110,11 @@
                     <nav class="chatify-d-flex chatify-justify-content-between chatify-align-items-center">
                         <div class="chatify-d-flex chatify-justify-content-between chatify-align-items-center">
                             <a href="#" class="show-listView" @click.prevent="activeConversation = null"><i class="fas fa-arrow-left"></i></a>
-                            <div class="avatar av-s header-avatar" style="margin: 0px 10px; margin-top: -5px; margin-bottom: -5px;"></div>
+                            <div
+                                class="avatar av-s header-avatar"
+                                :style="activeConversation && activeConversation.avatar_url ? ('background-image: url(' + activeConversation.avatar_url + ')') : ''"
+                                style="margin: 0px 10px; margin-top: -5px; margin-bottom: -5px;"
+                            ></div>
                             <a href="#" class="user-name" x-text="activeConversation ? (activeConversation.contact_name || formatNumber(activeConversation.contact_number)) : 'WhatsApp'"></a>
                         </div>
                         <nav class="m-header-right">
@@ -170,7 +177,11 @@
                     <a href="#" @click.prevent="showInfo = false"><i class="fas fa-times"></i></a>
                 </nav>
                 <div style="text-align:center; padding: 1rem;">
-                    <div class="avatar av-l" style="margin: 0 auto;"></div>
+                    <div
+                        class="avatar av-l"
+                        :style="activeConversation && activeConversation.avatar_url ? ('background-image: url(' + activeConversation.avatar_url + ')') : ''"
+                        style="margin: 0 auto;"
+                    ></div>
                     <p class="info-name" style="margin-top: 1rem;" x-text="activeConversation ? (activeConversation.contact_name || formatNumber(activeConversation.contact_number)) : '-'"></p>
                 </div>
             </div>
@@ -179,225 +190,7 @@
 
     @push('scripts')
         <script src="{{ asset('js/chatify/font.awesome.min.js') }}"></script>
-        <script>
-            function waInboxChatify() {
-                return {
-                    connected: false,
-                    instanceName: '',
-
-                    loadingConversations: false,
-                    loadingMessages: false,
-                    sending: false,
-
-                    search: '',
-                    conversations: [],
-                    activeConversation: null,
-                    messages: [],
-                    draft: '',
-                    showInfo: true,
-                    isCompact: window.matchMedia('(max-width: 680px)').matches,
-
-                    _pollTimer: null,
-                    _statusTimer: null,
-                    _isAtBottom: true,
-                    _lastMessageId: 0,
-                    _pollInFlight: false,
-                    _timersRunning: false,
-
-                    get filteredConversations() {
-                        const q = String(this.search || '').toLowerCase().trim();
-                        if (!q) return this.conversations;
-                        return this.conversations.filter((c) => {
-                            const name = String(c.contact_name || '').toLowerCase();
-                            const num = String(c.contact_number || '').toLowerCase();
-                            const prev = String(c.last_message_preview || '').toLowerCase();
-                            return name.includes(q) || num.includes(q) || prev.includes(q);
-                        });
-                    },
-
-                    async init() {
-                        // Track compact mode (mobile)
-                        const mq = window.matchMedia('(max-width: 680px)');
-                        const onMq = (e) => {
-                            this.isCompact = !!e.matches;
-                            if (this.isCompact) this.showInfo = false;
-                        };
-                        if (mq.addEventListener) mq.addEventListener('change', onMq);
-                        else mq.addListener(onMq);
-
-                        if (this.isCompact) this.showInfo = false;
-
-                        await this.refreshStatus();
-                        await this.refreshConversations();
-
-                        this.startTimers();
-
-                        // Pause polling when the tab is hidden (avoids hammering DB)
-                        document.addEventListener('visibilitychange', () => {
-                            if (document.hidden) this.stopTimers();
-                            else this.startTimers();
-                        });
-                    },
-
-                    startTimers() {
-                        if (this._timersRunning) return;
-                        this._timersRunning = true;
-                        this._pollTimer = setInterval(() => this.poll(), 7000);
-                        this._statusTimer = setInterval(() => this.refreshStatus(), 15000);
-                    },
-
-                    stopTimers() {
-                        this._timersRunning = false;
-                        if (this._pollTimer) clearInterval(this._pollTimer);
-                        if (this._statusTimer) clearInterval(this._statusTimer);
-                        this._pollTimer = null;
-                        this._statusTimer = null;
-                    },
-
-                    async poll() {
-                        if (this._pollInFlight) return;
-                        this._pollInFlight = true;
-                        try {
-                            await this.refreshConversations(true);
-                            if (this.activeConversation) {
-                                await this.pollMessages(this.activeConversation);
-                            }
-                        } finally {
-                            this._pollInFlight = false;
-                        }
-                    },
-
-                    async refreshStatus() {
-                        try {
-                            const resp = await fetch('/settings/whatsapp/status', { headers: { 'Accept': 'application/json' } });
-                            const data = await resp.json().catch(() => ({}));
-                            const state = data.state || data.status || null;
-                            const inst = data.instanceName || '';
-
-                            this.instanceName = inst ? String(inst) : '';
-                            this.connected = ['open', 'connected', 'online', 'ready'].includes(String(state || '').toLowerCase());
-
-                            window.dispatchEvent(new CustomEvent('whatsapp-connection-changed', {
-                                detail: { connected: this.connected },
-                            }));
-                        } catch (e) {
-                            this.connected = false;
-                        }
-                    },
-
-                    async refreshConversations(silent = false) {
-                        if (!silent) this.loadingConversations = true;
-                        try {
-                            const resp = await fetch('/whatsapp/api/conversations', { headers: { 'Accept': 'application/json' } });
-                            const data = await resp.json().catch(() => ({}));
-                            this.conversations = Array.isArray(data.items) ? data.items : [];
-                        } finally {
-                            if (!silent) this.loadingConversations = false;
-                        }
-                    },
-
-                    async openConversation(c) {
-                        this.activeConversation = c;
-                        if (this.isCompact) this.showInfo = false;
-                        await this.refreshMessages(c);
-                    },
-
-                    async refreshMessages(c) {
-                        this.loadingMessages = true;
-                        try {
-                            const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages`, { headers: { 'Accept': 'application/json' } });
-                            const data = await resp.json().catch(() => ({}));
-                            this.messages = Array.isArray(data.items) ? data.items : [];
-                            this._lastMessageId = this.messages.length ? (this.messages[this.messages.length - 1].id || 0) : 0;
-                            this.$nextTick(() => this.scrollToBottom(true));
-                        } finally {
-                            this.loadingMessages = false;
-                        }
-                    },
-
-                    async pollMessages(c) {
-                        try {
-                            const after = this._lastMessageId || 0;
-                            const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages?after=${encodeURIComponent(after)}`, { headers: { 'Accept': 'application/json' } });
-                            const data = await resp.json().catch(() => ({}));
-                            const items = Array.isArray(data.items) ? data.items : [];
-                            if (!items.length) return;
-                            for (const m of items) {
-                                this.messages.push(m);
-                                this._lastMessageId = m.id || this._lastMessageId;
-                            }
-                            this.$nextTick(() => this.scrollToBottom(false));
-                        } catch (e) {}
-                    },
-
-                    async sendMessage() {
-                        if (!this.activeConversation) return;
-                        const text = String(this.draft || '').trim();
-                        if (!text) return;
-
-                        this.sending = true;
-                        try {
-                            const resp = await fetch(`/whatsapp/api/conversations/${this.activeConversation.id}/send`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '',
-                                },
-                                body: JSON.stringify({ text }),
-                            });
-                            const data = await resp.json().catch(() => ({}));
-                            if (!resp.ok || data.success === false) return;
-
-                            this.draft = '';
-                            await this.refreshMessages(this.activeConversation);
-                            await this.refreshConversations();
-                        } finally {
-                            this.sending = false;
-                        }
-                    },
-
-                    maybeSend(e) {
-                        if (e.shiftKey) return;
-                        this.sendMessage();
-                    },
-
-                    onScrollMessages() {
-                        const el = this.$refs.messagesPane;
-                        if (!el) return;
-                        const threshold = 80;
-                        this._isAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < threshold;
-                    },
-
-                    scrollToBottom(force) {
-                        const el = this.$refs.messagesPane;
-                        if (!el) return;
-                        if (!force && !this._isAtBottom) return;
-                        el.scrollTop = el.scrollHeight;
-                    },
-
-                    formatNumber(n) {
-                        const s = String(n || '');
-                        if (!s) return '';
-                        return '+' + s;
-                    },
-
-                    formatTimeShort(v) {
-                        if (!v) return '';
-                        const d = new Date(v);
-                        if (Number.isNaN(d.getTime())) return '';
-                        return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-                    },
-
-                    formatTimeAgo(v) {
-                        if (!v) return '';
-                        const d = new Date(v);
-                        if (Number.isNaN(d.getTime())) return '';
-                        return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-                    },
-                };
-            }
-        </script>
+        @vite('resources/js/whatsapp/inbox.js')
     @endpush
 </x-app-layout>
 

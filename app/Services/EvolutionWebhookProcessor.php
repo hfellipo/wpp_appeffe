@@ -14,6 +14,16 @@ use Illuminate\Support\Facades\Cache;
 class EvolutionWebhookProcessor
 {
     /**
+     * Best-effort realtime publishing to the /whatsapp UI (SSE).
+     *
+     * @param  array<string,mixed>  $payload
+     */
+    private function publish(int $accountId, string $type, array $payload = []): void
+    {
+        app(WhatsAppEventPublisher::class)->publish($accountId, $type, $payload);
+    }
+
+    /**
      * Main entry point for a single webhook event.
      *
      * @param  string  $event  e.g. MESSAGES_UPSERT, CONNECTION_UPDATE...
@@ -87,6 +97,12 @@ class EvolutionWebhookProcessor
         if ($state !== '') {
             $wa->status = $state;
             $wa->save();
+
+            $this->publish((int) $wa->user_id, 'wa.connection.update', [
+                'instance_name' => $wa->instance_name,
+                'state' => $wa->status,
+                'updated_at' => optional($wa->updated_at)->toIso8601String(),
+            ]);
         }
     }
 
@@ -268,6 +284,47 @@ class EvolutionWebhookProcessor
             }
             $conversation->save();
 
+            $avatarUrl = null;
+            $displayName = null;
+            if ($kind === 'direct') {
+                $num = $this->normalizeNumber($remoteJid);
+                if ($num !== '') {
+                    $ct = WhatsAppContact::query()
+                        ->where('user_id', $accountId)
+                        ->where('instance_name', $wa->instance_name)
+                        ->where('contact_number', $num)
+                        ->first(['avatar_url', 'display_name']);
+                    if ($ct) {
+                        $avatarUrl = $ct->avatar_url ?: null;
+                        $displayName = $ct->display_name ?: null;
+                    }
+                }
+            }
+
+            // Notify UI in realtime
+            $this->publish($accountId, 'wa.message.created', [
+                'conversation_id' => $conversation->public_id,
+                'message' => [
+                    'id' => $msg->public_id,
+                    'direction' => $msg->direction,
+                    'message_type' => $msg->message_type,
+                    'body' => $msg->body,
+                    'status' => $msg->status,
+                    'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                    'created_at' => optional($msg->created_at)->toIso8601String(),
+                ],
+                'conversation' => [
+                    'id' => $conversation->public_id,
+                    'instance_name' => $conversation->instance_name,
+                    'contact_number' => $conversation->contact_number,
+                    'contact_name' => $conversation->contact_name ?: $displayName,
+                    'avatar_url' => $avatarUrl,
+                    'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
+                    'last_message_preview' => $conversation->last_message_preview,
+                    'unread_count' => (int) $conversation->unread_count,
+                ],
+            ]);
+
             // Also upsert contact record for direct chats (best-effort)
             if ($kind === 'direct') {
                 $num = $this->normalizeNumber($remoteJid);
@@ -318,6 +375,17 @@ class EvolutionWebhookProcessor
             if ($s === 'delivered' && !$msg->delivered_at) $msg->delivered_at = now();
             if (in_array($s, ['read', 'seen'], true) && !$msg->read_at) $msg->read_at = now();
             $msg->save();
+
+            $conv = WhatsAppConversation::query()->where('id', $msg->conversation_id)->first(['public_id']);
+            $this->publish((int) $wa->user_id, 'wa.message.updated', [
+                'conversation_id' => $conv?->public_id,
+                'message' => [
+                    'id' => $msg->public_id,
+                    'status' => $msg->status,
+                    'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                    'read_at' => optional($msg->read_at)->toIso8601String(),
+                ],
+            ]);
         }
     }
 
@@ -332,6 +400,14 @@ class EvolutionWebhookProcessor
         $msg->message_type = 'deleted';
         $msg->body = null;
         $msg->save();
+
+        $conv = WhatsAppConversation::query()->where('id', $msg->conversation_id)->first(['public_id']);
+        $this->publish((int) $wa->user_id, 'wa.message.deleted', [
+            'conversation_id' => $conv?->public_id,
+            'message' => [
+                'id' => $msg->public_id,
+            ],
+        ]);
     }
 
     /**

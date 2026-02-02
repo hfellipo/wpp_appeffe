@@ -31,9 +31,6 @@
                             {{ __('WhatsApp') }}
                         </x-nav-link>
                     @endif
-                    <x-nav-link :href="route(config('chatify.routes.prefix'))" :active="request()->is(config('chatify.routes.prefix') . '*')">
-                        {{ __('Chat') }}
-                    </x-nav-link>
                 </div>
             </div>
 
@@ -126,9 +123,6 @@
                     {{ __('WhatsApp') }}
                 </x-responsive-nav-link>
             @endif
-            <x-responsive-nav-link :href="route(config('chatify.routes.prefix'))" :active="request()->is(config('chatify.routes.prefix') . '*')">
-                {{ __('Chat') }}
-            </x-responsive-nav-link>
         </div>
 
         <!-- Responsive Settings Options -->

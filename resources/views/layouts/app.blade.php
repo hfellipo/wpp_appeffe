@@ -35,7 +35,7 @@
             </main>
 
             <!-- Footer -->
-            @if(!(request()->is('whatsapp*') || request()->is((string) config('chatify.routes.prefix') . '*')))
+            @if(!request()->is('whatsapp*'))
                 <footer class="bg-white border-t border-gray-100 mt-auto">
                     <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
                         <p class="text-center text-sm text-gray-500">

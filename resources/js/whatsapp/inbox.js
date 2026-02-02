@@ -1,0 +1,463 @@
+// WhatsApp Inbox realtime UI (Alpine component)
+// Loaded only on /whatsapp.
+
+function safeJsonParse(text) {
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        return null;
+    }
+}
+
+function nowIso() {
+    return new Date().toISOString();
+}
+
+window.waInboxChatify = function waInboxChatify() {
+    return {
+        connected: false,
+        instanceName: '',
+
+        loadingConversations: false,
+        loadingMessages: false,
+        sending: false,
+
+        search: '',
+        conversations: [],
+        activeConversation: null,
+        messages: [],
+        draft: '',
+        showInfo: true,
+        isCompact: window.matchMedia('(max-width: 680px)').matches,
+
+        // polling (fallback)
+        _pollTimer: null,
+        _statusTimer: null,
+        _isAtBottom: true,
+        _lastMessageId: 0,
+        _pollInFlight: false,
+        _timersRunning: false,
+
+        // realtime (SSE)
+        _es: null,
+        _esLastId: 0,
+        _esConnected: false,
+        _esRetryMs: 1000,
+        _esRetryTimer: null,
+
+        // infinite scroll
+        _loadingOlder: false,
+        _hasOlder: true,
+
+        get filteredConversations() {
+            const q = String(this.search || '').toLowerCase().trim();
+            if (!q) return this.conversations;
+            return this.conversations.filter((c) => {
+                const name = String(c.contact_name || '').toLowerCase();
+                const num = String(c.contact_number || '').toLowerCase();
+                const prev = String(c.last_message_preview || '').toLowerCase();
+                return name.includes(q) || num.includes(q) || prev.includes(q);
+            });
+        },
+
+        async init() {
+            // Track compact mode (mobile)
+            const mq = window.matchMedia('(max-width: 680px)');
+            const onMq = (e) => {
+                this.isCompact = !!e.matches;
+                if (this.isCompact) this.showInfo = false;
+            };
+            if (mq.addEventListener) mq.addEventListener('change', onMq);
+            else mq.addListener(onMq);
+
+            if (this.isCompact) this.showInfo = false;
+
+            // Start realtime first (so UI updates instantly)
+            this.connectStream();
+
+            await this.refreshStatus();
+            await this.refreshConversations();
+
+            // Poll as fallback (SSE can drop on some proxies)
+            this.startTimers();
+
+            // Pause polling when the tab is hidden (avoids hammering DB)
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) this.stopTimers();
+                else this.startTimers();
+            });
+        },
+
+        startTimers() {
+            if (this._timersRunning) return;
+            this._timersRunning = true;
+            // Conversations are also updated by SSE, but keep a light poll as safety-net
+            this._pollTimer = setInterval(() => this.poll(), 12000);
+            this._statusTimer = setInterval(() => this.refreshStatus(), 20000);
+        },
+
+        stopTimers() {
+            this._timersRunning = false;
+            if (this._pollTimer) clearInterval(this._pollTimer);
+            if (this._statusTimer) clearInterval(this._statusTimer);
+            this._pollTimer = null;
+            this._statusTimer = null;
+        },
+
+        async poll() {
+            if (this._pollInFlight) return;
+            this._pollInFlight = true;
+            try {
+                await this.refreshConversations(true);
+                if (this.activeConversation) {
+                    await this.pollMessages(this.activeConversation);
+                }
+            } finally {
+                this._pollInFlight = false;
+            }
+        },
+
+        connectStream() {
+            if (typeof window.EventSource === 'undefined') return;
+
+            // Close existing
+            if (this._es) {
+                try { this._es.close(); } catch (e) {}
+                this._es = null;
+            }
+            if (this._esRetryTimer) {
+                clearTimeout(this._esRetryTimer);
+                this._esRetryTimer = null;
+            }
+
+            const url = `/whatsapp/stream?last_id=${encodeURIComponent(String(this._esLastId || 0))}`;
+            const es = new EventSource(url);
+            this._es = es;
+
+            es.onopen = () => {
+                this._esConnected = true;
+                this._esRetryMs = 1000;
+            };
+            es.onerror = () => {
+                this._esConnected = false;
+                try { es.close(); } catch (e) {}
+                this._es = null;
+                this.scheduleStreamReconnect();
+            };
+
+            es.addEventListener('wa.ready', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                if (data.last_id) this._esLastId = Number(data.last_id) || this._esLastId;
+            });
+
+            es.addEventListener('wa.connection.update', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                const state = String(data.state || '');
+                const inst = String(data.instance_name || '');
+                if (inst) this.instanceName = inst;
+                this.connected = ['open', 'connected', 'online', 'ready'].includes(state.toLowerCase());
+                window.dispatchEvent(new CustomEvent('whatsapp-connection-changed', {
+                    detail: { connected: this.connected },
+                }));
+                this.bumpLastEventId(data);
+            });
+
+            es.addEventListener('wa.conversation.read', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                const convId = String(data.conversation_id || '');
+                if (!convId) return;
+                const c = this.conversations.find((x) => String(x.id) === convId);
+                if (c) c.unread_count = 0;
+                this.bumpLastEventId(data);
+            });
+
+            es.addEventListener('wa.message.created', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                this.handleIncomingMessageEvent(data);
+                this.bumpLastEventId(data);
+            });
+
+            es.addEventListener('wa.message.updated', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                const msg = data.message || {};
+                const msgId = String(msg.id || '');
+                if (!msgId) return;
+                const m = this.messages.find((x) => String(x.id) === msgId);
+                if (m) {
+                    m.status = msg.status ?? m.status;
+                    m.delivered_at = msg.delivered_at ?? m.delivered_at;
+                    m.read_at = msg.read_at ?? m.read_at;
+                }
+                this.bumpLastEventId(data);
+            });
+
+            es.addEventListener('wa.message.deleted', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                const msg = data.message || {};
+                const msgId = String(msg.id || '');
+                if (!msgId) return;
+                const m = this.messages.find((x) => String(x.id) === msgId);
+                if (m) {
+                    m.message_type = 'deleted';
+                    m.body = null;
+                }
+                this.bumpLastEventId(data);
+            });
+        },
+
+        bumpLastEventId(data) {
+            const id = Number(data._event_id || 0);
+            if (id > (this._esLastId || 0)) this._esLastId = id;
+        },
+
+        scheduleStreamReconnect() {
+            if (this._esRetryTimer) return;
+            const wait = Math.min(15000, Math.max(1000, this._esRetryMs || 1000));
+            this._esRetryMs = Math.min(15000, wait * 1.6);
+            this._esRetryTimer = setTimeout(() => {
+                this._esRetryTimer = null;
+                this.connectStream();
+            }, wait);
+        },
+
+        handleIncomingMessageEvent(data) {
+            const conv = data.conversation || null;
+            const msg = data.message || null;
+            const convId = String(data.conversation_id || (conv ? conv.id : '') || '');
+            if (!convId || !msg) return;
+
+            // Update conversation list item
+            let c = this.conversations.find((x) => String(x.id) === convId);
+            if (!c) {
+                // New conversation (create minimal and refresh in background)
+                c = conv || { id: convId, unread_count: 0 };
+                this.conversations.unshift(c);
+            } else if (conv) {
+                Object.assign(c, conv);
+            }
+
+            // Move to top
+            this.conversations = [
+                c,
+                ...this.conversations.filter((x) => String(x.id) !== String(c.id)),
+            ];
+
+            // If active conversation, append message immediately
+            if (this.activeConversation && String(this.activeConversation.id) === convId) {
+                const exists = this.messages.some((m) => String(m.id) === String(msg.id));
+                if (!exists) {
+                    this.messages.push(msg);
+                    this._lastMessageId = msg.id || this._lastMessageId;
+                    this.$nextTick(() => this.scrollToBottom(false));
+                }
+                // When viewing, keep it read
+                c.unread_count = 0;
+            }
+        },
+
+        async refreshStatus() {
+            try {
+                const resp = await fetch('/settings/whatsapp/status', { headers: { 'Accept': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                const state = data.state || data.status || null;
+                const inst = data.instanceName || '';
+
+                this.instanceName = inst ? String(inst) : '';
+                this.connected = ['open', 'connected', 'online', 'ready'].includes(String(state || '').toLowerCase());
+
+                window.dispatchEvent(new CustomEvent('whatsapp-connection-changed', {
+                    detail: { connected: this.connected },
+                }));
+            } catch (e) {
+                this.connected = false;
+            }
+        },
+
+        async refreshConversations(silent = false) {
+            if (!silent) this.loadingConversations = true;
+            try {
+                const resp = await fetch('/whatsapp/api/conversations', { headers: { 'Accept': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                this.conversations = Array.isArray(data.items) ? data.items : [];
+            } finally {
+                if (!silent) this.loadingConversations = false;
+            }
+        },
+
+        async openConversation(c) {
+            this.activeConversation = c;
+            if (this.isCompact) this.showInfo = false;
+            this._hasOlder = true;
+            await this.refreshMessages(c);
+        },
+
+        async refreshMessages(c) {
+            this.loadingMessages = true;
+            try {
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages`, { headers: { 'Accept': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                this.messages = Array.isArray(data.items) ? data.items : [];
+                this._lastMessageId = this.messages.length ? (this.messages[this.messages.length - 1].id || 0) : 0;
+                this.$nextTick(() => this.scrollToBottom(true));
+            } finally {
+                this.loadingMessages = false;
+            }
+        },
+
+        async pollMessages(c) {
+            try {
+                const after = this._lastMessageId || 0;
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages?after=${encodeURIComponent(after)}`, { headers: { 'Accept': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                const items = Array.isArray(data.items) ? data.items : [];
+                if (!items.length) return;
+                for (const m of items) {
+                    this.messages.push(m);
+                    this._lastMessageId = m.id || this._lastMessageId;
+                }
+                this.$nextTick(() => this.scrollToBottom(false));
+            } catch (e) {}
+        },
+
+        async loadOlder() {
+            if (!this.activeConversation) return;
+            if (this._loadingOlder || !this._hasOlder) return;
+            if (!this.messages.length) return;
+
+            const before = this.messages[0].id;
+            if (!before) return;
+
+            this._loadingOlder = true;
+            const pane = this.$refs.messagesPane;
+            const prevScroll = pane ? pane.scrollHeight : 0;
+
+            try {
+                const url = `/whatsapp/api/conversations/${this.activeConversation.id}/messages?before=${encodeURIComponent(before)}&limit=60`;
+                const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                const items = Array.isArray(data.items) ? data.items : [];
+                if (!items.length) {
+                    this._hasOlder = false;
+                    return;
+                }
+                // Prepend older messages
+                const existing = new Set(this.messages.map((m) => String(m.id)));
+                const toAdd = items.filter((m) => !existing.has(String(m.id)));
+                this.messages = [...toAdd, ...this.messages];
+
+                this.$nextTick(() => {
+                    if (!pane) return;
+                    const newScroll = pane.scrollHeight;
+                    pane.scrollTop = newScroll - prevScroll;
+                });
+            } finally {
+                this._loadingOlder = false;
+            }
+        },
+
+        async sendMessage() {
+            if (!this.activeConversation) return;
+            const text = String(this.draft || '').trim();
+            if (!text) return;
+
+            // Optimistic UI (like WhatsApp Web)
+            const tmpId = `tmp-${nowIso()}-${Math.random().toString(16).slice(2)}`;
+            const optimistic = {
+                id: tmpId,
+                direction: 'out',
+                message_type: 'text',
+                body: text,
+                status: 'sending',
+                sent_at: nowIso(),
+                created_at: nowIso(),
+            };
+            this.messages.push(optimistic);
+            this.draft = '';
+            this.$nextTick(() => this.scrollToBottom(true));
+
+            this.sending = true;
+            try {
+                const resp = await fetch(`/whatsapp/api/conversations/${this.activeConversation.id}/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '',
+                    },
+                    body: JSON.stringify({ text }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || data.success === false) {
+                    optimistic.status = 'failed';
+                    return;
+                }
+
+                // Replace tmp message with server message
+                const serverMsg = data.message || null;
+                if (serverMsg) {
+                    const serverId = String(serverMsg.id || '');
+                    const serverExists = serverId !== '' && this.messages.some((m) => String(m.id) === serverId);
+                    const idxTmp = this.messages.findIndex((m) => String(m.id) === String(tmpId));
+
+                    if (idxTmp >= 0) {
+                        if (serverExists) this.messages.splice(idxTmp, 1);
+                        else this.messages.splice(idxTmp, 1, serverMsg);
+                    } else if (!serverExists) {
+                        this.messages.push(serverMsg);
+                    }
+                    this._lastMessageId = serverMsg.id || this._lastMessageId;
+                }
+
+                await this.refreshConversations(true);
+            } finally {
+                this.sending = false;
+            }
+        },
+
+        maybeSend(e) {
+            if (e.shiftKey) return;
+            this.sendMessage();
+        },
+
+        onScrollMessages() {
+            const el = this.$refs.messagesPane;
+            if (!el) return;
+
+            // infinite scroll up
+            if (el.scrollTop < 60) {
+                this.loadOlder();
+            }
+
+            const threshold = 80;
+            this._isAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < threshold;
+        },
+
+        scrollToBottom(force) {
+            const el = this.$refs.messagesPane;
+            if (!el) return;
+            if (!force && !this._isAtBottom) return;
+            el.scrollTop = el.scrollHeight;
+        },
+
+        formatNumber(n) {
+            const s = String(n || '');
+            if (!s) return '';
+            return '+' + s;
+        },
+
+        formatTimeShort(v) {
+            if (!v) return '';
+            const d = new Date(v);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        },
+
+        formatTimeAgo(v) {
+            if (!v) return '';
+            const d = new Date(v);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        },
+    };
+};
+

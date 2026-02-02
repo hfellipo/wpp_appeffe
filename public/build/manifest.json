@@ -1,6 +1,6 @@
 {
   "resources/css/app.css": {
-    "file": "assets/app-DZUIF7Bz.css",
+    "file": "assets/app-E-8ClF2r.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
@@ -8,6 +8,12 @@
     "file": "assets/app-BCQRzUR3.js",
     "name": "app",
     "src": "resources/js/app.js",
+    "isEntry": true
+  },
+  "resources/js/whatsapp/inbox.js": {
+    "file": "assets/inbox-80QDZZOm.js",
+    "name": "inbox",
+    "src": "resources/js/whatsapp/inbox.js",
     "isEntry": true
   }
 }

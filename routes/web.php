@@ -7,6 +7,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\WhatsAppEvolutionController;
 use App\Http\Controllers\WhatsAppInboxController;
+use App\Http\Controllers\WhatsAppStreamController;
 use App\Http\Controllers\EvolutionWebhookController;
 use App\Http\Controllers\Admin\AccountUsersController;
 use Illuminate\Http\Request;
@@ -109,6 +110,7 @@ Route::middleware('auth')->group(function () {
     // WhatsApp Inbox (separado do Chatify)
     Route::prefix('whatsapp')->name('whatsapp.inbox.')->group(function () {
         Route::get('/', [WhatsAppInboxController::class, 'index'])->name('index');
+        Route::get('/stream', [WhatsAppStreamController::class, 'stream'])->name('stream');
         Route::get('/api/conversations', [WhatsAppInboxController::class, 'conversations'])->name('api.conversations');
         Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');
         Route::post('/api/conversations/{conversation}/send', [WhatsAppInboxController::class, 'send'])->name('api.send');
