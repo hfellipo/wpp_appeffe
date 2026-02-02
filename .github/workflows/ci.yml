@@ -98,8 +98,17 @@ jobs:
           rm -rf deploy_temp
           mkdir -p deploy_temp
 
-          echo "📦 Exportando repo inteiro (git archive)"
-          git archive --format=tar HEAD | tar -x -C deploy_temp
+          echo "📦 Copiando projeto (sem node_modules/vendor/build)"
+          # NOTE: node_modules está versionado neste repo, então precisamos EXCLUIR do deploy.
+          # Também excluímos vendor e public/build porque serão incluídos abaixo.
+          tar \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./vendor' \
+            --exclude='./public/build' \
+            --exclude='./storage' \
+            --exclude='./bootstrap/cache' \
+            -cf - . | tar -x -C deploy_temp
 
           # Include Vite build
           if [ ! -f public/build/manifest.json ]; then
@@ -150,7 +159,8 @@ jobs:
           local_path: './deploy_temp/*'
           remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
           sftp_only: false
-          delete_remote_files: ${{ github.event.inputs.clean_remote }}
+          # For push events, inputs are empty; keep it explicit
+          delete_remote_files: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.clean_remote || 'false' }}
 
       - name: 🧹 Post-deploy (Server)
         if: steps.check_deploy.outputs.has_deploy_files == 'true'
