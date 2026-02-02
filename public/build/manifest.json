@@ -1,19 +1,13 @@
 {
   "resources/css/app.css": {
-    "file": "assets/app-E-8ClF2r.css",
+    "file": "assets/app-DGPtnNex.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-BCQRzUR3.js",
+    "file": "assets/app-3OpxaoXM.js",
     "name": "app",
     "src": "resources/js/app.js",
-    "isEntry": true
-  },
-  "resources/js/whatsapp/inbox.js": {
-    "file": "assets/inbox-80QDZZOm.js",
-    "name": "inbox",
-    "src": "resources/js/whatsapp/inbox.js",
     "isEntry": true
   }
 }

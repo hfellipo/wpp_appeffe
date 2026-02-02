@@ -71,6 +71,10 @@ class WhatsAppStreamController extends Controller
             // Reduce buffering as much as possible
             @ini_set('output_buffering', 'off');
             @ini_set('zlib.output_compression', '0');
+            @ini_set('implicit_flush', '1');
+            // Prevent PHP max_execution_time from killing SSE (if allowed)
+            @set_time_limit(0);
+            @ignore_user_abort(true);
 
             $current = max(0, $lastId);
             $startedAt = microtime(true);
@@ -80,7 +84,9 @@ class WhatsAppStreamController extends Controller
                 'last_id' => $current,
             ]);
 
-            while (!connection_aborted() && (microtime(true) - $startedAt) < 55) {
+            // Keep stream lifetime below typical 30s limits; browser will reconnect.
+            // (We still try set_time_limit(0) above, but do not rely on it.)
+            while (!connection_aborted() && (microtime(true) - $startedAt) < 25) {
                 try {
                     $events = WhatsAppEvent::query()
                         ->where('user_id', $accountId)

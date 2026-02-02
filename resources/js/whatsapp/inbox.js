@@ -49,6 +49,13 @@ window.waInboxChatify = function waInboxChatify() {
         _loadingOlder: false,
         _hasOlder: true,
 
+        // contacts picker
+        showContactPicker: false,
+        contactsLoading: false,
+        contacts: [],
+        contactSearch: '',
+        _contactSearchTimer: null,
+
         get filteredConversations() {
             const q = String(this.search || '').toLowerCase().trim();
             if (!q) return this.conversations;
@@ -86,6 +93,70 @@ window.waInboxChatify = function waInboxChatify() {
                 if (document.hidden) this.stopTimers();
                 else this.startTimers();
             });
+        },
+
+        openContactPicker() {
+            this.showContactPicker = true;
+            this.contactSearch = '';
+            this.contacts = [];
+            this.fetchContacts('');
+        },
+
+        closeContactPicker() {
+            this.showContactPicker = false;
+        },
+
+        onContactSearchInput() {
+            if (this._contactSearchTimer) clearTimeout(this._contactSearchTimer);
+            this._contactSearchTimer = setTimeout(() => {
+                this.fetchContacts(this.contactSearch);
+            }, 250);
+        },
+
+        async fetchContacts(search) {
+            this.contactsLoading = true;
+            try {
+                const q = String(search || '').trim();
+                const url = q ? `/whatsapp/api/contacts?search=${encodeURIComponent(q)}` : '/whatsapp/api/contacts';
+                const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                this.contacts = Array.isArray(data.items) ? data.items : [];
+            } finally {
+                this.contactsLoading = false;
+            }
+        },
+
+        async startConversationFromContact(ct) {
+            if (!ct || !ct.id) return;
+            try {
+                const resp = await fetch('/whatsapp/api/conversations/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '',
+                    },
+                    body: JSON.stringify({ contact_id: ct.id }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || data.success === false) return;
+
+                const conv = data.conversation || null;
+                if (conv) {
+                    // Upsert to top
+                    const existing = this.conversations.find((x) => String(x.id) === String(conv.id));
+                    if (existing) Object.assign(existing, conv);
+                    else this.conversations.unshift(conv);
+
+                    this.conversations = [
+                        conv,
+                        ...this.conversations.filter((x) => String(x.id) !== String(conv.id)),
+                    ];
+
+                    this.closeContactPicker();
+                    await this.openConversation(conv);
+                }
+            } catch (e) {}
         },
 
         startTimers() {
@@ -174,6 +245,21 @@ window.waInboxChatify = function waInboxChatify() {
             es.addEventListener('wa.message.created', (evt) => {
                 const data = safeJsonParse(evt.data) || {};
                 this.handleIncomingMessageEvent(data);
+                this.bumpLastEventId(data);
+            });
+
+            es.addEventListener('wa.conversation.created', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                const conv = data.conversation || null;
+                if (conv && conv.id) {
+                    const existing = this.conversations.find((x) => String(x.id) === String(conv.id));
+                    if (existing) Object.assign(existing, conv);
+                    else this.conversations.unshift(conv);
+                    this.conversations = [
+                        conv,
+                        ...this.conversations.filter((x) => String(x.id) !== String(conv.id)),
+                    ];
+                }
                 this.bumpLastEventId(data);
             });
 

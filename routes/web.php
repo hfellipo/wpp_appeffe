@@ -111,6 +111,8 @@ Route::middleware('auth')->group(function () {
     Route::prefix('whatsapp')->name('whatsapp.inbox.')->group(function () {
         Route::get('/', [WhatsAppInboxController::class, 'index'])->name('index');
         Route::get('/stream', [WhatsAppStreamController::class, 'stream'])->name('stream');
+        Route::get('/api/contacts', [WhatsAppInboxController::class, 'contacts'])->name('api.contacts');
+        Route::post('/api/conversations/start', [WhatsAppInboxController::class, 'startConversation'])->name('api.conversations.start');
         Route::get('/api/conversations', [WhatsAppInboxController::class, 'conversations'])->name('api.conversations');
         Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');
         Route::post('/api/conversations/{conversation}/send', [WhatsAppInboxController::class, 'send'])->name('api.send');

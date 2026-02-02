@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Contact;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppMessage;
@@ -92,6 +93,133 @@ class WhatsAppInboxController extends Controller
                     'unread_count' => (int) $c->unread_count,
                 ];
             })->values(),
+        ]);
+    }
+
+    public function contacts(Request $request): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        $search = (string) $request->query('search', '');
+
+        $q = Contact::query()
+            ->forUser($accountId)
+            ->orderBy('name');
+
+        if ($search !== '') {
+            $q->search($search);
+        }
+
+        $items = $q->limit(80)->get(['id', 'name', 'phone', 'email']);
+
+        return response()->json([
+            'success' => true,
+            'items' => $items->map(function (Contact $c) {
+                $digits = preg_replace('/\D/', '', (string) $c->phone) ?: '';
+                return [
+                    'id' => (int) $c->id,
+                    'name' => $c->name,
+                    'phone' => $c->phone,
+                    'raw_phone' => $digits,
+                ];
+            })->values(),
+        ]);
+    }
+
+    public function startConversation(Request $request): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+
+        $request->validate([
+            'contact_id' => 'required|integer',
+        ]);
+
+        /** @var Contact|null $contact */
+        $contact = Contact::query()
+            ->forUser($accountId)
+            ->where('id', (int) $request->input('contact_id'))
+            ->first(['id', 'name', 'phone']);
+
+        if (! $contact) {
+            return response()->json(['success' => false, 'error' => 'Contato não encontrado.'], 404);
+        }
+
+        $number = preg_replace('/\D/', '', (string) $contact->phone) ?: '';
+        if ($number === '') {
+            return response()->json(['success' => false, 'error' => 'Contato inválido (sem número).'], 422);
+        }
+
+        // Choose best instance for this account (prefer connected)
+        $connectedStates = ['open', 'connected', 'online', 'ready'];
+        $wa = WhatsAppInstance::query()
+            ->where('user_id', $accountId)
+            ->whereIn('status', $connectedStates)
+            ->orderByDesc('updated_at')
+            ->first(['id', 'instance_name', 'status']);
+
+        if (! $wa) {
+            // Fallback to latest instance, even if status is stale
+            $wa = WhatsAppInstance::query()
+                ->where('user_id', $accountId)
+                ->orderByDesc('updated_at')
+                ->first(['id', 'instance_name', 'status']);
+        }
+
+        if (! $wa) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Nenhuma instância WhatsApp encontrada. Configure e conecte em /settings/whatsapp.',
+            ], 409);
+        }
+
+        $instance = preg_replace('/\D/', '', (string) $wa->instance_name);
+        if ($instance === '') {
+            return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
+        }
+
+        $peerJid = $number . '@s.whatsapp.net';
+
+        $conversation = WhatsAppConversation::query()->firstOrCreate(
+            [
+                'user_id' => (int) $accountId,
+                'instance_name' => $instance,
+                'peer_jid' => $peerJid,
+            ],
+            [
+                'kind' => 'direct',
+                'contact_number' => $number,
+                'contact_name' => $contact->name,
+                'last_message_at' => null,
+                'last_message_preview' => null,
+                'unread_count' => 0,
+            ]
+        );
+
+        // Publish event so other tabs update immediately
+        $this->events->publish((int) $accountId, 'wa.conversation.created', [
+            'conversation' => [
+                'id' => $conversation->public_id,
+                'instance_name' => $conversation->instance_name,
+                'contact_number' => $conversation->contact_number,
+                'contact_name' => $conversation->contact_name,
+                'avatar_url' => null,
+                'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
+                'last_message_preview' => $conversation->last_message_preview,
+                'unread_count' => (int) $conversation->unread_count,
+            ],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'conversation' => [
+                'id' => $conversation->public_id,
+                'instance_name' => $conversation->instance_name,
+                'contact_number' => $conversation->contact_number,
+                'contact_name' => $conversation->contact_name,
+                'avatar_url' => null,
+                'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
+                'last_message_preview' => $conversation->last_message_preview,
+                'unread_count' => (int) $conversation->unread_count,
+            ],
         ]);
     }
 
