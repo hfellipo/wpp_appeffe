@@ -17,18 +17,15 @@ jobs:
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: 🔐 Validate deploy secrets
         run: |
           set -e
-          for k in SFTP_HOST SFTP_USERNAME SFTP_PASSWORD SFTP_REMOTE_DIR; do
-            if [ -z "${{ secrets[k] }}" ]; then
-              echo "❌ Missing secret: $k"
-              exit 1
-            fi
-          done
+          if [ -z "${{ secrets.SFTP_HOST }}" ]; then echo "❌ Missing secret: SFTP_HOST"; exit 1; fi
+          if [ -z "${{ secrets.SFTP_USERNAME }}" ]; then echo "❌ Missing secret: SFTP_USERNAME"; exit 1; fi
+          if [ -z "${{ secrets.SFTP_PASSWORD }}" ]; then echo "❌ Missing secret: SFTP_PASSWORD"; exit 1; fi
+          if [ -z "${{ secrets.SFTP_REMOTE_DIR }}" ]; then echo "❌ Missing secret: SFTP_REMOTE_DIR"; exit 1; fi
+
           case "${{ secrets.SFTP_REMOTE_DIR }}" in
             "~"* )
               echo "❌ SFTP_REMOTE_DIR must be absolute (ex: /var/www/.../web)"
