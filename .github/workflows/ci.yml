@@ -1,12 +1,17 @@
-name: 🚀 Deploy Incremental 2
+name: 🚀 Deploy Full (Server Sync)
 
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
     inputs:
-      full_deploy:
-        description: "Forçar deploy completo (ignora diff incremental)"
+      deploy_env:
+        description: "Enviar .env a partir do secret ENV_FILE (use no deploy do zero)"
+        required: false
+        default: false
+        type: boolean
+      clean_remote:
+        description: "Deletar arquivos remotos antes do upload (CUIDADO)"
         required: false
         default: false
         type: boolean
@@ -21,13 +26,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🐘 Setup PHP (for Composer)
-        if: steps.changes.outputs.has_changes == 'true'
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.1'
-          tools: composer:v2
-
       - name: 🔐 Validate deploy secrets
         run: |
           if [ -z "${{ secrets.SFTP_HOST }}" ] || [ -z "${{ secrets.SFTP_USERNAME }}" ] || [ -z "${{ secrets.SFTP_PASSWORD }}" ]; then
@@ -40,98 +38,33 @@ jobs:
           fi
           case "${{ secrets.SFTP_REMOTE_DIR }}" in
             "~"* )
-              echo "SFTP_REMOTE_DIR cannot start with '~' for SFTP uploads. Use an absolute path like /home/user/app."
+              echo "SFTP_REMOTE_DIR cannot start with '~'. Use an absolute path like /var/www/.../web."
               exit 1
               ;;
           esac
 
-      - name: 🔍 Detect Changes
-        id: changes
-        run: |
-          # workflow_dispatch can force a full deploy
-          FULL_DEPLOY="${{ github.event.inputs.full_deploy }}"
-
-          BEFORE_SHA="${{ github.event.before }}"
-
-          if [ "$FULL_DEPLOY" = "true" ]; then
-            BEFORE_SHA=""
-            echo "full_deploy=true" >> $GITHUB_OUTPUT
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "has_changed_files=true" >> $GITHUB_OUTPUT
-          else
-            echo "full_deploy=false" >> $GITHUB_OUTPUT
-
-            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-              if [ "${{ github.event_name }}" = "workflow_dispatch" ] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-                BEFORE_SHA="$(git rev-parse HEAD~1)"
-              else
-                BEFORE_SHA=""
-              fi
-            fi
-          fi
-
-          if [ -n "$BEFORE_SHA" ]; then
-            CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only "$BEFORE_SHA" HEAD || true)
-            DELETED_FILES=$(git diff --diff-filter=D --name-only "$BEFORE_SHA" HEAD || true)
-          else
-            CHANGED_FILES=$(git ls-tree -r --name-only HEAD || true)
-            DELETED_FILES=""
-          fi
-          if [ "$FULL_DEPLOY" != "true" ]; then
-            if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
-              echo "has_changes=true" >> $GITHUB_OUTPUT
-              if [ -n "$CHANGED_FILES" ]; then
-                echo "has_changed_files=true" >> $GITHUB_OUTPUT
-              else
-                echo "has_changed_files=false" >> $GITHUB_OUTPUT
-              fi
-            else
-              echo "has_changes=false" >> $GITHUB_OUTPUT
-              echo "has_changed_files=false" >> $GITHUB_OUTPUT
-            fi
-          fi
-
-          if [ -n "$CHANGED_FILES" ] || [ -n "$DELETED_FILES" ]; then
-            {
-              echo "changed_files<<EOF"
-              echo "$CHANGED_FILES"
-              echo "EOF"
-            } >> $GITHUB_OUTPUT
-            {
-              echo "deleted_files<<EOF"
-              echo "$DELETED_FILES"
-              echo "EOF"
-            } >> $GITHUB_OUTPUT
-          fi
-
-      - name: ⏭️ Skip Deploy (No Changes)
-        if: steps.changes.outputs.has_changes == 'false'
-        run: |
-          echo "✅ Nenhuma mudança detectada. Deploy cancelado."
-          exit 0
-
       - name: 🧰 Setup Node
-        if: steps.changes.outputs.has_changes == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: 📦 Install Frontend Dependencies
-        if: steps.changes.outputs.has_changes == 'true'
         run: npm ci
 
       - name: 🏗️ Build Frontend (Vite)
-        if: steps.changes.outputs.has_changes == 'true'
         run: npm run build
 
-      - name: 📦 Install PHP Dependencies (Composer)
-        if: steps.changes.outputs.has_changes == 'true'
-        run: |
-          composer install --no-interaction --no-dev --prefer-dist --optimize-autoloader
+      - name: 🐘 Setup PHP (for Composer)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer:v2
 
-      - name: 🗑️ Remove Deleted Files (Server)
-        if: steps.changes.outputs.has_changes == 'true' && steps.changes.outputs.deleted_files != ''
+      - name: 📦 Install PHP Dependencies (Composer)
+        run: composer install --no-interaction --no-dev --prefer-dist --optimize-autoloader
+
+      - name: 📁 Ensure Remote Directory Exists (Server)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SFTP_HOST }}
@@ -141,32 +74,10 @@ jobs:
           script: |
             mkdir -p "${{ secrets.SFTP_REMOTE_DIR }}"
             cd "${{ secrets.SFTP_REMOTE_DIR }}"
-            FILES="${{ steps.changes.outputs.deleted_files }}"
-            for f in $FILES; do
-              if [ -f "$f" ]; then
-                rm -f -- "$f" || true
-                echo "removido arquivo: $f"
-              fi
-            done
-            for f in $FILES; do
-              d=$(dirname "$f")
-              [ "$d" != "." ] && rmdir -p --ignore-fail-on-non-empty -- "$d" 2>/dev/null || true
-            done
-
-      - name: 📁 Ensure Remote Directory Exists (Server)
-        if: steps.changes.outputs.has_changed_files == 'true'
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SFTP_HOST }}
-          username: ${{ secrets.SFTP_USERNAME }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          script: |
-            mkdir -p "${{ secrets.SFTP_REMOTE_DIR }}"
+            mkdir -p public/build/assets storage bootstrap/cache || true
             echo "Remote dir ok: ${{ secrets.SFTP_REMOTE_DIR }}"
 
       - name: 🛠️ Ensure public/build is writable (Server)
-        if: steps.changes.outputs.has_changed_files == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SFTP_HOST }}
@@ -176,38 +87,21 @@ jobs:
           script: |
             cd "${{ secrets.SFTP_REMOTE_DIR }}"
             echo "== whoami ==" && whoami || true
-            echo "== perms before ==" && ls -ld public public/build public/build/assets 2>/dev/null || true
-
-            # If build dir exists but is not writable (often created by root), try to remove/recreate.
             rm -rf public/build 2>/dev/null || true
             mkdir -p public/build/assets || true
+            chmod -R u+rwX public/build storage bootstrap/cache 2>/dev/null || true
+            chmod -R g+rwX public/build storage bootstrap/cache 2>/dev/null || true
+            ls -ld public public/build public/build/assets storage bootstrap/cache 2>/dev/null || true
 
-            # Best-effort permissions (may fail if not allowed)
-            chmod -R u+rwX public/build 2>/dev/null || true
-            chmod -R g+rwX public/build 2>/dev/null || true
-
-            echo "== perms after ==" && ls -ld public public/build public/build/assets 2>/dev/null || true
-
-      - name: 🔧 Prepare Deploy
-        if: steps.changes.outputs.has_changed_files == 'true'
+      - name: 🔧 Prepare Deploy (full)
         run: |
           rm -rf deploy_temp
           mkdir -p deploy_temp
 
-          if [ "${{ steps.changes.outputs.full_deploy }}" = "true" ]; then
-            echo "📦 Full deploy: exportando repo inteiro (git archive)"
-            git archive --format=tar HEAD | tar -x -C deploy_temp
-          else
-            while IFS= read -r file; do
-              if [ -f "$file" ]; then
-                mkdir -p "deploy_temp/$(dirname "$file")"
-                cp "$file" "deploy_temp/$file"
-                echo "📄 Preparado: $file"
-              fi
-            done <<< "${{ steps.changes.outputs.changed_files }}"
-          fi
+          echo "📦 Exportando repo inteiro (git archive)"
+          git archive --format=tar HEAD | tar -x -C deploy_temp
 
-          # Always ship Vite build outputs, otherwise production may miss CSS/JS.
+          # Include Vite build
           if [ ! -f public/build/manifest.json ]; then
             echo "❌ public/build/manifest.json não encontrado. O build do Vite falhou?"
             exit 1
@@ -217,69 +111,49 @@ jobs:
           cp -a public/build deploy_temp/public/build
           echo "📦 Incluído: public/build"
 
-          # Ship vendor/ when doing full deploy (or when composer.lock changes)
-          NEED_VENDOR="false"
-          if [ "${{ steps.changes.outputs.full_deploy }}" = "true" ]; then
-            NEED_VENDOR="true"
-          else
-            # If composer.lock is among changed files, update vendor
-            if printf '%s\n' "${{ steps.changes.outputs.changed_files }}" | grep -q '^composer\.lock$'; then
-              NEED_VENDOR="true"
+          # Include vendor
+          if [ ! -d vendor ]; then
+            echo "❌ vendor/ não encontrado. O composer install falhou?"
+            exit 1
+          fi
+          rm -rf deploy_temp/vendor
+          cp -a vendor deploy_temp/vendor
+          echo "📦 Incluído: vendor/"
+
+          # Optional .env from secret
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.deploy_env }}" = "true" ]; then
+            if [ -n "${{ secrets.ENV_FILE }}" ]; then
+              echo "${{ secrets.ENV_FILE }}" > deploy_temp/.env
+              echo "🔐 Incluído: .env a partir do secret ENV_FILE"
+            else
+              echo "⚠️ deploy_env=true mas secret ENV_FILE não está configurado."
             fi
           fi
-
-          if [ "$NEED_VENDOR" = "true" ]; then
-            if [ ! -d vendor ]; then
-              echo "❌ vendor/ não encontrado. O composer install falhou?"
-              exit 1
-            fi
-            rm -rf deploy_temp/vendor
-            cp -a vendor deploy_temp/vendor
-            echo "📦 Incluído: vendor/"
-          else
-            echo "ℹ️ vendor/ não incluído (deploy incremental sem mudança de composer.lock)"
-          fi
-
-      - name: 📋 List Changed Files
-        if: steps.changes.outputs.has_changed_files == 'true'
-        run: |
-          echo "Arquivos detectados:"
-          printf '%s\n' "${{ steps.changes.outputs.changed_files }}"
-
-      - name: 📋 List Files to Deploy
-        if: steps.changes.outputs.has_changed_files == 'true'
-        run: |
-          echo "Arquivos preparados:"
-          find deploy_temp -type f -maxdepth 20 || true
 
       - name: ✅ Check Deploy Files
         id: check_deploy
-        if: steps.changes.outputs.has_changed_files == 'true'
         run: |
-          if [ -d deploy_temp ] && find deploy_temp -maxdepth 20 -type f -print -quit | grep -q .; then
+          if [ -d deploy_temp ] && find deploy_temp -maxdepth 2 -type f -print -quit | grep -q .; then
             echo "has_deploy_files=true" >> $GITHUB_OUTPUT
           else
             echo "has_deploy_files=false" >> $GITHUB_OUTPUT
           fi
-          echo "Deploy files status: $(cat $GITHUB_OUTPUT | tail -n 1 || true)"
 
-      - name: 🚀 Deploy Incremental (SFTP)
-        if: steps.changes.outputs.has_changed_files == 'true' && steps.check_deploy.outputs.has_deploy_files == 'true'
+      - name: 🚀 Deploy Full (SFTP)
+        if: steps.check_deploy.outputs.has_deploy_files == 'true'
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
           port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          # Upload the CONTENTS of deploy_temp (not the folder itself)
           local_path: './deploy_temp/*'
           remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
-          # Allow the action to run SSH commands (mkdir) when needed.
-          # Otherwise SFTP upload fails if the remote directory does not already exist.
           sftp_only: false
+          delete_remote_files: ${{ github.event.inputs.clean_remote }}
 
-      - name: 🧹 Clear Laravel Cache (Server)
-        if: steps.changes.outputs.has_changed_files == 'true' && steps.check_deploy.outputs.has_deploy_files == 'true'
+      - name: 🧹 Post-deploy (Server)
+        if: steps.check_deploy.outputs.has_deploy_files == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SFTP_HOST }}
@@ -288,12 +162,10 @@ jobs:
           port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
           script: |
             cd "${{ secrets.SFTP_REMOTE_DIR }}"
-            # Avoid Vite dev-mode in production
             rm -f public/hot || true
+            mkdir -p storage bootstrap/cache || true
             php artisan optimize:clear || true
 
       - name: 🧹 Cleanup
         if: always()
-        run: |
-          rm -rf deploy_temp
-          echo "🧹 Arquivos temporários removidos"
+        run: rm -rf deploy_temp
