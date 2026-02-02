@@ -31,14 +31,35 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Contact::class, ContactPolicy::class);
 
         /**
-         * Production safety:
-         * If a "public/hot" file is accidentally deployed, Laravel will assume Vite dev-server
-         * is running and will try to load assets from it, causing broken/un-styled pages.
+         * Vite safety for production/shared hosting.
          *
-         * For any non-local environment, force Vite to look for the hot file in a path that
-         * won't exist on typical servers, so we always use the built assets in public/build.
+         * Common pitfalls that break CSS/JS in production:
+         * - Deploying a leftover "public/hot" file (Laravel thinks Vite dev-server is running).
+         * - Serving Laravel from a subpath like "/public" (document root is the repo root).
+         *
+         * We handle both robustly:
+         * - Never use Vite hot outside localhost, even if APP_ENV is misconfigured.
+         * - Prefix asset URLs with the request base path when needed (e.g. /public/build/...).
          */
-        if (! app()->environment('local')) {
+        if (! app()->runningInConsole()) {
+            $host = request()->getHost();
+            $isLocalHost = in_array($host, ['127.0.0.1', 'localhost'], true);
+
+            if (! $isLocalHost) {
+                // If APP_ENV accidentally stays "local" on the server, this still prevents broken assets.
+                Vite::useHotFile(storage_path('framework/vite.hot'));
+            }
+
+            $basePath = (string) request()->getBasePath(); // e.g. "" or "/public"
+            $basePath = rtrim($basePath, '/');
+            if ($basePath !== '') {
+                Vite::createAssetPathsUsing(function (string $path, ?bool $secure = null) use ($basePath) {
+                    $path = ltrim($path, '/'); // e.g. "build/assets/app-xxx.css"
+                    return asset(ltrim($basePath.'/'.$path, '/'), $secure);
+                });
+            }
+        } elseif (! app()->environment('local')) {
+            // Console safety for real production envs.
             Vite::useHotFile(storage_path('framework/vite.hot'));
         }
     }
