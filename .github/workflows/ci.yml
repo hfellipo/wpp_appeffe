@@ -1,3 +1,4 @@
+# Deploy via rsync para o servidor. Dispara em push para main/master ou manualmente.
 name: 🚀 Deploy Full (Server Sync)
 
 on:
