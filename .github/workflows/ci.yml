@@ -74,7 +74,15 @@ jobs:
           script: |
             mkdir -p "${{ secrets.SFTP_REMOTE_DIR }}"
             cd "${{ secrets.SFTP_REMOTE_DIR }}"
-            mkdir -p public/build/assets storage bootstrap/cache || true
+            # Required Laravel writable dirs (fresh server safe)
+            mkdir -p \
+              public/build/assets \
+              storage/framework/views \
+              storage/framework/cache/data \
+              storage/framework/sessions \
+              storage/framework/testing \
+              storage/logs \
+              bootstrap/cache || true
             echo "Remote dir ok: ${{ secrets.SFTP_REMOTE_DIR }}"
 
       - name: 🛠️ Ensure public/build is writable (Server)
@@ -91,7 +99,7 @@ jobs:
             mkdir -p public/build/assets || true
             chmod -R u+rwX public/build storage bootstrap/cache 2>/dev/null || true
             chmod -R g+rwX public/build storage bootstrap/cache 2>/dev/null || true
-            ls -ld public public/build public/build/assets storage bootstrap/cache 2>/dev/null || true
+            ls -ld public public/build public/build/assets storage storage/framework storage/framework/views storage/logs bootstrap/cache 2>/dev/null || true
 
       - name: 🔧 Prepare Deploy (full)
         run: |
@@ -173,7 +181,13 @@ jobs:
           script: |
             cd "${{ secrets.SFTP_REMOTE_DIR }}"
             rm -f public/hot || true
-            mkdir -p storage bootstrap/cache || true
+            mkdir -p \
+              storage/framework/views \
+              storage/framework/cache/data \
+              storage/framework/sessions \
+              storage/framework/testing \
+              storage/logs \
+              bootstrap/cache || true
             php artisan optimize:clear || true
 
       - name: 🧹 Cleanup
