@@ -16,9 +16,15 @@ on:
         default: false
         type: boolean
 
+# Evita fila / travamento: se entrar novo deploy no mesmo branch, cancela o anterior
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: 📥 Checkout Code
@@ -72,9 +78,9 @@ jobs:
           password: ${{ secrets.SFTP_PASSWORD }}
           port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
           script: |
+            set -e
             mkdir -p "${{ secrets.SFTP_REMOTE_DIR }}"
             cd "${{ secrets.SFTP_REMOTE_DIR }}"
-            # Required Laravel writable dirs (fresh server safe)
             mkdir -p \
               public/build/assets \
               storage/framework/views \
@@ -103,12 +109,11 @@ jobs:
 
       - name: 🔧 Prepare Deploy (full)
         run: |
+          set -e
           rm -rf deploy_temp
           mkdir -p deploy_temp
 
-          echo "📦 Copiando projeto (sem node_modules/vendor/build)"
-          # Exclui node_modules, vendor e public/build porque serão incluídos abaixo.
-          # Também exclui storage e bootstrap/cache para não sobrescrever conteúdo de produção.
+          echo "📦 Copiando projeto (sem .git/node_modules/vendor/build/storage/bootstrap/cache)"
           tar \
             --exclude='./.git' \
             --exclude='./node_modules' \
@@ -156,12 +161,6 @@ jobs:
             echo "has_deploy_files=false" >> $GITHUB_OUTPUT
           fi
 
-      # =========================================
-      # ✅ DEPLOY INCREMENTAL + DELETE (SAFE)
-      # - push: sem delete
-      # - workflow_dispatch + clean_remote=true: com delete
-      # =========================================
-
       - name: 🧰 Install rsync + sshpass
         if: steps.check_deploy.outputs.has_deploy_files == 'true'
         run: |
@@ -173,6 +172,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
+          set -e
           PORT="${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}"
           HOST="${{ secrets.SFTP_HOST }}"
           USER="${{ secrets.SFTP_USERNAME }}"
@@ -198,6 +198,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
+          set -e
           PORT="${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}"
           HOST="${{ secrets.SFTP_HOST }}"
           USER="${{ secrets.SFTP_USERNAME }}"
