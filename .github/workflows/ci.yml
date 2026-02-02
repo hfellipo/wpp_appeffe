@@ -78,6 +78,21 @@ jobs:
           echo "✅ Nenhuma mudança detectada. Deploy cancelado."
           exit 0
 
+      - name: 🧰 Setup Node
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install Frontend Dependencies
+        if: steps.changes.outputs.has_changes == 'true'
+        run: npm ci
+
+      - name: 🏗️ Build Frontend (Vite)
+        if: steps.changes.outputs.has_changes == 'true'
+        run: npm run build
+
       - name: 🗑️ Remove Deleted Files (Server)
         if: steps.changes.outputs.has_changes == 'true' && steps.changes.outputs.deleted_files != ''
         uses: appleboy/ssh-action@v1.0.3
@@ -125,6 +140,16 @@ jobs:
             fi
           done <<< "${{ steps.changes.outputs.changed_files }}"
 
+          # Always ship Vite build outputs, otherwise production may miss CSS/JS.
+          if [ ! -f public/build/manifest.json ]; then
+            echo "❌ public/build/manifest.json não encontrado. O build do Vite falhou?"
+            exit 1
+          fi
+          mkdir -p deploy_temp/public
+          rm -rf deploy_temp/public/build
+          cp -a public/build deploy_temp/public/build
+          echo "📦 Incluído: public/build"
+
       - name: 📋 List Changed Files
         if: steps.changes.outputs.has_changed_files == 'true'
         run: |
@@ -161,6 +186,20 @@ jobs:
           # Allow the action to run SSH commands (mkdir) when needed.
           # Otherwise SFTP upload fails if the remote directory does not already exist.
           sftp_only: false
+
+      - name: 🧹 Clear Laravel Cache (Server)
+        if: steps.changes.outputs.has_changed_files == 'true' && steps.check_deploy.outputs.has_deploy_files == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USERNAME }}
+          password: ${{ secrets.SFTP_PASSWORD }}
+          port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
+          script: |
+            cd "${{ secrets.SFTP_REMOTE_DIR }}"
+            # Avoid Vite dev-mode in production
+            rm -f public/hot || true
+            php artisan optimize:clear || true
 
       - name: 🧹 Cleanup
         if: always()

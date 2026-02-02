@@ -53,9 +53,10 @@ class AppServiceProvider extends ServiceProvider
             $basePath = (string) request()->getBasePath(); // e.g. "" or "/public"
             $basePath = rtrim($basePath, '/');
             if ($basePath !== '') {
-                Vite::createAssetPathsUsing(function (string $path, ?bool $secure = null) use ($basePath) {
+                Vite::createAssetPathsUsing(function (string $path) use ($basePath) {
+                    // Avoid relying on APP_URL (can be misconfigured with /public and cause /public/public).
                     $path = ltrim($path, '/'); // e.g. "build/assets/app-xxx.css"
-                    return asset(ltrim($basePath.'/'.$path, '/'), $secure);
+                    return rtrim(request()->getSchemeAndHttpHost().$basePath, '/').'/'.$path;
                 });
             }
         } elseif (! app()->environment('local')) {
