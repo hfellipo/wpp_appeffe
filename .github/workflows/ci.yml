@@ -11,7 +11,8 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-24.04
+    # ubuntu-latest tem mais runners disponíveis; evita "job was not acquired"
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
