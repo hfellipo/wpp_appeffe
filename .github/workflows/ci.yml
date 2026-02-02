@@ -4,6 +4,12 @@ on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      full_deploy:
+        description: "Forçar deploy completo (ignora diff incremental)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   deploy:
@@ -35,7 +41,13 @@ jobs:
       - name: 🔍 Detect Changes
         id: changes
         run: |
+          # workflow_dispatch can force a full deploy
+          FULL_DEPLOY="${{ github.event.inputs.full_deploy }}"
+
           BEFORE_SHA="${{ github.event.before }}"
+          if [ "$FULL_DEPLOY" = "true" ]; then
+            BEFORE_SHA=""
+          fi
           if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
             if [ "${{ github.event_name }}" = "workflow_dispatch" ] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
               BEFORE_SHA="$(git rev-parse HEAD~1)"
@@ -181,7 +193,8 @@ jobs:
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
           port: ${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}
-          local_path: './deploy_temp'
+          # Upload the CONTENTS of deploy_temp (not the folder itself)
+          local_path: './deploy_temp/*'
           remote_path: ${{ secrets.SFTP_REMOTE_DIR }}
           # Allow the action to run SSH commands (mkdir) when needed.
           # Otherwise SFTP upload fails if the remote directory does not already exist.
