@@ -147,6 +147,11 @@
                                         <span x-text="m.body || (m.message_type ? '['+m.message_type+']' : '')"></span>
                                         <span class="message-time">
                                             <span class="time" x-text="formatTimeShort(m.created_at)"></span>
+                                            <template x-if="m.direction === 'out'">
+                                                <span class="ml-1 inline-flex items-center" :class="(tickForMessage(m) || {}).colorClass || ''">
+                                                    <i :class="(tickForMessage(m) || {}).iconClass || ''"></i>
+                                                </span>
+                                            </template>
                                         </span>
                                     </div>
                                 </div>
@@ -189,50 +194,49 @@
                 </div>
             </div>
         </div>
-    </div>
+        <!-- Contact picker modal (must be inside x-data scope) -->
+        <div
+            x-show="showContactPicker"
+            style="display:none"
+            class="fixed inset-0 z-[9999]"
+            @keydown.escape.window="closeContactPicker()"
+        >
+            <div class="absolute inset-0 bg-black/40" @click="closeContactPicker()"></div>
+            <div class="absolute inset-x-0 top-16 mx-auto w-full max-w-lg px-4">
+                <div class="bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
+                    <div class="px-4 py-3 flex items-center justify-between border-b border-gray-100">
+                        <div class="font-semibold text-gray-900">Selecionar contato</div>
+                        <button type="button" class="text-gray-500 hover:text-gray-900" @click="closeContactPicker()">✕</button>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <input
+                            type="text"
+                            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                            placeholder="Buscar por nome, telefone..."
+                            x-model="contactSearch"
+                            @input="onContactSearchInput()"
+                        />
 
-    <!-- Contact picker modal -->
-    <div
-        x-show="showContactPicker"
-        style="display:none"
-        class="fixed inset-0 z-[9999]"
-        @keydown.escape.window="closeContactPicker()"
-    >
-        <div class="absolute inset-0 bg-black/40" @click="closeContactPicker()"></div>
-        <div class="absolute inset-x-0 top-16 mx-auto w-full max-w-lg px-4">
-            <div class="bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
-                <div class="px-4 py-3 flex items-center justify-between border-b border-gray-100">
-                    <div class="font-semibold text-gray-900">Selecionar contato</div>
-                    <button type="button" class="text-gray-500 hover:text-gray-900" @click="closeContactPicker()">✕</button>
-                </div>
-                <div class="p-4 space-y-3">
-                    <input
-                        type="text"
-                        class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-                        placeholder="Buscar por nome, telefone..."
-                        x-model="contactSearch"
-                        @input="onContactSearchInput()"
-                    />
-
-                    <template x-if="contactsLoading">
-                        <div class="text-sm text-gray-600">Carregando...</div>
-                    </template>
-
-                    <template x-if="!contactsLoading && contacts.length === 0">
-                        <div class="text-sm text-gray-600">Nenhum contato encontrado.</div>
-                    </template>
-
-                    <div class="max-h-96 overflow-auto divide-y divide-gray-100">
-                        <template x-for="ct in contacts" :key="ct.id">
-                            <button
-                                type="button"
-                                class="w-full text-left px-2 py-3 hover:bg-gray-50"
-                                @click="startConversationFromContact(ct)"
-                            >
-                                <div class="font-medium text-gray-900" x-text="ct.name || '-'"></div>
-                                <div class="text-sm text-gray-600" x-text="ct.phone || ct.raw_phone || ''"></div>
-                            </button>
+                        <template x-if="contactsLoading">
+                            <div class="text-sm text-gray-600">Carregando...</div>
                         </template>
+
+                        <template x-if="!contactsLoading && contacts.length === 0">
+                            <div class="text-sm text-gray-600">Nenhum contato encontrado.</div>
+                        </template>
+
+                        <div class="max-h-96 overflow-auto divide-y divide-gray-100">
+                            <template x-for="ct in contacts" :key="ct.id">
+                                <button
+                                    type="button"
+                                    class="w-full text-left px-2 py-3 hover:bg-gray-50"
+                                    @click="startConversationFromContact(ct)"
+                                >
+                                    <div class="font-medium text-gray-900" x-text="ct.name || '-'"></div>
+                                    <div class="text-sm text-gray-600" x-text="ct.phone || ct.raw_phone || ''"></div>
+                                </button>
+                            </template>
+                        </div>
                     </div>
                 </div>
             </div>

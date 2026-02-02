@@ -89,13 +89,14 @@ class WhatsAppInboxApiTest extends TestCase
         $response = $this->actingAs($user)->getJson('/whatsapp/api/contacts');
         $response->assertOk();
         $response->assertJson(['success' => true]);
-        $response->assertJsonStructure(['success', 'items' => [['id', 'name', 'phone', 'raw_phone']]]);
+        $response->assertJsonStructure(['success', 'items' => [['id', 'name', 'phone', 'raw_phone', 'wa_phone']]]);
 
         $items = $response->json('items');
         $this->assertNotEmpty($items);
         $this->assertSame('Clarissa Menezes', $items[0]['name']);
         $this->assertSame('(31)99339-5671', $items[0]['phone']);
         $this->assertSame('31993395671', $items[0]['raw_phone']);
+        $this->assertSame('5531993395671', $items[0]['wa_phone']);
     }
 
     public function test_start_conversation_creates_or_reuses_conversation_from_contact(): void
@@ -128,6 +129,7 @@ class WhatsAppInboxApiTest extends TestCase
 
         $convId = $resp->json('conversation.id');
         $this->assertNotEmpty($convId);
+        $this->assertSame('5531993395671', $resp->json('conversation.contact_number'));
 
         // Second call should reuse same conversation (unique by user+instance+peer_jid)
         $resp2 = $this->actingAs($user)->postJson('/whatsapp/api/conversations/start', [

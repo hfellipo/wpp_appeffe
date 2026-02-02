@@ -8,6 +8,7 @@ use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppInstance;
 use App\Models\WhatsAppMessage;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 
@@ -347,46 +348,82 @@ class EvolutionWebhookProcessor
 
     private function handleMessagesUpdate(WhatsAppInstance $wa, array $data): void
     {
-        // Best-effort: update message status using remote id
-        $remoteJid = (string) Arr::get($data, 'key.remoteJid', Arr::get($data, 'remoteJid', ''));
-        $remoteId = (string) Arr::get($data, 'key.id', Arr::get($data, 'id', ''));
-        $status = (string) (Arr::get($data, 'status') ?? Arr::get($data, 'state') ?? '');
+        // Best-effort: update message status using remote id (many payload shapes exist).
+        $accountId = (int) $wa->user_id;
+        $remoteJid = $this->extractRemoteJid($data);
+        $remoteId = $this->extractRemoteId($data);
+        $status = $this->extractNormalizedStatus($data);
 
-        if ($remoteId === '') return;
+        if ($status === '') return;
 
-        $q = WhatsAppMessage::query()->where('remote_id', $remoteId);
+        $conv = null;
         if ($remoteJid !== '') {
             $conv = WhatsAppConversation::query()
-                ->where('user_id', (int) $wa->user_id)
+                ->where('user_id', $accountId)
                 ->where('instance_name', $wa->instance_name)
                 ->where('peer_jid', $remoteJid)
-                ->first();
-            if ($conv) {
-                $q->where('conversation_id', $conv->id);
+                ->first(['id', 'public_id']);
+        }
+
+        $msg = null;
+
+        if ($remoteId !== '') {
+            $q = WhatsAppMessage::query()->where('remote_id', $remoteId);
+            if ($conv) $q->where('conversation_id', $conv->id);
+            $msg = $q->latest('id')->first();
+        }
+
+        // Fallback: if remote id is missing or did not match, update latest outgoing message for the conversation.
+        if (!$msg && $conv) {
+            $cutoff = Carbon::now()->subMinutes(30);
+            $q = WhatsAppMessage::query()
+                ->where('conversation_id', $conv->id)
+                ->where('direction', 'out')
+                ->where('created_at', '>=', $cutoff)
+                ->latest('id');
+
+            if ($status === 'delivered') {
+                $q->whereNull('delivered_at');
+            }
+            if ($status === 'read') {
+                $q->whereNull('read_at');
+            }
+
+            $msg = $q->first();
+
+            // If we have remote id but message was missing it, attach it best-effort
+            if ($msg && $remoteId !== '' && !$msg->remote_id) {
+                $msg->remote_id = $remoteId;
             }
         }
 
-        $msg = $q->latest('id')->first();
         if (!$msg) return;
 
-        if ($status !== '') {
-            $msg->status = $status;
-            $s = strtolower($status);
-            if ($s === 'delivered' && !$msg->delivered_at) $msg->delivered_at = now();
-            if (in_array($s, ['read', 'seen'], true) && !$msg->read_at) $msg->read_at = now();
-            $msg->save();
-
-            $conv = WhatsAppConversation::query()->where('id', $msg->conversation_id)->first(['public_id']);
-            $this->publish((int) $wa->user_id, 'wa.message.updated', [
-                'conversation_id' => $conv?->public_id,
-                'message' => [
-                    'id' => $msg->public_id,
-                    'status' => $msg->status,
-                    'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
-                    'read_at' => optional($msg->read_at)->toIso8601String(),
-                ],
-            ]);
+        $now = now();
+        $msg->status = $status;
+        if ($status === 'delivered' && !$msg->delivered_at) {
+            $msg->delivered_at = $now;
         }
+        if ($status === 'read') {
+            if (!$msg->delivered_at) $msg->delivered_at = $now;
+            if (!$msg->read_at) $msg->read_at = $now;
+        }
+        $msg->save();
+
+        $convPublicId = $conv?->public_id;
+        if (!$convPublicId) {
+            $convPublicId = WhatsAppConversation::query()->where('id', $msg->conversation_id)->value('public_id');
+        }
+
+        $this->publish($accountId, 'wa.message.updated', [
+            'conversation_id' => $convPublicId,
+            'message' => [
+                'id' => $msg->public_id,
+                'status' => $msg->status,
+                'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                'read_at' => optional($msg->read_at)->toIso8601String(),
+            ],
+        ]);
     }
 
     private function handleMessagesDelete(WhatsAppInstance $wa, array $data): void
@@ -476,6 +513,77 @@ class EvolutionWebhookProcessor
     private function normalizeNumber(string $jidOrNumber): string
     {
         return preg_replace('/\\D/', '', (string) $jidOrNumber) ?: '';
+    }
+
+    private function extractRemoteJid(array $data): string
+    {
+        $candidates = [
+            'key.remoteJid',
+            'remoteJid',
+            'data.key.remoteJid',
+            'data.remoteJid',
+            'message.key.remoteJid',
+        ];
+        foreach ($candidates as $p) {
+            $v = Arr::get($data, $p);
+            if (is_string($v) && trim($v) !== '') return trim($v);
+        }
+        return '';
+    }
+
+    private function extractRemoteId(array $data): string
+    {
+        $candidates = [
+            'key.id',
+            'keyId',
+            'id',
+            'messageId',
+            'data.key.id',
+            'data.id',
+        ];
+        foreach ($candidates as $p) {
+            $v = Arr::get($data, $p);
+            if (is_string($v) && trim($v) !== '') return trim($v);
+        }
+        return '';
+    }
+
+    /**
+     * Normalize various "status/ack" formats to: sent | delivered | read.
+     */
+    private function extractNormalizedStatus(array $data): string
+    {
+        $raw = Arr::get($data, 'status')
+            ?? Arr::get($data, 'state')
+            ?? Arr::get($data, 'data.status')
+            ?? Arr::get($data, 'update.status')
+            ?? Arr::get($data, 'data.update.status')
+            ?? Arr::get($data, 'message.status')
+            ?? Arr::get($data, 'ack');
+
+        // Numeric ack: 1=server/sent, 2=delivered, 3=read (common in Baileys)
+        if (is_int($raw) || (is_string($raw) && ctype_digit($raw))) {
+            $n = (int) $raw;
+            return match ($n) {
+                3 => 'read',
+                2 => 'delivered',
+                1 => 'sent',
+                default => '',
+            };
+        }
+
+        if (!is_string($raw)) return '';
+        $s = strtolower(trim($raw));
+        if ($s === '') return '';
+
+        if (str_contains($s, 'read') || str_contains($s, 'seen')) return 'read';
+        if (str_contains($s, 'deliver') || str_contains($s, 'delivery') || str_contains($s, 'received')) return 'delivered';
+        if (str_contains($s, 'sent') || str_contains($s, 'server') || str_contains($s, 'ack')) return 'sent';
+
+        // Already-normalized values
+        if (in_array($s, ['sent', 'delivered', 'read'], true)) return $s;
+
+        return '';
     }
 }
 

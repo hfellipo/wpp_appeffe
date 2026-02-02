@@ -544,6 +544,36 @@ window.waInboxChatify = function waInboxChatify() {
             if (Number.isNaN(d.getTime())) return '';
             return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
         },
+
+        /**
+         * Return { iconClass, colorClass } for outgoing message ticks.
+         */
+        tickForMessage(m) {
+            if (!m || String(m.direction) !== 'out') return null;
+
+            const status = String(m.status || '').toLowerCase();
+            const hasDelivered = !!m.delivered_at || ['delivered', 'delivery_ack', 'delivered_ack', 'received', '2'].includes(status) || status.includes('deliver');
+            const hasRead = !!m.read_at || ['read', 'seen', 'read_ack', '3'].includes(status) || status.includes('read') || status.includes('seen');
+
+            if (status === 'failed') {
+                return { iconClass: 'fas fa-exclamation-circle', colorClass: 'text-red-500' };
+            }
+            if (status === 'sending') {
+                return { iconClass: 'fas fa-circle-notch fa-spin', colorClass: 'text-gray-400' };
+            }
+            if (hasRead) {
+                return { iconClass: 'fas fa-check-double', colorClass: 'text-sky-500' };
+            }
+            if (hasDelivered) {
+                return { iconClass: 'fas fa-check-double', colorClass: 'text-gray-400' };
+            }
+            if (status === 'sent' || status === 'server_ack' || status === 'ack') {
+                return { iconClass: 'fas fa-check', colorClass: 'text-gray-400' };
+            }
+
+            // Default: show single check for outgoing messages once persisted
+            return { iconClass: 'fas fa-check', colorClass: 'text-gray-300' };
+        },
     };
 };
 

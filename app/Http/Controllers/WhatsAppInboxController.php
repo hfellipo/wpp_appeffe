@@ -11,6 +11,7 @@ use App\Services\EvolutionApiHttpClient;
 use App\Services\WhatsAppEventPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\View\View;
 
 class WhatsAppInboxController extends Controller
@@ -120,6 +121,8 @@ class WhatsAppInboxController extends Controller
                     'name' => $c->name,
                     'phone' => $c->phone,
                     'raw_phone' => $digits,
+                    // WhatsApp usually expects country code. Default Brazil (+55) when missing.
+                    'wa_phone' => $this->normalizeWhatsappNumber($digits),
                 ];
             })->values(),
         ]);
@@ -145,6 +148,10 @@ class WhatsAppInboxController extends Controller
 
         $number = preg_replace('/\D/', '', (string) $contact->phone) ?: '';
         if ($number === '') {
+            return response()->json(['success' => false, 'error' => 'Contato inválido (sem número).'], 422);
+        }
+        $waNumber = $this->normalizeWhatsappNumber($number);
+        if ($waNumber === '') {
             return response()->json(['success' => false, 'error' => 'Contato inválido (sem número).'], 422);
         }
 
@@ -176,7 +183,36 @@ class WhatsAppInboxController extends Controller
             return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
         }
 
-        $peerJid = $number . '@s.whatsapp.net';
+        $peerJid = $waNumber . '@s.whatsapp.net';
+        $legacyPeerJid = $number . '@s.whatsapp.net';
+
+        // Reuse existing conversation even if it was created without country code (legacy)
+        $existing = WhatsAppConversation::query()
+            ->where('user_id', (int) $accountId)
+            ->where('instance_name', $instance)
+            ->whereIn('peer_jid', array_values(array_unique([$peerJid, $legacyPeerJid])))
+            ->first();
+
+        if ($existing) {
+            // Best-effort: keep display name up to date
+            if (!$existing->contact_name) {
+                $existing->contact_name = $contact->name;
+                $existing->save();
+            }
+            return response()->json([
+                'success' => true,
+                'conversation' => [
+                    'id' => $existing->public_id,
+                    'instance_name' => $existing->instance_name,
+                    'contact_number' => $existing->contact_number ?: $waNumber,
+                    'contact_name' => $existing->contact_name,
+                    'avatar_url' => null,
+                    'last_message_at' => optional($existing->last_message_at)->toIso8601String(),
+                    'last_message_preview' => $existing->last_message_preview,
+                    'unread_count' => (int) $existing->unread_count,
+                ],
+            ]);
+        }
 
         $conversation = WhatsAppConversation::query()->firstOrCreate(
             [
@@ -186,7 +222,7 @@ class WhatsAppInboxController extends Controller
             ],
             [
                 'kind' => 'direct',
-                'contact_number' => $number,
+                'contact_number' => $waNumber,
                 'contact_name' => $contact->name,
                 'last_message_at' => null,
                 'last_message_preview' => null,
@@ -255,6 +291,8 @@ class WhatsAppInboxController extends Controller
             'body',
             'status',
             'sent_at',
+            'delivered_at',
+            'read_at',
             'created_at',
         ]);
 
@@ -284,6 +322,8 @@ class WhatsAppInboxController extends Controller
                     'body' => $m->body,
                     'status' => $m->status,
                     'sent_at' => optional($m->sent_at)->toIso8601String(),
+                    'delivered_at' => optional($m->delivered_at)->toIso8601String(),
+                    'read_at' => optional($m->read_at)->toIso8601String(),
                     'created_at' => optional($m->created_at)->toIso8601String(),
                 ];
             })->values(),
@@ -325,7 +365,7 @@ class WhatsAppInboxController extends Controller
             return response()->json(['success' => false, 'error' => 'Instância não encontrada para este usuário.'], 404);
         }
 
-        $number = preg_replace('/\D/', '', (string) $conversation->contact_number);
+        $number = $this->normalizeWhatsappNumber((string) $conversation->contact_number);
         if ($number === '') {
             return response()->json(['success' => false, 'error' => 'Contato inválido.'], 422);
         }
@@ -347,11 +387,14 @@ class WhatsAppInboxController extends Controller
             ], 502);
         }
 
+        $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+
         $msg = WhatsAppMessage::create([
             'conversation_id' => $conversation->id,
             'direction' => 'out',
             'message_type' => 'text',
             'body' => $text,
+            'remote_id' => $remoteId ?: null,
             'status' => 'sent',
             'sent_at' => now(),
             'raw_payload' => is_array($resp['json']) ? $resp['json'] : null,
@@ -385,6 +428,8 @@ class WhatsAppInboxController extends Controller
                 'body' => $msg->body,
                 'status' => $msg->status,
                 'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                'read_at' => optional($msg->read_at)->toIso8601String(),
                 'created_at' => optional($msg->created_at)->toIso8601String(),
             ],
             'conversation' => [
@@ -408,9 +453,63 @@ class WhatsAppInboxController extends Controller
                 'body' => $msg->body,
                 'status' => $msg->status,
                 'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                'read_at' => optional($msg->read_at)->toIso8601String(),
                 'created_at' => optional($msg->created_at)->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * Normalize a phone number for WhatsApp sending.
+     * Default Brazil country code (+55) when missing (10/11 digits -> add 55).
+     */
+    private function normalizeWhatsappNumber(string $raw): string
+    {
+        $digits = preg_replace('/\D/', '', (string) $raw) ?: '';
+        if ($digits === '') return '';
+
+        // Already has BR country code and length looks like BR (55 + DDD + number)
+        if (str_starts_with($digits, '55') && (strlen($digits) === 12 || strlen($digits) === 13)) {
+            return $digits;
+        }
+
+        // Local BR number (DDD + number)
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            return '55' . $digits;
+        }
+
+        // Fallback: return as-is
+        return $digits;
+    }
+
+    /**
+     * Extract Evolution/WhatsApp remote message id from sendText response.
+     *
+     * @param  array<string,mixed>|null  $json
+     */
+    private function extractEvolutionRemoteId(?array $json): string
+    {
+        if (!is_array($json)) return '';
+
+        $candidates = [
+            'key.id',
+            'keyId',
+            'id',
+            'messageId',
+            'message.id',
+            'data.key.id',
+            'data.id',
+        ];
+
+        foreach ($candidates as $path) {
+            $v = Arr::get($json, $path);
+            if (is_string($v) && trim($v) !== '') {
+                return trim($v);
+            }
+        }
+
+        return '';
     }
 }
 
