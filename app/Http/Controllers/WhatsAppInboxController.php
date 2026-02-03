@@ -408,26 +408,25 @@ class WhatsAppInboxController extends Controller
                 ], 400);
             }
 
-            $instance = preg_replace('/\D/', '', (string) $conversation->instance_name);
-            if ($instance === '') {
+            $instanceNormalized = preg_replace('/\D/', '', (string) $conversation->instance_name);
+            if ($instanceNormalized === '') {
                 return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
             }
 
-            // Segurança: garantir que a instância pertence a esta conta e está conectada
+            // Segurança: instância pertence à conta. Busca por nome normalizado ou exato.
             $waInstance = WhatsAppInstance::query()
                 ->where('user_id', $accountId)
-                ->where('instance_name', $instance)
+                ->where(function ($q) use ($instanceNormalized, $conversation) {
+                    $q->where('instance_name', $instanceNormalized)
+                        ->orWhere('instance_name', $conversation->instance_name);
+                })
                 ->first();
             if (!$waInstance) {
                 return response()->json(['success' => false, 'error' => 'Instância não encontrada para este usuário.'], 404);
             }
-            $connectedStates = ['open', 'connected', 'online', 'ready'];
-            if (!in_array(strtolower(trim((string) $waInstance->status)), $connectedStates, true)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'WhatsApp desconectado. Reconecte em Configurações.',
-                ], 503);
-            }
+            $instance = preg_replace('/\D/', '', (string) $waInstance->instance_name) ?: $instanceNormalized;
+
+            // Não bloquear por status em DB (pode estar desatualizado). Deixar a Evolution responder.
 
             // Evolution API espera "number" como JID completo (ex: 5511999999999@s.whatsapp.net ou grupo@g.us)
             $recipient = $this->recipientForEvolution($conversation);
