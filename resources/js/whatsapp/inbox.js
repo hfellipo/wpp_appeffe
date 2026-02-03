@@ -56,6 +56,10 @@ window.waInboxChatify = function waInboxChatify() {
         contactSearch: '',
         _contactSearchTimer: null,
 
+        // presence (online / typing) per conversation
+        presenceMap: {},
+        _presenceTimeout: null,
+
         get filteredConversations() {
             const q = String(this.search || '').toLowerCase().trim();
             if (!q) return this.conversations;
@@ -289,6 +293,43 @@ window.waInboxChatify = function waInboxChatify() {
                 }
                 this.bumpLastEventId(data);
             });
+
+            es.addEventListener('wa.presence', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                const convId = String(data.conversation_id || '');
+                const presence = String(data.presence || '').toLowerCase();
+                if (!convId) return;
+                this.presenceMap[convId] = { presence, at: Date.now() };
+                this.presenceMap = { ...this.presenceMap };
+                this.clearPresenceAfterDelay(convId);
+                this.bumpLastEventId(data);
+            });
+        },
+
+        clearPresenceAfterDelay(convId) {
+            if (this._presenceTimeout) clearTimeout(this._presenceTimeout);
+            this._presenceTimeout = setTimeout(() => {
+                this._presenceTimeout = null;
+            }, 6000);
+        },
+
+        getPresenceForConversation(convId) {
+            if (!convId) return null;
+            const p = this.presenceMap[String(convId)];
+            if (!p) return null;
+            const age = Date.now() - (p.at || 0);
+            if (age > 12000) return null;
+            return p.presence || null;
+        },
+
+        isConversationOnline(convId) {
+            const pres = this.getPresenceForConversation(convId);
+            return pres === 'available' || pres === 'composing' || pres === 'recording' || pres === 'paused';
+        },
+
+        isConversationTyping(convId) {
+            const pres = this.getPresenceForConversation(convId);
+            return pres === 'composing' || pres === 'recording';
         },
 
         bumpLastEventId(data) {

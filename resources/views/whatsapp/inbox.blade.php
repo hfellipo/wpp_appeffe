@@ -46,6 +46,26 @@
             .wa-tick-sending { color: #9ca3af !important; }
             .wa-tick-failed { color: #ef4444 !important; }
             .message-time .wa-tick i { display: inline-block; min-width: 1em; }
+
+            /* Avatares: fallback com iniciais quando não há imagem */
+            .wa-avatar { position: relative; display: flex; align-items: center; justify-content: center; }
+            .wa-avatar.wa-avatar--fallback { background-color: #25D366; background-image: none; color: #fff; }
+            .wa-avatar-initial { font-weight: 600; user-select: none; }
+            .avatar.av-m .wa-avatar-initial { font-size: 1.1rem; }
+            .wa-avatar-initial--s { font-size: 0.85rem; }
+            .wa-avatar-initial--l { font-size: 2.5rem; }
+            /* Online e digitando */
+            .wa-online-dot {
+                position: absolute;
+                right: 6px;
+                bottom: 2px;
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: #22c55e;
+                border: 2px solid #fff;
+            }
+            .wa-typing-label { font-size: 0.75rem; color: #6b7280; font-style: italic; }
         </style>
     @endpush
 
@@ -93,9 +113,14 @@
                                     <tr data-action="0" @click="openConversation(c)">
                                         <td style="position: relative">
                                             <div
-                                                class="avatar av-m"
+                                                class="avatar av-m wa-avatar"
+                                                :class="{ 'wa-avatar--fallback': !c.avatar_url }"
                                                 :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
-                                            ></div>
+                                            >
+                                                <template x-if="!c.avatar_url">
+                                                    <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
+                                                </template>
+                                            </div>
                                         </td>
                                         <td>
                                             <p>
@@ -121,12 +146,31 @@
                     <nav class="chatify-d-flex chatify-justify-content-between chatify-align-items-center">
                         <div class="chatify-d-flex chatify-justify-content-between chatify-align-items-center">
                             <a href="#" class="show-listView" @click.prevent="activeConversation = null"><i class="fas fa-arrow-left"></i></a>
-                            <div
-                                class="avatar av-s header-avatar"
-                                :style="activeConversation && activeConversation.avatar_url ? ('background-image: url(' + activeConversation.avatar_url + ')') : ''"
-                                style="margin: 0px 10px; margin-top: -5px; margin-bottom: -5px;"
-                            ></div>
-                            <a href="#" class="user-name" x-text="activeConversation ? (activeConversation.contact_name || formatNumber(activeConversation.contact_number)) : 'WhatsApp'"></a>
+                            <div class="chatify-d-flex chatify-align-items-center" style="position: relative;">
+                                <div
+                                    class="avatar av-s header-avatar wa-avatar"
+                                    :class="{ 'wa-avatar--fallback': activeConversation && !activeConversation.avatar_url }"
+                                    :style="activeConversation && activeConversation.avatar_url ? ('background-image: url(' + activeConversation.avatar_url + ')') : ''"
+                                    style="margin: 0px 10px; margin-top: -5px; margin-bottom: -5px;"
+                                >
+                                    <template x-if="activeConversation && !activeConversation.avatar_url">
+                                        <span class="wa-avatar-initial wa-avatar-initial--s" x-text="(activeConversation.contact_name || activeConversation.contact_number || '?').charAt(0).toUpperCase()"></span>
+                                    </template>
+                                </div>
+                                <span
+                                    x-show="activeConversation && isConversationOnline(activeConversation.id)"
+                                    class="wa-online-dot"
+                                    title="Online"
+                                ></span>
+                            </div>
+                            <div class="chatify-d-flex chatify-align-items-center" style="flex: 1; min-width: 0; flex-direction: column; align-items: flex-start;">
+                                <a href="#" class="user-name" x-text="activeConversation ? (activeConversation.contact_name || formatNumber(activeConversation.contact_number)) : 'WhatsApp'"></a>
+                                <span
+                                    x-show="activeConversation && isConversationTyping(activeConversation.id)"
+                                    class="wa-typing-label"
+                                    x-text="'digitando...'"
+                                ></span>
+                            </div>
                         </div>
                         <nav class="m-header-right">
                             <a href="#" class="show-infoSide" @click.prevent="showInfo = !showInfo"><i class="fas fa-info-circle"></i></a>
@@ -161,6 +205,19 @@
                                 </div>
                             </div>
                         </template>
+                        <template x-if="activeConversation && isConversationTyping(activeConversation.id)">
+                            <div class="typing-indicator">
+                                <div class="message-card typing">
+                                    <div class="message">
+                                        <span class="typing-dots">
+                                            <span class="dot dot-1"></span>
+                                            <span class="dot dot-2"></span>
+                                            <span class="dot dot-3"></span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
                     </div>
                 </div>
 
@@ -190,10 +247,15 @@
                 </nav>
                 <div style="text-align:center; padding: 1rem;">
                     <div
-                        class="avatar av-l"
+                        class="avatar av-l wa-avatar"
+                        :class="{ 'wa-avatar--fallback': activeConversation && !activeConversation.avatar_url }"
                         :style="activeConversation && activeConversation.avatar_url ? ('background-image: url(' + activeConversation.avatar_url + ')') : ''"
                         style="margin: 0 auto;"
-                    ></div>
+                    >
+                        <template x-if="activeConversation && !activeConversation.avatar_url">
+                            <span class="wa-avatar-initial wa-avatar-initial--l" x-text="(activeConversation.contact_name || activeConversation.contact_number || '?').charAt(0).toUpperCase()"></span>
+                        </template>
+                    </div>
                     <p class="info-name" style="margin-top: 1rem;" x-text="activeConversation ? (activeConversation.contact_name || formatNumber(activeConversation.contact_number)) : '-'"></p>
                 </div>
             </div>

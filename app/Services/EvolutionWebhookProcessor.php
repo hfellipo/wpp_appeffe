@@ -125,14 +125,27 @@ class EvolutionWebhookProcessor
 
     private function handlePresenceUpdate(WhatsAppInstance $wa, array $data): void
     {
-        // Store best-effort presence with TTL (cache store can be database)
         $remoteJid = (string) Arr::get($data, 'key.remoteJid', Arr::get($data, 'remoteJid', ''));
         $remoteJid = trim($remoteJid);
         if ($remoteJid === '') return;
 
         $presence = Arr::get($data, 'presence', Arr::get($data, 'data.presence', null));
+        $presence = is_string($presence) ? strtolower(trim($presence)) : (is_scalar($presence) ? (string) $presence : '');
         $key = "wa:presence:{$wa->instance_name}:{$remoteJid}";
         Cache::put($key, $presence, now()->addSeconds(25));
+
+        // Notify frontend for online/typing indicator
+        $conv = WhatsAppConversation::query()
+            ->where('user_id', $wa->user_id)
+            ->where('instance_name', $wa->instance_name)
+            ->where('peer_jid', $remoteJid)
+            ->first(['public_id']);
+        if ($conv && $presence !== '') {
+            $this->publish((int) $wa->user_id, 'wa.presence', [
+                'conversation_id' => $conv->public_id,
+                'presence' => $presence,
+            ]);
+        }
     }
 
     private function handleContacts(WhatsAppInstance $wa, array $data): void
