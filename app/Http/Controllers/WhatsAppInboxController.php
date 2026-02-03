@@ -413,7 +413,7 @@ class WhatsAppInboxController extends Controller
                 return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
             }
 
-            // Segurança: instância pertence à conta. Busca por nome normalizado ou exato.
+            // Instância da conta: busca exata ou por nome normalizado (lista de contatos pode vir com formato diferente)
             $waInstance = WhatsAppInstance::query()
                 ->where('user_id', $accountId)
                 ->where(function ($q) use ($instanceNormalized, $conversation) {
@@ -421,6 +421,17 @@ class WhatsAppInboxController extends Controller
                         ->orWhere('instance_name', $conversation->instance_name);
                 })
                 ->first();
+            if (!$waInstance) {
+                $candidates = WhatsAppInstance::query()
+                    ->where('user_id', $accountId)
+                    ->get(['id', 'instance_name']);
+                foreach ($candidates as $c) {
+                    if (preg_replace('/\D/', '', (string) $c->instance_name) === $instanceNormalized) {
+                        $waInstance = $c;
+                        break;
+                    }
+                }
+            }
             if (!$waInstance) {
                 return response()->json(['success' => false, 'error' => 'Instância não encontrada para este usuário.'], 404);
             }
@@ -592,23 +603,33 @@ class WhatsAppInboxController extends Controller
     /**
      * Normalize a phone number for WhatsApp sending.
      * Default Brazil country code (+55) when missing (10/11 digits -> add 55).
+     * Números da lista de contatos podem vir como (31) 99999-9999 ou 31999999999.
      */
     private function normalizeWhatsappNumber(string $raw): string
     {
         $digits = preg_replace('/\D/', '', (string) $raw) ?: '';
         if ($digits === '') return '';
 
-        // Already has BR country code and length looks like BR (55 + DDD + number)
-        if (str_starts_with($digits, '55') && (strlen($digits) === 12 || strlen($digits) === 13)) {
+        // Já tem código do país 55 e tamanho BR (55 + DDD 2 + número 8 ou 9)
+        if (str_starts_with($digits, '55') && strlen($digits) >= 12 && strlen($digits) <= 13) {
             return $digits;
         }
 
-        // Local BR number (DDD + number)
+        // Número local BR: DDD (2) + número (8 ou 9 dígitos) = 10 ou 11
         if (strlen($digits) === 10 || strlen($digits) === 11) {
             return '55' . $digits;
         }
 
-        // Fallback: return as-is
+        // 9 dígitos: provável celular sem DDD; assume Brasil e adiciona 55 (Evolution pode aceitar 55 + 9)
+        if (strlen($digits) === 9 && str_starts_with($digits, '9')) {
+            return '55' . $digits;
+        }
+
+        // Outros países: se já tem 10-15 dígitos, retorna como está
+        if (strlen($digits) >= 10 && strlen($digits) <= 15) {
+            return $digits;
+        }
+
         return $digits;
     }
 
