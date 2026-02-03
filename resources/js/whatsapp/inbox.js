@@ -529,17 +529,32 @@ window.waInboxChatify = function waInboxChatify() {
             this.$nextTick(() => this.scrollToBottom(true));
 
             this.sending = true;
+            const url = `/whatsapp/api/conversations/${conversationId}/send`;
+            const payload = { text };
+            console.log('[WhatsApp send] Request:', {
+                url,
+                method: 'POST',
+                conversationId,
+                payload,
+                activeConversation: this.activeConversation ? {
+                    id: this.activeConversation.id,
+                    instance_name: this.activeConversation.instance_name,
+                    contact_number: this.activeConversation.contact_number,
+                    contact_name: this.activeConversation.contact_name,
+                } : null,
+            });
             try {
-                const resp = await fetch(`/whatsapp/api/conversations/${conversationId}/send`, {
+                const resp = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '',
                     },
-                    body: JSON.stringify({ text }),
+                    body: JSON.stringify(payload),
                 });
                 const data = await resp.json().catch(() => ({}));
+                console.log('[WhatsApp send] Response:', { ok: resp.ok, status: resp.status, data });
 
                 // Só aplica resultado se ainda estiver na mesma conversa (evita aplicar em chat errado após troca)
                 const stillSameChat = this.activeConversation && String(this.activeConversation.id) === conversationId;
@@ -547,7 +562,10 @@ window.waInboxChatify = function waInboxChatify() {
                 if (!resp.ok || data.success === false) {
                     if (stillSameChat) {
                         optimistic.status = 'failed';
-                        const msg = data.error || data.message || (data.errors && data.errors.text && data.errors.text[0]) || data.details?.message || 'Falha ao enviar. Tente novamente.';
+                        let msg = data.error || data.message || (data.errors && data.errors.text && data.errors.text[0]) || data.details?.message || 'Falha ao enviar. Tente novamente.';
+                        if (data.attempted_number_formatted) {
+                            msg += `\n\nNúmero tentado: ${data.attempted_number_formatted}`;
+                        }
                         if (typeof alert !== 'undefined') alert(msg);
                     } else {
                         const idx = this.messages.findIndex((m) => String(m.id) === String(tmpId));

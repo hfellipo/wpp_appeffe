@@ -147,13 +147,18 @@ class WhatsAppInboxController extends Controller
             return response()->json(['success' => false, 'error' => 'Contato não encontrado.'], 404);
         }
 
-        $number = preg_replace('/\D/', '', (string) $contact->phone) ?: '';
-        if ($number === '') {
-            return response()->json(['success' => false, 'error' => 'Contato inválido (sem número).'], 422);
-        }
-        $waNumber = $this->normalizeWhatsappNumber($number);
+        // Usa número já normalizado para WhatsApp (E.164), tratando (XX)XXXXX-XXXX do banco
+        $waNumber = $contact->phone_for_whatsapp;
         if ($waNumber === '') {
             return response()->json(['success' => false, 'error' => 'Contato inválido (sem número).'], 422);
+        }
+        // Dígitos locais (sem 55) para buscar conversa existente por legacy JID
+        $number = preg_replace('/\D/', '', (string) $contact->phone) ?: '';
+        if (strlen($number) === 11 && str_starts_with($number, '0')) {
+            $number = substr($number, 1);
+        }
+        if ($number === '') {
+            $number = str_starts_with($waNumber, '55') ? substr($waNumber, 2) : $waNumber;
         }
 
         // Choose best instance for this account (prefer connected)
@@ -179,27 +184,50 @@ class WhatsAppInboxController extends Controller
             ], 409);
         }
 
-        $instance = preg_replace('/\D/', '', (string) $wa->instance_name);
+        // Usa o nome real da instância (ex: "production" ou "5531973372872") para a conversa
+        $instance = trim((string) $wa->instance_name) ?: preg_replace('/\D/', '', (string) $wa->instance_name);
         if ($instance === '') {
             return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
         }
 
         $peerJid = $waNumber . '@s.whatsapp.net';
         $legacyPeerJid = $number . '@s.whatsapp.net';
+        // JID errado que podia ser salvo antes do fix (zero após 55): 55031994234090@s.whatsapp.net
+        $wrongPeerJid = (strlen($number) === 11 && str_starts_with($number, '0'))
+            ? ('550' . substr($number, 1) . '@s.whatsapp.net')
+            : null;
 
-        // Reuse existing conversation even if it was created without country code (legacy)
+        $peerJids = array_values(array_filter(array_unique([$peerJid, $legacyPeerJid, $wrongPeerJid])));
+
+        // Busca conversa existente: por instance_name real ou por dígitos (legacy)
+        $instanceDigits = preg_replace('/\D/', '', (string) $wa->instance_name);
         $existing = WhatsAppConversation::query()
             ->where('user_id', (int) $accountId)
-            ->where('instance_name', $instance)
-            ->whereIn('peer_jid', array_values(array_unique([$peerJid, $legacyPeerJid])))
+            ->where(function ($q) use ($instance, $instanceDigits) {
+                $q->where('instance_name', $instance);
+                if ($instanceDigits !== '') {
+                    $q->orWhere('instance_name', $instanceDigits);
+                }
+            })
+            ->whereIn('peer_jid', $peerJids)
             ->first();
 
         if ($existing) {
-            // Best-effort: keep display name up to date
+            $updated = false;
             if (!$existing->contact_name) {
                 $existing->contact_name = $contact->name;
+                $updated = true;
+            }
+            if (empty(trim((string) $existing->peer_jid)) || $existing->peer_jid !== $peerJid) {
+                // Corrige peer_jid vazio ou o formato antigo (55031...)
+                $existing->peer_jid = $peerJid;
+                $existing->contact_number = $existing->contact_number ?: $waNumber;
+                $updated = true;
+            }
+            if ($updated) {
                 $existing->save();
             }
+            $this->ensureWhatsAppContactFromAppContact((int) $accountId, $instance, $waNumber, $peerJid, $contact->name);
             return response()->json([
                 'success' => true,
                 'conversation' => [
@@ -231,6 +259,9 @@ class WhatsAppInboxController extends Controller
             ]
         );
 
+        // Registra o contato em whatsapp_contacts para o chat aparecer corretamente e avatar/nome funcionarem
+        $this->ensureWhatsAppContactFromAppContact((int) $accountId, $instance, $waNumber, $peerJid, $contact->name);
+
         // Publish event so other tabs update immediately
         $this->events->publish((int) $accountId, 'wa.conversation.created', [
             'conversation' => [
@@ -258,6 +289,34 @@ class WhatsAppInboxController extends Controller
                 'unread_count' => (int) $conversation->unread_count,
             ],
         ]);
+    }
+
+    /**
+     * Garante que exista registro em whatsapp_contacts quando a conversa vem da tabela contacts (app).
+     * Assim o chat fica registrado e o nome/avatar funcionam na lista.
+     */
+    private function ensureWhatsAppContactFromAppContact(
+        int $userId,
+        string $instanceName,
+        string $contactNumberE164,
+        string $contactJid,
+        string $displayName
+    ): void {
+        $num = preg_replace('/\D/', '', $contactNumberE164) ?: $contactNumberE164;
+        if ($num === '') {
+            return;
+        }
+        WhatsAppContact::query()->updateOrCreate(
+            [
+                'user_id' => $userId,
+                'instance_name' => $instanceName,
+                'contact_number' => $num,
+            ],
+            [
+                'contact_jid' => $contactJid,
+                'display_name' => trim($displayName) ?: null,
+            ]
+        );
     }
 
     /**
@@ -409,11 +468,8 @@ class WhatsAppInboxController extends Controller
             }
 
             $instanceNormalized = preg_replace('/\D/', '', (string) $conversation->instance_name);
-            if ($instanceNormalized === '') {
-                return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
-            }
 
-            // Instância da conta: busca exata ou por nome normalizado (lista de contatos pode vir com formato diferente)
+            // Instância da conta: busca por nome real (ex: "production") ou por dígitos (conversa vinda de contato)
             $waInstance = WhatsAppInstance::query()
                 ->where('user_id', $accountId)
                 ->where(function ($q) use ($instanceNormalized, $conversation) {
@@ -433,46 +489,103 @@ class WhatsAppInboxController extends Controller
                 }
             }
             if (!$waInstance) {
+                Log::channel('single')->warning('WhatsApp send: instância não encontrada', [
+                    'conversation_id' => $conversation->public_id,
+                    'conversation_instance_name' => $conversation->instance_name,
+                    'instance_normalized' => $instanceNormalized,
+                ]);
                 return response()->json(['success' => false, 'error' => 'Instância não encontrada para este usuário.'], 404);
             }
-            $instance = preg_replace('/\D/', '', (string) $waInstance->instance_name) ?: $instanceNormalized;
+            // Evolution API espera o nome real da instância (ex: "production" ou "5511999999999"), não só dígitos
+            $instanceForApi = trim((string) $waInstance->instance_name) ?: $instanceNormalized;
+
+            // Log de diagnóstico quando envio vem de conversa (ex.: contato do banco)
+            Log::channel('single')->info('WhatsApp send: payload', [
+                'conversation_id' => $conversation->public_id,
+                'instance_for_api' => $instanceForApi,
+                'conversation_peer_jid' => $conversation->peer_jid,
+                'conversation_contact_number' => $conversation->contact_number,
+            ]);
 
             // Não bloquear por status em DB (pode estar desatualizado). Deixar a Evolution responder.
 
             // Evolution API espera "number" como JID completo (ex: 5511999999999@s.whatsapp.net ou grupo@g.us)
             $recipient = $this->recipientForEvolution($conversation);
             if ($recipient === '') {
+                // Conversas vindas da lista de contatos às vezes têm peer_jid vazio ou em formato que não batia
+                $recipient = $this->buildRecipientFromConversation($conversation);
+                if ($recipient !== '') {
+                    if (empty(trim((string) $conversation->peer_jid))) {
+                        $conversation->peer_jid = $recipient;
+                        $conversation->save();
+                    }
+                }
+            }
+            if ($recipient === '') {
+                Log::channel('single')->warning('WhatsApp send: destinatário vazio', [
+                    'conversation_id' => $conversation->public_id,
+                    'peer_jid' => $conversation->peer_jid,
+                    'contact_number' => $conversation->contact_number,
+                ]);
                 return response()->json([
                     'success' => false,
                     'error' => 'Esta conversa não tem número de destino. Selecione outro chat ou inicie uma nova conversa.',
                 ], 422);
             }
 
+            // Persiste JID normalizado (ex: 31994234090 -> 5531994234090) para próximos envios
+            $currentPeer = trim((string) ($conversation->peer_jid ?? ''));
+            if ($currentPeer !== '' && $currentPeer !== $recipient && str_ends_with($recipient, '@s.whatsapp.net')) {
+                $conversation->peer_jid = $recipient;
+                $conversation->save();
+            }
+
+            // Garante registro em whatsapp_contacts ao enviar pelo chat (nome/avatar na lista)
+            if (str_ends_with($recipient, '@s.whatsapp.net')) {
+                $this->ensureWhatsAppContactFromAppContact(
+                    (int) $accountId,
+                    $conversation->instance_name,
+                    $conversation->contact_number ?: preg_replace('/@.*/', '', $recipient),
+                    $recipient,
+                    (string) ($conversation->contact_name ?? '')
+                );
+            }
+
             $text = (string) $request->input('text');
 
-            // Evolution API (v2): POST /message/sendText/{instance}
+            // Evolution API (v2) espera "number" em E.164 (só dígitos), não JID; ela monta o JID internamente
+            $numberForPayload = str_ends_with($recipient, '@s.whatsapp.net')
+                ? preg_replace('/\D/', '', explode('@', $recipient)[0])
+                : $recipient;
+
             $payload = [
-                'number' => $recipient,
+                'number' => $numberForPayload,
                 'text' => $text,
             ];
-            $resp = $this->client->post("/message/sendText/{$instance}", $payload);
+            $resp = $this->client->post("/message/sendText/{$instanceForApi}", $payload);
 
             if ($resp['status'] < 200 || $resp['status'] >= 300) {
                 Log::channel('single')->warning('Evolution sendText falhou', [
                     'conversation_id' => $conversation->public_id,
-                    'instance' => $instance,
+                    'instance' => $instanceForApi,
                     'recipient' => $recipient,
+                    'conversation_peer_jid' => $conversation->peer_jid,
+                    'conversation_contact_number' => $conversation->contact_number,
                     'http_status' => $resp['status'],
                     'response' => $resp['json'] ?? $resp['text'],
                 ]);
                 $errMsg = $this->evolutionErrorMessage($resp);
                 $httpStatus = $resp['status'] === 0 ? 502 : ($resp['status'] >= 400 && $resp['status'] < 500 ? 422 : 503);
-                return response()->json([
+                $errPayload = [
                     'success' => false,
                     'http_status' => $resp['status'],
                     'error' => $errMsg,
                     'details' => $resp['json'] ?? $resp['text'],
-                ], $httpStatus);
+                ];
+                if (str_ends_with($recipient, '@s.whatsapp.net')) {
+                    $errPayload['attempted_number_formatted'] = $this->formatJidForDisplay($recipient);
+                }
+                return response()->json($errPayload, $httpStatus);
             }
 
             $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
@@ -560,19 +673,48 @@ class WhatsAppInboxController extends Controller
     }
 
     /**
+     * Tenta montar o JID a partir de contact_number quando peer_jid está vazio (ex.: conversas da lista de contatos).
+     */
+    private function buildRecipientFromConversation(WhatsAppConversation $conversation): string
+    {
+        $raw = trim((string) ($conversation->contact_number ?? ''));
+        if ($raw === '') {
+            return '';
+        }
+        $digits = preg_replace('/\D/', '', $raw);
+        if (strlen($digits) < 10) {
+            return '';
+        }
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            if (!str_starts_with($digits, '55')) {
+                $digits = '55' . $digits;
+            }
+        }
+        if (strlen($digits) >= 12 && strlen($digits) <= 15) {
+            return $digits . '@s.whatsapp.net';
+        }
+        if (strlen($digits) >= 10) {
+            return $digits . '@s.whatsapp.net';
+        }
+        return '';
+    }
+
+    /**
      * Recipient identifier for Evolution API: full JID (number@s.whatsapp.net or group@g.us).
+     * Normaliza número BR (10/11 dígitos sem 55) para evitar "exists":false da Evolution.
      */
     private function recipientForEvolution(WhatsAppConversation $conversation): string
     {
         $peerJid = trim((string) ($conversation->peer_jid ?? ''));
         if ($peerJid !== '') {
             if (str_contains($peerJid, '@')) {
-                return $peerJid;
+                return $this->normalizeJidForEvolution($peerJid);
             }
             // peer_jid às vezes vem só com dígitos (sem @s.whatsapp.net)
             $digits = preg_replace('/\D/', '', $peerJid);
             if ($digits !== '') {
-                return $digits . '@s.whatsapp.net';
+                $normalized = $this->normalizeWhatsappNumber($digits);
+                return $normalized !== '' ? $normalized . '@s.whatsapp.net' : $digits . '@s.whatsapp.net';
             }
         }
         $number = $this->normalizeWhatsappNumber((string) ($conversation->contact_number ?? ''));
@@ -580,6 +722,45 @@ class WhatsAppInboxController extends Controller
             return $number . '@s.whatsapp.net';
         }
         return '';
+    }
+
+    /**
+     * Garante que JIDs de contato BR tenham código 55 (Evolution exige para "exists").
+     * Ex: 31994234090@s.whatsapp.net -> 5531994234090@s.whatsapp.net
+     */
+    private function normalizeJidForEvolution(string $jid): string
+    {
+        if (!str_contains($jid, '@s.whatsapp.net')) {
+            return $jid; // grupos ou outros formatos: devolve como está
+        }
+        $digits = preg_replace('/\D/', '', explode('@', $jid)[0]) ?: '';
+        if ($digits === '') {
+            return $jid;
+        }
+        $normalized = $this->normalizeWhatsappNumber($digits);
+        return $normalized !== '' ? $normalized . '@s.whatsapp.net' : $jid;
+    }
+
+    /**
+     * Formata JID para exibição: 5531994234090@s.whatsapp.net -> (31) 99423-4090
+     */
+    private function formatJidForDisplay(string $jid): string
+    {
+        $digits = preg_replace('/\D/', '', explode('@', $jid)[0]) ?: '';
+        if ($digits === '') {
+            return $jid;
+        }
+        if (str_starts_with($digits, '55')) {
+            $local = substr($digits, 2);
+            $len = strlen($local);
+            if ($len === 10) {
+                return sprintf('(%s) %s-%s', substr($local, 0, 2), substr($local, 2, 4), substr($local, 6, 4));
+            }
+            if ($len === 11) {
+                return sprintf('(%s) %s-%s', substr($local, 0, 2), substr($local, 2, 5), substr($local, 7, 4));
+            }
+        }
+        return $digits;
     }
 
     /**
@@ -592,6 +773,14 @@ class WhatsAppInboxController extends Controller
         }
         $json = $resp['json'] ?? null;
         if (is_array($json)) {
+            // Evolution retorna response.message[] com exists: false quando o número não tem WhatsApp
+            $inner = $json['response'] ?? null;
+            if (is_array($inner) && isset($inner['message']) && is_array($inner['message'])) {
+                $first = $inner['message'][0] ?? null;
+                if (is_array($first) && ($first['exists'] ?? null) === false) {
+                    return 'Este número não está registrado no WhatsApp ou está incorreto. Confira o número (com DDD) e se o contato usa WhatsApp.';
+                }
+            }
             $msg = $json['message'] ?? $json['error'] ?? $json['reason'] ?? null;
             if (is_string($msg) && $msg !== '') {
                 return $msg;
@@ -603,12 +792,21 @@ class WhatsAppInboxController extends Controller
     /**
      * Normalize a phone number for WhatsApp sending.
      * Default Brazil country code (+55) when missing (10/11 digits -> add 55).
-     * Números da lista de contatos podem vir como (31) 99999-9999 ou 31999999999.
+     * Números da lista de contatos podem vir como (31) 99999-9999, 0 31 99423-4090 ou 31999999999.
      */
     private function normalizeWhatsappNumber(string $raw): string
     {
         $digits = preg_replace('/\D/', '', (string) $raw) ?: '';
         if ($digits === '') return '';
+
+        // Remove zero à esquerda em números BR (ex: 031994234090 -> 31994234090) para não gerar 55031...
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            $digits = substr($digits, 1);
+        }
+        // Corrige JID já salvos errados: 55031994234090 -> 5531994234090
+        if (str_starts_with($digits, '550') && strlen($digits) >= 13) {
+            $digits = '55' . substr($digits, 3);
+        }
 
         // Já tem código do país 55 e tamanho BR (55 + DDD 2 + número 8 ou 9)
         if (str_starts_with($digits, '55') && strlen($digits) >= 12 && strlen($digits) <= 13) {

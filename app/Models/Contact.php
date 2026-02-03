@@ -21,6 +21,66 @@ class Contact extends Model
     ];
 
     /**
+     * Normaliza e formata o telefone ao salvar: (XX)XXXXX-XXXX ou (XX)XXXX-XXXX.
+     * Remove zero à esquerda (ex: 031994234090 -> (31)99423-4090) para evitar JID inválido no WhatsApp.
+     */
+    protected function phone(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::make(
+            set: function (?string $value) {
+                if ($value === null || $value === '') {
+                    return $value;
+                }
+                $digits = preg_replace('/\D/', '', $value) ?: '';
+                if ($digits === '') {
+                    return $value;
+                }
+                if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+                    $digits = substr($digits, 1);
+                }
+                if (strlen($digits) === 11) {
+                    return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 5), substr($digits, 7, 4));
+                }
+                if (strlen($digits) === 10) {
+                    return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 4), substr($digits, 6, 4));
+                }
+                return $value;
+            },
+        );
+    }
+
+    /**
+     * Número no formato E.164 para envio no WhatsApp (ex: 5531994234090).
+     * Trata (XX)XXXXX-XXXX e variantes; retorna vazio se inválido.
+     */
+    public function getPhoneForWhatsappAttribute(): string
+    {
+        $digits = preg_replace('/\D/', '', (string) ($this->attributes['phone'] ?? '')) ?: '';
+        if ($digits === '') {
+            return '';
+        }
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            $digits = substr($digits, 1);
+        }
+        if (str_starts_with($digits, '550') && strlen($digits) >= 13) {
+            $digits = '55' . substr($digits, 3);
+        }
+        if (str_starts_with($digits, '55') && strlen($digits) >= 12 && strlen($digits) <= 13) {
+            return $digits;
+        }
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            return '55' . $digits;
+        }
+        if (strlen($digits) === 9 && str_starts_with($digits, '9')) {
+            return '55' . $digits;
+        }
+        if (strlen($digits) >= 10 && strlen($digits) <= 15) {
+            return $digits;
+        }
+        return $digits;
+    }
+
+    /**
      * Get the user that owns the contact.
      */
     public function user(): BelongsTo
