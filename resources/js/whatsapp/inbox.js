@@ -562,10 +562,10 @@ window.waInboxChatify = function waInboxChatify() {
                 return { iconClass: 'fas fa-circle-notch fa-spin', colorClass: 'text-gray-400' };
             }
             if (hasRead) {
-                return { iconClass: 'fas fa-check-double', colorClass: 'text-sky-500' };
+                return { iconClass: 'fas fa-check-double', colorClass: 'text-green-500' };
             }
             if (hasDelivered) {
-                return { iconClass: 'fas fa-check-double', colorClass: 'text-gray-400' };
+                return { iconClass: 'fas fa-check-double', colorClass: 'text-sky-500' };
             }
             if (status === 'sent' || status === 'server_ack' || status === 'ack') {
                 return { iconClass: 'fas fa-check', colorClass: 'text-gray-400' };

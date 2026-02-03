@@ -124,10 +124,6 @@
                             <a href="#" class="show-infoSide" @click.prevent="showInfo = !showInfo"><i class="fas fa-info-circle"></i></a>
                         </nav>
                     </nav>
-                    <div class="internet-connection" style="display:block">
-                        <span class="ic-connected" x-show="connected">Connected</span>
-                        <span class="ic-noInternet" x-show="!connected">No connection</span>
-                    </div>
                 </div>
 
                 <div class="m-body messages-container app-scroll" x-ref="messagesPane" @scroll="onScrollMessages()">
