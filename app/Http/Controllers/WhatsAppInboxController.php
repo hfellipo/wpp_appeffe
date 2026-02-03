@@ -12,6 +12,7 @@ use App\Services\WhatsAppEventPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class WhatsAppInboxController extends Controller
@@ -335,129 +336,187 @@ class WhatsAppInboxController extends Controller
 
     public function send(Request $request, WhatsAppConversation $conversation): JsonResponse
     {
-        $accountId = auth()->user()->accountId();
-        if ((int) $conversation->user_id !== (int) $accountId) {
-            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
-        }
-
-        $request->validate([
-            'text' => 'required|string|max:4000',
+        Log::channel('single')->info('WhatsApp send: request received', [
+            'conversation_id' => $conversation->public_id,
         ]);
 
-        if (!$this->client->isConfigured()) {
+        try {
+            $accountId = auth()->user()->accountId();
+            if ((int) $conversation->user_id !== (int) $accountId) {
+                return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+            }
+
+            $request->validate([
+                'text' => 'required|string|max:4000',
+            ]);
+
+            if (!$this->client->isConfigured()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Evolution API não configurada. Verifique EVOLUTION_API_URL e EVOLUTION_API_KEY no .env',
+                ], 400);
+            }
+
+            $instance = preg_replace('/\D/', '', (string) $conversation->instance_name);
+            if ($instance === '') {
+                return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
+            }
+
+            // Segurança: garantir que a instância pertence a esta conta
+            $waInstance = WhatsAppInstance::query()
+                ->where('user_id', $accountId)
+                ->where('instance_name', $instance)
+                ->first();
+            if (!$waInstance) {
+                return response()->json(['success' => false, 'error' => 'Instância não encontrada para este usuário.'], 404);
+            }
+
+            // Evolution API espera "number" como JID completo (ex: 5511999999999@s.whatsapp.net ou grupo@g.us)
+            $recipient = $this->recipientForEvolution($conversation);
+            if ($recipient === '') {
+                return response()->json(['success' => false, 'error' => 'Contato inválido.'], 422);
+            }
+
+            $text = (string) $request->input('text');
+
+            // Evolution API (v2): POST /message/sendText/{instance}
+            $payload = [
+                'number' => $recipient,
+                'text' => $text,
+            ];
+            $resp = $this->client->post("/message/sendText/{$instance}", $payload);
+
+            if ($resp['status'] < 200 || $resp['status'] >= 300) {
+                Log::channel('single')->warning('Evolution sendText falhou', [
+                    'instance' => $instance,
+                    'recipient' => $recipient,
+                    'http_status' => $resp['status'],
+                    'response' => $resp['json'] ?? $resp['text'],
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'http_status' => $resp['status'],
+                    'error' => $this->evolutionErrorMessage($resp),
+                    'details' => $resp['json'] ?? $resp['text'],
+                ], $resp['status'] === 0 ? 502 : 503);
+            }
+
+            $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+
+            $msg = WhatsAppMessage::create([
+                'conversation_id' => $conversation->id,
+                'direction' => 'out',
+                'message_type' => 'text',
+                'body' => $text,
+                'remote_id' => $remoteId ?: null,
+                'status' => 'sent',
+                'sent_at' => now(),
+                'raw_payload' => is_array($resp['json']) ? $resp['json'] : null,
+            ]);
+
+            $conversation->last_message_at = $msg->sent_at ?? $msg->created_at;
+            $conversation->last_message_preview = mb_substr($text, 0, 500);
+            $conversation->save();
+
+            $avatarUrl = null;
+            $displayName = null;
+            $num = preg_replace('/\D/', '', (string) $conversation->contact_number) ?: '';
+            if ($num !== '') {
+                $ct = WhatsAppContact::query()
+                    ->where('user_id', $accountId)
+                    ->where('instance_name', $conversation->instance_name)
+                    ->where('contact_number', $num)
+                    ->first(['avatar_url', 'display_name']);
+                if ($ct) {
+                    $avatarUrl = $ct->avatar_url ?: null;
+                    $displayName = $ct->display_name ?: null;
+                }
+            }
+
+            $this->events->publish((int) $accountId, 'wa.message.created', [
+                'conversation_id' => $conversation->public_id,
+                'message' => [
+                    'id' => $msg->public_id,
+                    'direction' => $msg->direction,
+                    'message_type' => $msg->message_type,
+                    'body' => $msg->body,
+                    'status' => $msg->status,
+                    'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                    'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                    'read_at' => optional($msg->read_at)->toIso8601String(),
+                    'created_at' => optional($msg->created_at)->toIso8601String(),
+                ],
+                'conversation' => [
+                    'id' => $conversation->public_id,
+                    'instance_name' => $conversation->instance_name,
+                    'contact_number' => $conversation->contact_number,
+                    'contact_name' => $conversation->contact_name ?: $displayName,
+                    'avatar_url' => $avatarUrl,
+                    'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
+                    'last_message_preview' => $conversation->last_message_preview,
+                    'unread_count' => (int) $conversation->unread_count,
+                ],
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => [
+                    'id' => $msg->public_id,
+                    'direction' => $msg->direction,
+                    'message_type' => $msg->message_type,
+                    'body' => $msg->body,
+                    'status' => $msg->status,
+                    'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                    'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                    'read_at' => optional($msg->read_at)->toIso8601String(),
+                    'created_at' => optional($msg->created_at)->toIso8601String(),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::channel('single')->error('WhatsApp send exception', [
+                'conversation_id' => $conversation->public_id ?? null,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
-                'error' => 'Evolution API não configurada. Verifique EVOLUTION_API_URL e EVOLUTION_API_KEY no .env',
-            ], 400);
+                'error' => 'Erro ao enviar mensagem. Tente novamente.',
+            ], 500);
         }
+    }
 
-        $instance = preg_replace('/\D/', '', (string) $conversation->instance_name);
-        if ($instance === '') {
-            return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
+    /**
+     * Recipient identifier for Evolution API: full JID (number@s.whatsapp.net or group@g.us).
+     */
+    private function recipientForEvolution(WhatsAppConversation $conversation): string
+    {
+        $peerJid = trim((string) ($conversation->peer_jid ?? ''));
+        if ($peerJid !== '' && str_contains($peerJid, '@')) {
+            return $peerJid;
         }
-
-        // Segurança: garantir que a instância pertence a esta conta
-        $waInstance = WhatsAppInstance::query()
-            ->where('user_id', $accountId)
-            ->where('instance_name', $instance)
-            ->first();
-        if (!$waInstance) {
-            return response()->json(['success' => false, 'error' => 'Instância não encontrada para este usuário.'], 404);
-        }
-
         $number = $this->normalizeWhatsappNumber((string) $conversation->contact_number);
         if ($number === '') {
-            return response()->json(['success' => false, 'error' => 'Contato inválido.'], 422);
+            return '';
         }
+        return $number . '@s.whatsapp.net';
+    }
 
-        $text = (string) $request->input('text');
-
-        // Evolution API (v2.3+): POST /message/sendText/{instance}
-        $resp = $this->client->post("/message/sendText/{$instance}", [
-            'number' => $number,
-            'text' => $text,
-        ]);
-
-        if ($resp['status'] < 200 || $resp['status'] >= 300) {
-            return response()->json([
-                'success' => false,
-                'http_status' => $resp['status'],
-                'error' => 'Falha ao enviar mensagem na Evolution.',
-                'details' => $resp['json'] ?? $resp['text'],
-            ], 502);
+    /**
+     * @param array{status:int, json:array|null, text:string} $resp
+     */
+    private function evolutionErrorMessage(array $resp): string
+    {
+        if ($resp['status'] === 0) {
+            return 'Não foi possível conectar à Evolution API. Verifique a URL e a rede.';
         }
-
-        $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
-
-        $msg = WhatsAppMessage::create([
-            'conversation_id' => $conversation->id,
-            'direction' => 'out',
-            'message_type' => 'text',
-            'body' => $text,
-            'remote_id' => $remoteId ?: null,
-            'status' => 'sent',
-            'sent_at' => now(),
-            'raw_payload' => is_array($resp['json']) ? $resp['json'] : null,
-        ]);
-
-        $conversation->last_message_at = $msg->sent_at ?? $msg->created_at;
-        $conversation->last_message_preview = mb_substr($text, 0, 500);
-        $conversation->save();
-
-        $avatarUrl = null;
-        $displayName = null;
-        $num = preg_replace('/\D/', '', (string) $conversation->contact_number) ?: '';
-        if ($num !== '') {
-            $ct = WhatsAppContact::query()
-                ->where('user_id', $accountId)
-                ->where('instance_name', $conversation->instance_name)
-                ->where('contact_number', $num)
-                ->first(['avatar_url', 'display_name']);
-            if ($ct) {
-                $avatarUrl = $ct->avatar_url ?: null;
-                $displayName = $ct->display_name ?: null;
+        $json = $resp['json'] ?? null;
+        if (is_array($json)) {
+            $msg = $json['message'] ?? $json['error'] ?? $json['reason'] ?? null;
+            if (is_string($msg) && $msg !== '') {
+                return $msg;
             }
         }
-
-        $this->events->publish((int) $accountId, 'wa.message.created', [
-            'conversation_id' => $conversation->public_id,
-            'message' => [
-                'id' => $msg->public_id,
-                'direction' => $msg->direction,
-                'message_type' => $msg->message_type,
-                'body' => $msg->body,
-                'status' => $msg->status,
-                'sent_at' => optional($msg->sent_at)->toIso8601String(),
-                'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
-                'read_at' => optional($msg->read_at)->toIso8601String(),
-                'created_at' => optional($msg->created_at)->toIso8601String(),
-            ],
-            'conversation' => [
-                'id' => $conversation->public_id,
-                'instance_name' => $conversation->instance_name,
-                'contact_number' => $conversation->contact_number,
-                'contact_name' => $conversation->contact_name ?: $displayName,
-                'avatar_url' => $avatarUrl,
-                'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
-                'last_message_preview' => $conversation->last_message_preview,
-                'unread_count' => (int) $conversation->unread_count,
-            ],
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => [
-                'id' => $msg->public_id,
-                'direction' => $msg->direction,
-                'message_type' => $msg->message_type,
-                'body' => $msg->body,
-                'status' => $msg->status,
-                'sent_at' => optional($msg->sent_at)->toIso8601String(),
-                'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
-                'read_at' => optional($msg->read_at)->toIso8601String(),
-                'created_at' => optional($msg->created_at)->toIso8601String(),
-            ],
-        ]);
+        return 'Falha ao enviar mensagem na Evolution.';
     }
 
     /**
