@@ -511,6 +511,8 @@ window.waInboxChatify = function waInboxChatify() {
             const text = String(this.draft || '').trim();
             if (!text) return;
 
+            const conversationId = String(this.activeConversation.id);
+
             // Optimistic UI (like WhatsApp Web)
             const tmpId = `tmp-${nowIso()}-${Math.random().toString(16).slice(2)}`;
             const optimistic = {
@@ -528,7 +530,7 @@ window.waInboxChatify = function waInboxChatify() {
 
             this.sending = true;
             try {
-                const resp = await fetch(`/whatsapp/api/conversations/${this.activeConversation.id}/send`, {
+                const resp = await fetch(`/whatsapp/api/conversations/${conversationId}/send`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -538,8 +540,25 @@ window.waInboxChatify = function waInboxChatify() {
                     body: JSON.stringify({ text }),
                 });
                 const data = await resp.json().catch(() => ({}));
+
+                // Só aplica resultado se ainda estiver na mesma conversa (evita aplicar em chat errado após troca)
+                const stillSameChat = this.activeConversation && String(this.activeConversation.id) === conversationId;
+
                 if (!resp.ok || data.success === false) {
-                    optimistic.status = 'failed';
+                    if (stillSameChat) {
+                        optimistic.status = 'failed';
+                        const msg = data.error || data.details?.message || 'Falha ao enviar. Tente novamente.';
+                        if (typeof alert !== 'undefined') alert(msg);
+                    } else {
+                        const idx = this.messages.findIndex((m) => String(m.id) === String(tmpId));
+                        if (idx >= 0) this.messages.splice(idx, 1);
+                    }
+                    return;
+                }
+
+                if (!stillSameChat) {
+                    const idx = this.messages.findIndex((m) => String(m.id) === String(tmpId));
+                    if (idx >= 0) this.messages.splice(idx, 1);
                     return;
                 }
 

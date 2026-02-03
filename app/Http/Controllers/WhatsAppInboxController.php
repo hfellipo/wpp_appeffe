@@ -413,13 +413,20 @@ class WhatsAppInboxController extends Controller
                 return response()->json(['success' => false, 'error' => 'Instância inválida.'], 422);
             }
 
-            // Segurança: garantir que a instância pertence a esta conta
+            // Segurança: garantir que a instância pertence a esta conta e está conectada
             $waInstance = WhatsAppInstance::query()
                 ->where('user_id', $accountId)
                 ->where('instance_name', $instance)
                 ->first();
             if (!$waInstance) {
                 return response()->json(['success' => false, 'error' => 'Instância não encontrada para este usuário.'], 404);
+            }
+            $connectedStates = ['open', 'connected', 'online', 'ready'];
+            if (!in_array(strtolower(trim((string) $waInstance->status)), $connectedStates, true)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'WhatsApp desconectado. Reconecte em Configurações.',
+                ], 503);
             }
 
             // Evolution API espera "number" como JID completo (ex: 5511999999999@s.whatsapp.net ou grupo@g.us)
@@ -439,17 +446,20 @@ class WhatsAppInboxController extends Controller
 
             if ($resp['status'] < 200 || $resp['status'] >= 300) {
                 Log::channel('single')->warning('Evolution sendText falhou', [
+                    'conversation_id' => $conversation->public_id,
                     'instance' => $instance,
                     'recipient' => $recipient,
                     'http_status' => $resp['status'],
                     'response' => $resp['json'] ?? $resp['text'],
                 ]);
+                $errMsg = $this->evolutionErrorMessage($resp);
+                $httpStatus = $resp['status'] === 0 ? 502 : ($resp['status'] >= 400 && $resp['status'] < 500 ? 422 : 503);
                 return response()->json([
                     'success' => false,
                     'http_status' => $resp['status'],
-                    'error' => $this->evolutionErrorMessage($resp),
+                    'error' => $errMsg,
                     'details' => $resp['json'] ?? $resp['text'],
-                ], $resp['status'] === 0 ? 502 : 503);
+                ], $httpStatus);
             }
 
             $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
