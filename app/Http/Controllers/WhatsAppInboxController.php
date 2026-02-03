@@ -432,7 +432,10 @@ class WhatsAppInboxController extends Controller
             // Evolution API espera "number" como JID completo (ex: 5511999999999@s.whatsapp.net ou grupo@g.us)
             $recipient = $this->recipientForEvolution($conversation);
             if ($recipient === '') {
-                return response()->json(['success' => false, 'error' => 'Contato inválido.'], 422);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Esta conversa não tem número de destino. Selecione outro chat ou inicie uma nova conversa.',
+                ], 422);
             }
 
             $text = (string) $request->input('text');
@@ -552,14 +555,21 @@ class WhatsAppInboxController extends Controller
     private function recipientForEvolution(WhatsAppConversation $conversation): string
     {
         $peerJid = trim((string) ($conversation->peer_jid ?? ''));
-        if ($peerJid !== '' && str_contains($peerJid, '@')) {
-            return $peerJid;
+        if ($peerJid !== '') {
+            if (str_contains($peerJid, '@')) {
+                return $peerJid;
+            }
+            // peer_jid às vezes vem só com dígitos (sem @s.whatsapp.net)
+            $digits = preg_replace('/\D/', '', $peerJid);
+            if ($digits !== '') {
+                return $digits . '@s.whatsapp.net';
+            }
         }
-        $number = $this->normalizeWhatsappNumber((string) $conversation->contact_number);
-        if ($number === '') {
-            return '';
+        $number = $this->normalizeWhatsappNumber((string) ($conversation->contact_number ?? ''));
+        if ($number !== '') {
+            return $number . '@s.whatsapp.net';
         }
-        return $number . '@s.whatsapp.net';
+        return '';
     }
 
     /**

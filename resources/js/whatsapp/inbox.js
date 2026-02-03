@@ -547,7 +547,7 @@ window.waInboxChatify = function waInboxChatify() {
                 if (!resp.ok || data.success === false) {
                     if (stillSameChat) {
                         optimistic.status = 'failed';
-                        const msg = data.error || data.details?.message || 'Falha ao enviar. Tente novamente.';
+                        const msg = data.error || data.message || (data.errors && data.errors.text && data.errors.text[0]) || data.details?.message || 'Falha ao enviar. Tente novamente.';
                         if (typeof alert !== 'undefined') alert(msg);
                     } else {
                         const idx = this.messages.findIndex((m) => String(m.id) === String(tmpId));
