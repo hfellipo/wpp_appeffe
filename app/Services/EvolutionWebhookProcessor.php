@@ -35,14 +35,23 @@ class EvolutionWebhookProcessor
     {
         $event = strtoupper(trim($event));
 
-        // Instance name (digits) used as key in our system
-        $instance = $this->normalizeInstance(
-            (string) (Arr::get($data, 'instanceName')
-                ?? Arr::get($data, 'instance')
-                ?? Arr::get($data, 'numberId')
-                ?? Arr::get($data, 'instance.instanceName')
-                ?? '')
-        );
+        // Instance name (digits) used as key in our system.
+        // Evolution sends instanceName at root; controller now merges it into $data.
+        $instanceRaw = (string) (Arr::get($data, 'instanceName')
+            ?? Arr::get($data, 'instance')
+            ?? Arr::get($data, 'numberId')
+            ?? Arr::get($data, 'instance.instanceName')
+            ?? '');
+        // Fallback: from first message in batch (some Evolution setups put it there)
+        if ($instanceRaw === '' && is_array(Arr::get($data, 'messages'))) {
+            $first = Arr::first(Arr::get($data, 'messages'));
+            $instanceRaw = (string) (is_array($first) ? (Arr::get($first, 'instanceName') ?? Arr::get($first, 'instance') ?? '') : '');
+        }
+        if ($instanceRaw === '' && is_array(Arr::get($data, 'data.messages'))) {
+            $first = Arr::first(Arr::get($data, 'data.messages'));
+            $instanceRaw = (string) (is_array($first) ? (Arr::get($first, 'instanceName') ?? Arr::get($first, 'instance') ?? '') : '');
+        }
+        $instance = $this->normalizeInstance($instanceRaw);
         if ($instance === '') {
             Log::channel('single')->warning('Evolution webhook: instance name empty, payload keys: ' . implode(', ', array_keys($data)));
             return;

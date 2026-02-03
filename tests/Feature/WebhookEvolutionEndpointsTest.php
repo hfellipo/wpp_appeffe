@@ -58,6 +58,27 @@ class WebhookEvolutionEndpointsTest extends TestCase
         });
     }
 
+    public function test_webhook_evolution_merges_instance_name_from_root_into_data(): void
+    {
+        Bus::fake();
+
+        // Evolution API sends instanceName at ROOT; data may not contain it
+        $response = $this->postJson('/webhook/evolution', [
+            'event' => 'MESSAGES_UPSERT',
+            'instanceName' => '5511888777666',
+            'data' => [
+                'key' => ['remoteJid' => '5511999999999@s.whatsapp.net', 'id' => 'msg-1', 'fromMe' => false],
+                'message' => ['conversation' => 'hello'],
+            ],
+        ]);
+
+        $response->assertOk();
+        Bus::assertDispatched(ProcessEvolutionWebhookEvent::class, function (ProcessEvolutionWebhookEvent $job) {
+            return ($job->data['instanceName'] ?? '') === '5511888777666'
+                && strtoupper($job->event) === 'MESSAGES_UPSERT';
+        });
+    }
+
     public function test_webhook_evolution_test_endpoint_returns_ok(): void
     {
         $get = $this->getJson('/webhook/evolution/test');

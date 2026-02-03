@@ -3,12 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessEvolutionWebhookEvent;
-use App\Models\WhatsAppConversation;
-use App\Models\WhatsAppInstance;
-use App\Models\WhatsAppMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 
 class EvolutionWebhookController extends Controller
 {
@@ -19,29 +17,45 @@ class EvolutionWebhookController extends Controller
         if ($expected !== '') {
             $got = (string) $request->header('X-Evolution-Secret', '');
             if (!hash_equals($expected, $got)) {
+                Log::channel('single')->warning('Evolution webhook: secret mismatch or missing header');
                 return response()->json(['ok' => false, 'error' => 'Unauthorized'], 401);
             }
         }
 
         $payload = $request->all();
 
-        // Evolution commonly sends { event: "...", data: {...} }
+        // Evolution commonly sends { event: "...", instanceName: "...", data: {...} }
         $event = (string) ($payload['event'] ?? '');
         $data = $payload;
         if ($event !== '' && is_array($payload['data'] ?? null)) {
             $data = (array) $payload['data'];
+            // Critical: Evolution sends instanceName at ROOT level; processor needs it inside $data
+            if (isset($payload['instanceName']) && (string) $payload['instanceName'] !== '') {
+                $data['instanceName'] = $payload['instanceName'];
+            }
+            if (isset($payload['instance']) && (string) $payload['instance'] !== '') {
+                $data['instance'] = $payload['instance'];
+            }
         }
 
+        // Normalize event (Evolution may send "messages.upsert" or "MESSAGES_UPSERT")
+        $event = strtoupper(str_replace(['.', '-', ' '], '_', $event));
+
         // Fallback: infer event for legacy/single-message payloads
-        if ($event === '') {
+        if ($event === '' || $event === 'UNKNOWN') {
             if (Arr::has($data, 'key.remoteJid') || Arr::has($data, 'message') || Arr::has($data, 'messages')) {
                 $event = 'MESSAGES_UPSERT';
             } elseif (Arr::has($data, 'state') || Arr::has($data, 'connectionState')) {
                 $event = 'CONNECTION_UPDATE';
-            } else {
+            } elseif ($event === '') {
                 $event = 'UNKNOWN';
             }
         }
+
+        Log::channel('single')->info('Evolution webhook received', [
+            'event' => $event,
+            'instance' => $data['instanceName'] ?? $data['instance'] ?? null,
+        ]);
 
         // Dispatch to queue for performance (database queue is already configured)
         ProcessEvolutionWebhookEvent::dispatch($event, $data);

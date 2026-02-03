@@ -49,7 +49,7 @@ Route::match(['get', 'post'], '/public/debug/test', function (Request $request) 
     ]);
 })->name('debug.test.public');
 
-// Evolution API Webhook routes - REMOVIDAS (será refeito do zero)
+// Evolution API Webhook (sem auth; CSRF excluído em VerifyCsrfToken)
 Route::post('/webhook/evolution', [EvolutionWebhookController::class, 'handle'])->name('webhook.evolution');
 Route::match(['get', 'post'], '/webhook/evolution/test', function (Request $request) {
     return response()->json([
@@ -61,6 +61,8 @@ Route::match(['get', 'post'], '/webhook/evolution/test', function (Request $requ
         'timestamp' => now()->toIso8601String(),
     ]);
 })->name('webhook.evolution.test');
+// Quando Evolution usa "webhook by events", chama ex: /webhook/evolution/messages-upsert
+Route::post('/webhook/evolution/{path}', [EvolutionWebhookController::class, 'handle'])->name('webhook.evolution.path');
 
 // API de teste simples - retorna apenas status básico
 Route::get('/api/ping', function () {
