@@ -38,6 +38,14 @@
                 }
                 .messenger-infoView { top: var(--app-topbar-height) !important; }
             }
+
+            /* Status do envio (checkmarks) – cores fixas para não depender do purge do Tailwind */
+            .wa-tick-read { color: #22c55e !important; }
+            .wa-tick-delivered { color: #0ea5e9 !important; }
+            .wa-tick-sent { color: #9ca3af !important; }
+            .wa-tick-sending { color: #9ca3af !important; }
+            .wa-tick-failed { color: #ef4444 !important; }
+            .message-time .wa-tick i { display: inline-block; min-width: 1em; }
         </style>
     @endpush
 
@@ -144,7 +152,7 @@
                                         <span class="message-time">
                                             <span class="time" x-text="formatTimeShort(m.created_at)"></span>
                                             <template x-if="m.direction === 'out'">
-                                                <span class="ml-1 inline-flex items-center" :class="(tickForMessage(m) || {}).colorClass || ''">
+                                                <span class="wa-tick ml-1 inline-flex items-center" :class="(tickForMessage(m) || {}).colorClass || ''">
                                                     <i :class="(tickForMessage(m) || {}).iconClass || ''"></i>
                                                 </span>
                                             </template>

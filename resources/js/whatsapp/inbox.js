@@ -556,23 +556,23 @@ window.waInboxChatify = function waInboxChatify() {
             const hasRead = !!m.read_at || ['read', 'seen', 'read_ack', '3'].includes(status) || status.includes('read') || status.includes('seen');
 
             if (status === 'failed') {
-                return { iconClass: 'fas fa-exclamation-circle', colorClass: 'text-red-500' };
+                return { iconClass: 'fas fa-exclamation-circle', colorClass: 'wa-tick-failed' };
             }
             if (status === 'sending') {
-                return { iconClass: 'fas fa-circle-notch fa-spin', colorClass: 'text-gray-400' };
+                return { iconClass: 'fas fa-circle-notch fa-spin', colorClass: 'wa-tick-sending' };
             }
             if (hasRead) {
-                return { iconClass: 'fas fa-check-double', colorClass: 'text-green-500' };
+                return { iconClass: 'fas fa-check-double', colorClass: 'wa-tick-read' };
             }
             if (hasDelivered) {
-                return { iconClass: 'fas fa-check-double', colorClass: 'text-sky-500' };
+                return { iconClass: 'fas fa-check-double', colorClass: 'wa-tick-delivered' };
             }
             if (status === 'sent' || status === 'server_ack' || status === 'ack') {
-                return { iconClass: 'fas fa-check', colorClass: 'text-gray-400' };
+                return { iconClass: 'fas fa-check', colorClass: 'wa-tick-sent' };
             }
 
             // Default: show single check for outgoing messages once persisted
-            return { iconClass: 'fas fa-check', colorClass: 'text-gray-300' };
+            return { iconClass: 'fas fa-check', colorClass: 'wa-tick-sent' };
         },
     };
 };
