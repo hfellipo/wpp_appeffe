@@ -97,7 +97,7 @@ class EvolutionWebhookProcessor
                 return;
             }
             if (str_contains($event, 'UPDATE')) {
-                $this->handleMessagesUpdate($wa, $data);
+                $this->handleMessagesUpdateBatch($wa, $data);
                 return;
             }
             // default to UPSERT
@@ -362,6 +362,22 @@ class EvolutionWebhookProcessor
         }
     }
 
+    /**
+     * Entry for MESSAGES_UPDATE: accept single object or list of updates.
+     */
+    private function handleMessagesUpdateBatch(WhatsAppInstance $wa, array $data): void
+    {
+        if (array_is_list($data)) {
+            foreach ($data as $item) {
+                if (is_array($item)) {
+                    $this->handleMessagesUpdate($wa, $item);
+                }
+            }
+            return;
+        }
+        $this->handleMessagesUpdate($wa, $data);
+    }
+
     private function handleMessagesUpdate(WhatsAppInstance $wa, array $data): void
     {
         // Best-effort: update message status using remote id (many payload shapes exist).
@@ -370,7 +386,10 @@ class EvolutionWebhookProcessor
         $remoteId = $this->extractRemoteId($data);
         $status = $this->extractNormalizedStatus($data);
 
-        if ($status === '') return;
+        if ($status === '') {
+            Log::channel('single')->debug('Evolution MESSAGES_UPDATE: status vazio, payload keys: ' . implode(', ', array_keys($data)));
+            return;
+        }
 
         $conv = null;
         if ($remoteJid !== '') {
@@ -539,6 +558,7 @@ class EvolutionWebhookProcessor
             'data.key.remoteJid',
             'data.remoteJid',
             'message.key.remoteJid',
+            'update.key.remoteJid',
         ];
         foreach ($candidates as $p) {
             $v = Arr::get($data, $p);
@@ -556,6 +576,8 @@ class EvolutionWebhookProcessor
             'messageId',
             'data.key.id',
             'data.id',
+            'message.key.id',
+            'update.key.id',
         ];
         foreach ($candidates as $p) {
             $v = Arr::get($data, $p);
@@ -576,6 +598,15 @@ class EvolutionWebhookProcessor
             ?? Arr::get($data, 'data.update.status')
             ?? Arr::get($data, 'message.status')
             ?? Arr::get($data, 'ack');
+
+        // Evolution/Baileys: update.receipt ou receipt com type "read" / "delivered" / etc.
+        $receipt = Arr::get($data, 'update.receipt') ?? Arr::get($data, 'receipt');
+        if (is_array($receipt) && isset($receipt['type'])) {
+            $t = strtolower(trim((string) $receipt['type']));
+            if (str_contains($t, 'read') || str_contains($t, 'seen')) return 'read';
+            if (str_contains($t, 'deliver') || str_contains($t, 'play')) return 'delivered';
+            if (str_contains($t, 'sent') || $t === 'sender') return 'sent';
+        }
 
         // Numeric ack: 1=server/sent, 2=delivered, 3=read (common in Baileys)
         if (is_int($raw) || (is_string($raw) && ctype_digit($raw))) {
