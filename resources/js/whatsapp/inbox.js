@@ -406,15 +406,39 @@ window.waInboxChatify = function waInboxChatify() {
                 const resp = await fetch('/whatsapp/api/conversations', { headers: { 'Accept': 'application/json' } });
                 const data = await resp.json().catch(() => ({}));
                 this.conversations = Array.isArray(data.items) ? data.items : [];
+                this.fetchAvatarsForList();
             } finally {
                 if (!silent) this.loadingConversations = false;
             }
+        },
+
+        async fetchAvatarForConversation(c) {
+            if (!c || !c.id || c.avatar_url) return;
+            try {
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/avatar`, { headers: { 'Accept': 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                if (data.success && data.avatar_url) {
+                    const conv = this.conversations.find((x) => String(x.id) === String(c.id));
+                    if (conv) conv.avatar_url = data.avatar_url;
+                    if (this.activeConversation && String(this.activeConversation.id) === String(c.id)) {
+                        this.activeConversation.avatar_url = data.avatar_url;
+                    }
+                }
+            } catch (e) {}
+        },
+
+        fetchAvatarsForList() {
+            const withoutAvatar = this.conversations.filter((c) => !c.avatar_url).slice(0, 10);
+            withoutAvatar.forEach((c, i) => {
+                setTimeout(() => this.fetchAvatarForConversation(c), i * 400);
+            });
         },
 
         async openConversation(c) {
             this.activeConversation = c;
             if (this.isCompact) this.showInfo = false;
             this._hasOlder = true;
+            if (!c.avatar_url) await this.fetchAvatarForConversation(c);
             await this.refreshMessages(c);
         },
 

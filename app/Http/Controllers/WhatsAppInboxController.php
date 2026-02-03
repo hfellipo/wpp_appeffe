@@ -260,6 +260,57 @@ class WhatsAppInboxController extends Controller
         ]);
     }
 
+    /**
+     * Return avatar URL for a conversation. If not in DB, fetch from Evolution API and cache.
+     */
+    public function avatar(WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        $instance = preg_replace('/\D/', '', (string) $conversation->instance_name);
+        $num = preg_replace('/\D/', '', (string) $conversation->contact_number) ?: '';
+        if ($instance === '' || $num === '') {
+            return response()->json(['success' => true, 'avatar_url' => null]);
+        }
+
+        $contact = WhatsAppContact::query()
+            ->where('user_id', $accountId)
+            ->where('instance_name', $conversation->instance_name)
+            ->where('contact_number', $num)
+            ->first();
+
+        if ($contact && $contact->avatar_url) {
+            return response()->json(['success' => true, 'avatar_url' => $contact->avatar_url]);
+        }
+
+        if (!$this->client->isConfigured()) {
+            return response()->json(['success' => true, 'avatar_url' => null]);
+        }
+
+        $peerJid = $conversation->peer_jid ?: ($num . '@s.whatsapp.net');
+        $resp = $this->client->fetchProfilePictureUrl($instance, $peerJid);
+        $url = null;
+        if ($resp['status'] >= 200 && $resp['status'] < 300 && is_array($resp['json'] ?? null)) {
+            $url = $resp['json']['profilePictureUrl'] ?? $resp['json']['profilePicture'] ?? $resp['json']['url'] ?? null;
+            $url = is_string($url) ? trim($url) : null;
+            if ($url !== '' && $url !== null) {
+                WhatsAppContact::query()->updateOrCreate(
+                    [
+                        'user_id' => $accountId,
+                        'instance_name' => $conversation->instance_name,
+                        'contact_number' => $num,
+                    ],
+                    ['avatar_url' => $url, 'contact_jid' => $peerJid]
+                );
+            }
+        }
+
+        return response()->json(['success' => true, 'avatar_url' => $url]);
+    }
+
     public function messages(WhatsAppConversation $conversation): JsonResponse
     {
         $accountId = auth()->user()->accountId();

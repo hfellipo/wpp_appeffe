@@ -96,5 +96,23 @@ class EvolutionApiHttpClient
             ];
         }
     }
+
+    /**
+     * Fetch profile picture URL for a number/JID.
+     * Evolution API: POST /chat/fetchProfilePictureUrl/{instance}
+     * Body: { "number": "5511999999999" or "5511999999999@s.whatsapp.net" }
+     *
+     * @return array{status:int, json:array|null, text:string, headers:array}
+     */
+    public function fetchProfilePictureUrl(string $instance, string $numberOrJid): array
+    {
+        $numberOrJid = trim($numberOrJid);
+        if ($numberOrJid === '') {
+            return ['status' => 0, 'json' => null, 'text' => 'Empty number', 'headers' => []];
+        }
+        return $this->post("/chat/fetchProfilePictureUrl/{$instance}", [
+            'number' => $numberOrJid,
+        ]);
+    }
 }
 
