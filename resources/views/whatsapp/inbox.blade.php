@@ -261,7 +261,7 @@
                                     </div>
                                     <div class="wa-conversation-item__body">
                                         <div class="wa-conversation-item__top">
-                                            <span class="wa-conversation-item__name" x-text="c.contact_name || formatNumber(c.contact_number)"></span>
+                                            <span class="wa-conversation-item__name" x-text="(c.contact_name && String(c.contact_name).trim()) ? c.contact_name : formatNumber(c.contact_number)"></span>
                                             <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
                                         </div>
                                         <div class="wa-conversation-item__bottom">
@@ -304,7 +304,7 @@
                                 ></span>
                             </div>
                             <div class="chatify-d-flex chatify-align-items-center" style="flex: 1; min-width: 0; flex-direction: column; align-items: flex-start;">
-                                <a href="#" class="user-name" x-text="activeConversation ? (activeConversation.contact_name || formatNumber(activeConversation.contact_number)) : 'WhatsApp'"></a>
+                                <a href="#" class="user-name" x-text="activeConversation ? ((activeConversation.contact_name && String(activeConversation.contact_name).trim()) ? activeConversation.contact_name : formatNumber(activeConversation.contact_number)) : 'WhatsApp'"></a>
                                 <span
                                     x-show="activeConversation && isConversationTyping(activeConversation.id)"
                                     class="wa-typing-label"
@@ -387,9 +387,9 @@
             </div>
 
             {{-- Info side --}}
-            <div class="messenger-infoView app-scroll" x-show="showInfo && !isCompact">
+            <div class="messenger-infoView app-scroll" x-show="showInfo && !isCompact" x-ref="infoView">
                 <nav>
-                    <p>User Details</p>
+                    <p>Detalhes</p>
                     <a href="#" @click.prevent="showInfo = false"><i class="fas fa-times"></i></a>
                 </nav>
                 <div style="text-align:center; padding: 1rem;">
@@ -403,7 +403,61 @@
                             <span class="wa-avatar-initial wa-avatar-initial--l" x-text="(activeConversation.contact_name || activeConversation.contact_number || '?').charAt(0).toUpperCase()"></span>
                         </template>
                     </div>
-                    <p class="info-name" style="margin-top: 1rem;" x-text="activeConversation ? (activeConversation.contact_name || formatNumber(activeConversation.contact_number)) : '-'"></p>
+                    <p class="info-name" style="margin-top: 1rem;" x-text="activeConversation ? ((activeConversation.contact_name && String(activeConversation.contact_name).trim()) ? activeConversation.contact_name : formatNumber(activeConversation.contact_number)) : '-'"></p>
+                </div>
+                {{-- Dados da tabela contacts --}}
+                <div class="wa-info-contact-section" style="border-top: 1px solid var(--border-color, #e9edef); padding: 1rem; text-align: left;">
+                    <p class="wa-info-section-title" style="font-weight: 600; margin-bottom: 0.75rem; font-size: 0.9rem;">Tabela Contacts</p>
+                    <template x-if="!activeConversation">
+                        <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;">Selecione uma conversa.</p>
+                    </template>
+                    <template x-if="activeConversation && appContactLoading">
+                        <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;">Carregando...</p>
+                    </template>
+                    <template x-if="activeConversation && !appContactLoading && appContactMessage">
+                        <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;" x-text="appContactMessage"></p>
+                    </template>
+                    <template x-if="activeConversation && !appContactLoading && appContact && appContact.found">
+                        <div class="wa-info-contact-fields">
+                            <dl style="margin: 0; font-size: 0.85rem;">
+                                <template x-if="appContact.contact.name">
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">Nome</dt>
+                                        <dd style="margin: 0;" x-text="appContact.contact.name"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="appContact.contact.phone">
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">Telefone</dt>
+                                        <dd style="margin: 0;" x-text="appContact.contact.phone"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="appContact.contact.email">
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">E-mail</dt>
+                                        <dd style="margin: 0;" x-text="appContact.contact.email"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="appContact.contact.notes">
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">Notas</dt>
+                                        <dd style="margin: 0; white-space: pre-wrap;" x-text="appContact.contact.notes"></dd>
+                                    </div>
+                                </template>
+                                <template x-if="appContact.contact.custom_fields && appContact.contact.custom_fields.length">
+                                    <template x-for="f in appContact.contact.custom_fields" :key="f.field_name + (f.value || '')">
+                                        <div style="margin-bottom: 0.5rem;">
+                                            <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;" x-text="f.field_name"></dt>
+                                            <dd style="margin: 0;" x-text="f.formatted_value || f.value || '-'"></dd>
+                                        </div>
+                                    </template>
+                                </template>
+                            </dl>
+                            <template x-if="appContact.contact.name === null && appContact.contact.phone === null && appContact.contact.email === null && appContact.contact.notes === null && (!appContact.contact.custom_fields || !appContact.contact.custom_fields.length)">
+                                <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;">Registro encontrado, mas sem dados preenchidos.</p>
+                            </template>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>

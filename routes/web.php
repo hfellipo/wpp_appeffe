@@ -117,6 +117,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/api/conversations/start', [WhatsAppInboxController::class, 'startConversation'])->name('api.conversations.start');
         Route::get('/api/conversations', [WhatsAppInboxController::class, 'conversations'])->name('api.conversations');
         Route::get('/api/conversations/{conversation}/avatar', [WhatsAppInboxController::class, 'avatar'])->name('api.conversations.avatar');
+        Route::get('/api/conversations/{conversation}/app-contact', [WhatsAppInboxController::class, 'appContact'])->name('api.conversations.app-contact');
         Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');
         Route::post('/api/conversations/{conversation}/send', [WhatsAppInboxController::class, 'send'])->name('api.send');
     });

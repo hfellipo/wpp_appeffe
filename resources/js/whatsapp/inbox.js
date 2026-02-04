@@ -63,6 +63,11 @@ window.waInboxChatify = function waInboxChatify() {
         presenceMap: {},
         _presenceTimeout: null,
 
+        // detalhes: contato da tabela contacts (coluna direita)
+        appContactLoading: false,
+        appContact: null,
+        appContactMessage: null,
+
         get filteredConversations() {
             const list = this.conversationTab === 'group' ? this.groupConversations : this.directConversations;
             const q = String(this.search || '').toLowerCase().trim();
@@ -99,6 +104,19 @@ window.waInboxChatify = function waInboxChatify() {
 
             if (this.isCompact) this.showInfo = false;
 
+            this.$watch('showInfo', (value) => {
+                if (value && this.activeConversation) this.fetchAppContact();
+                if (!value) { this.appContact = null; this.appContactMessage = null; }
+            });
+            this.$watch('activeConversation', (value) => {
+                if (!value) {
+                    this.appContact = null;
+                    this.appContactMessage = null;
+                    return;
+                }
+                if (this.showInfo) this.fetchAppContact();
+            });
+
             // Start realtime first (so UI updates instantly)
             this.connectStream();
 
@@ -124,6 +142,28 @@ window.waInboxChatify = function waInboxChatify() {
 
         closeContactPicker() {
             this.showContactPicker = false;
+        },
+
+        async fetchAppContact() {
+            const c = this.activeConversation;
+            if (!c || !c.id) {
+                this.appContact = null;
+                this.appContactMessage = null;
+                return;
+            }
+            this.appContactLoading = true;
+            this.appContact = null;
+            this.appContactMessage = null;
+            try {
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/app-contact`, { headers: { Accept: 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                if (data.success) {
+                    this.appContact = data;
+                    if (!data.found && data.message) this.appContactMessage = data.message;
+                }
+            } finally {
+                this.appContactLoading = false;
+            }
         },
 
         onContactSearchInput() {
@@ -275,10 +315,10 @@ window.waInboxChatify = function waInboxChatify() {
                     const existing = this.conversations.find((x) => String(x.id) === String(conv.id));
                     if (existing) Object.assign(existing, conv);
                     else this.conversations.unshift(conv);
-                    this.conversations = [
+                    this.conversations = this.deduplicateConversations([
                         conv,
                         ...this.conversations.filter((x) => String(x.id) !== String(conv.id)),
-                    ];
+                    ]);
                     this.syncConversationLists();
                 }
                 this.bumpLastEventId(data);
@@ -380,11 +420,9 @@ window.waInboxChatify = function waInboxChatify() {
                 Object.assign(c, conv);
             }
 
-            // Move to top
-            this.conversations = [
-                c,
-                ...this.conversations.filter((x) => String(x.id) !== String(c.id)),
-            ];
+            // Move to top e deduplicar (um único item por chat)
+            const rest = this.conversations.filter((x) => String(x.id) !== String(c.id));
+            this.conversations = this.deduplicateConversations([c, ...rest]);
             this.syncConversationLists();
 
             // If active conversation, append message immediately
@@ -418,15 +456,32 @@ window.waInboxChatify = function waInboxChatify() {
             }
         },
 
+        conversationUniqueKey(c) {
+            const kind = String(c.kind || 'direct');
+            if (kind === 'group') return `g|${c.instance_name || ''}|${c.peer_jid || c.contact_number || c.id}`;
+            const num = String(c.contact_number || '').replace(/\D/g, '').replace(/^0+/, '') || c.id;
+            return `d|${c.instance_name || ''}|${num}`;
+        },
+
+        deduplicateConversations(list) {
+            const seen = new Set();
+            return list.filter((c) => {
+                const key = this.conversationUniqueKey(c);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        },
+
         async refreshConversations(silent = false) {
             if (!silent) this.loadingConversations = true;
             try {
                 const resp = await fetch('/whatsapp/api/conversations', { headers: { 'Accept': 'application/json' } });
                 const data = await resp.json().catch(() => ({}));
                 const items = Array.isArray(data.items) ? data.items : [];
-                this.conversations = items;
-                this.directConversations = items.filter((c) => String(c.kind || 'direct') === 'direct');
-                this.groupConversations = items.filter((c) => String(c.kind) === 'group');
+                this.conversations = this.deduplicateConversations(items);
+                this.directConversations = this.conversations.filter((c) => String(c.kind || 'direct') === 'direct');
+                this.groupConversations = this.conversations.filter((c) => String(c.kind) === 'group');
                 this.fetchAvatarsForList();
             } finally {
                 if (!silent) this.loadingConversations = false;

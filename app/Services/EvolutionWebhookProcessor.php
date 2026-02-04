@@ -162,18 +162,30 @@ class EvolutionWebhookProcessor
             $number = $this->normalizeNumber($jid);
             if ($number === '') continue;
 
+            $attrs = [
+                'contact_jid' => $jid ?: "{$number}@s.whatsapp.net",
+                'avatar_url' => (string) ($c['profilePicUrl'] ?? $c['avatar'] ?? ''),
+                'metadata' => $c,
+            ];
+            $syncName = trim((string) ($c['name'] ?? $c['pushName'] ?? $c['notify'] ?? ''));
+            // Só preencher display_name se ainda estiver vazio (evita sobrescrever nome do contato com dados da agenda).
+            if ($syncName !== '') {
+                $existing = WhatsAppContact::query()
+                    ->where('user_id', $accountId)
+                    ->where('instance_name', $wa->instance_name)
+                    ->where('contact_number', $number)
+                    ->first(['display_name']);
+                if (!$existing || $existing->display_name === null || $existing->display_name === '') {
+                    $attrs['display_name'] = $syncName;
+                }
+            }
             WhatsAppContact::query()->updateOrCreate(
                 [
                     'user_id' => $accountId,
                     'instance_name' => $wa->instance_name,
                     'contact_number' => $number,
                 ],
-                [
-                    'contact_jid' => $jid ?: "{$number}@s.whatsapp.net",
-                    'display_name' => (string) ($c['name'] ?? $c['pushName'] ?? $c['notify'] ?? ''),
-                    'avatar_url' => (string) ($c['profilePicUrl'] ?? $c['avatar'] ?? ''),
-                    'metadata' => $c,
-                ]
+                $attrs
             );
         }
     }
@@ -251,33 +263,62 @@ class EvolutionWebhookProcessor
             $remoteJid = trim($remoteJid);
             if ($remoteJid === '') continue;
 
-            $fromMe = (bool) Arr::get($m, 'key.fromMe', false);
+            // Evolution pode enviar key.fromMe, fromMe ou data.fromMe; aceitar também string "true"/"false".
+            $fromMe = $this->parseFromMe($m);
             $remoteId = (string) Arr::get($m, 'key.id', Arr::get($m, 'id', ''));
             $pushName = (string) Arr::get($m, 'pushName', Arr::get($m, 'data.pushName', ''));
             $participantJid = (string) Arr::get($m, 'key.participant', '');
             $messageTypeRaw = (string) Arr::get($m, 'messageType', 'unknown');
 
             $kind = str_contains($remoteJid, '@g.us') ? 'group' : 'direct';
+            $peerJidCanonical = $kind === 'direct' ? $this->canonicalDirectPeerJid($remoteJid) : $remoteJid;
 
-            // For groups, do NOT use sender's pushName as conversation name; we use group subject from WhatsAppGroup
-            $initialContactName = $kind === 'direct' && $pushName !== '' ? $pushName : null;
+            // Nome do DESTINATÁRIO (dono do número). Só quando mensagem é ENTRANTE; se fromMe, nunca usar pushName (pode vir nosso nome).
+            $contactDisplayName = ($kind === 'direct' && !$fromMe && $pushName !== '') ? $pushName : '';
+            $initialContactName = $contactDisplayName !== '' ? $contactDisplayName : null;
 
-            $conversation = WhatsAppConversation::query()->firstOrCreate(
-                [
+            $conversation = WhatsAppConversation::query()
+                ->where('user_id', $accountId)
+                ->where('instance_name', $wa->instance_name)
+                ->where('peer_jid', $peerJidCanonical)
+                ->first();
+
+            if (!$conversation && $kind === 'direct' && $remoteJid !== $peerJidCanonical) {
+                $conversation = WhatsAppConversation::query()
+                    ->where('user_id', $accountId)
+                    ->where('instance_name', $wa->instance_name)
+                    ->where('peer_jid', $remoteJid)
+                    ->first();
+                if ($conversation) {
+                    $conversation->peer_jid = $peerJidCanonical;
+                    $conversation->contact_number = $this->normalizeNumber($peerJidCanonical) ?: $conversation->contact_number;
+                    $conversation->saveQuietly();
+                }
+            }
+
+            if (!$conversation) {
+                $conversation = WhatsAppConversation::create([
                     'user_id' => $accountId,
                     'instance_name' => $wa->instance_name,
-                    'peer_jid' => $remoteJid,
-                ],
-                [
+                    'peer_jid' => $peerJidCanonical,
                     'kind' => $kind,
-                    'contact_number' => $this->normalizeNumber($remoteJid),
+                    'contact_number' => $this->normalizeNumber($peerJidCanonical) ?: $this->normalizeNumber($remoteJid),
                     'contact_name' => $initialContactName,
                     'unread_count' => 0,
-                ]
-            );
+                ]);
+            }
 
-            if ($kind === 'direct' && $pushName !== '' && !$conversation->contact_name) {
-                $conversation->contact_name = $pushName;
+            // Guardar nome ao carregar (direct): ao enviar nossa mensagem sempre restaurar este valor antes de save e no evento (evita piscar nome errado).
+            $contactNameAtLoad = $kind === 'direct' ? (string) ($conversation->contact_name ?? '') : '';
+
+            // REGRA: quando a mensagem é NOSSA (fromMe), NUNCA alterar contact_name nem display_name.
+            // Direto: nome FIXO do dono do número. Só quando mensagem é do contato (!fromMe); nunca ao enviar.
+            $conversationAlreadyHasOutgoing = $kind === 'direct' && WhatsAppMessage::query()
+                ->where('conversation_id', $conversation->id)
+                ->where('direction', 'out')
+                ->exists();
+            if ($kind === 'direct' && !$fromMe && $contactDisplayName !== '' && ($conversation->contact_name === null || $conversation->contact_name === '') && !$conversationAlreadyHasOutgoing) {
+                $conversation->contact_name = $contactDisplayName;
             }
             if (!$conversation->kind) {
                 $conversation->kind = $kind;
@@ -352,6 +393,10 @@ class EvolutionWebhookProcessor
             if (!$fromMe) {
                 $conversation->unread_count = (int) $conversation->unread_count + 1;
             }
+            // Se a mensagem é nossa (direct), sempre restaurar contact_name ao valor ao carregar (evita qualquer atualização errada e evento com nome errado).
+            if ($fromMe && $kind === 'direct') {
+                $conversation->contact_name = $contactNameAtLoad;
+            }
             $conversation->save();
 
             $avatarUrl = null;
@@ -371,6 +416,9 @@ class EvolutionWebhookProcessor
                 }
             }
 
+            // Nome para o evento: quando mensagem é nossa, usar sempre o nome ao carregar (nunca enviar nome errado no SSE).
+            $contactNameForEvent = ($fromMe && $kind === 'direct') ? $contactNameAtLoad : ($conversation->contact_name ?: $displayName);
+
             // Notify UI in realtime
             $this->publish($accountId, 'wa.message.created', [
                 'conversation_id' => $conversation->public_id,
@@ -388,7 +436,7 @@ class EvolutionWebhookProcessor
                     'id' => $conversation->public_id,
                     'instance_name' => $conversation->instance_name,
                     'contact_number' => $conversation->contact_number,
-                    'contact_name' => $conversation->contact_name ?: $displayName,
+                    'contact_name' => $contactNameForEvent ?: $displayName,
                     'avatar_url' => $avatarUrl,
                     'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
                     'last_message_preview' => $conversation->last_message_preview,
@@ -397,20 +445,29 @@ class EvolutionWebhookProcessor
                 ],
             ]);
 
-            // Also upsert contact record for direct chats (best-effort)
+            // REGRA: quando a mensagem é NOSSA (fromMe), NUNCA alterar display_name em whatsapp_contacts.
+            // Só preencher display_name quando mensagem é ENTRANTE (!fromMe).
             if ($kind === 'direct') {
                 $num = $this->normalizeNumber($remoteJid);
                 if ($num !== '') {
+                    $attrs = ['contact_jid' => $remoteJid];
+                    if (!$fromMe && $contactDisplayName !== '' && !$conversationAlreadyHasOutgoing) {
+                        $existing = WhatsAppContact::query()
+                            ->where('user_id', $accountId)
+                            ->where('instance_name', $wa->instance_name)
+                            ->where('contact_number', $num)
+                            ->first(['display_name']);
+                        if (!$existing || $existing->display_name === null || $existing->display_name === '') {
+                            $attrs['display_name'] = $contactDisplayName;
+                        }
+                    }
                     WhatsAppContact::query()->updateOrCreate(
                         [
                             'user_id' => $accountId,
                             'instance_name' => $wa->instance_name,
                             'contact_number' => $num,
                         ],
-                        [
-                            'contact_jid' => $remoteJid,
-                            'display_name' => $pushName !== '' ? $pushName : null,
-                        ]
+                        $attrs
                     );
                 }
             }
@@ -605,6 +662,43 @@ class EvolutionWebhookProcessor
         return preg_replace('/\\D/', '', (string) $jidOrNumber) ?: '';
     }
 
+    /**
+     * Retorna um peer_jid canônico para chat direto (mesmo número = mesmo JID), evitando duplicar conversas
+     * quando a Evolution envia às vezes 31994234090@s.whatsapp.net e outras 5531994234090@s.whatsapp.net.
+     */
+    private function canonicalDirectPeerJid(string $remoteJid): string
+    {
+        if (!str_contains($remoteJid, '@s.whatsapp.net')) {
+            return $remoteJid;
+        }
+        $digits = $this->normalizeNumber($remoteJid);
+        if ($digits === '') {
+            return $remoteJid;
+        }
+        $digits = ltrim($digits, '0');
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            $digits = substr($digits, 1);
+        }
+        if (str_starts_with($digits, '550') && strlen($digits) >= 13) {
+            $digits = '55' . substr($digits, 3);
+        }
+        $nonBrazil = ['1', '7', '20', '27', '30', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45', '46', '47', '48', '49', '51', '52', '53', '54', '56', '57', '58', '60', '61', '62', '63', '64', '65', '66', '84', '86', '90', '92', '93', '94', '95', '98'];
+        if (str_starts_with($digits, '55') && strlen($digits) >= 13 && in_array(substr($digits, 2, 2), $nonBrazil, true)) {
+            $digits = substr($digits, 2);
+        }
+        if (strlen($digits) >= 12 && strlen($digits) <= 15) {
+            return $digits . '@s.whatsapp.net';
+        }
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $prefix2 = substr($digits, 0, 2);
+            $ddd = (int) $prefix2;
+            if ($ddd >= 11 && $ddd <= 99 && !in_array($prefix2, $nonBrazil, true)) {
+                return '55' . $digits . '@s.whatsapp.net';
+            }
+        }
+        return $digits . '@s.whatsapp.net';
+    }
+
     private function extractRemoteJid(array $data): string
     {
         $candidates = [
@@ -639,6 +733,30 @@ class EvolutionWebhookProcessor
             if (is_string($v) && trim($v) !== '') return trim($v);
         }
         return '';
+    }
+
+    /**
+     * Parse fromMe from message payload. Evolution pode enviar key.fromMe, fromMe ou data.fromMe;
+     * aceitar boolean ou string "true"/"false" (em PHP (bool)"false" === true).
+     *
+     * @param  array<string,mixed>  $m
+     */
+    private function parseFromMe(array $m): bool
+    {
+        $raw = Arr::get($m, 'key.fromMe')
+            ?? Arr::get($m, 'fromMe')
+            ?? Arr::get($m, 'data.fromMe')
+            ?? false;
+
+        if (is_bool($raw)) {
+            return $raw;
+        }
+        if (is_string($raw)) {
+            $s = strtolower(trim($raw));
+            if ($s === 'true' || $s === '1') return true;
+            if ($s === 'false' || $s === '0' || $s === '') return false;
+        }
+        return (bool) $raw;
     }
 
     /**

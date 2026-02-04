@@ -51,7 +51,7 @@ class WhatsAppInboxController extends Controller
 
         $items = $q->orderByDesc('last_message_at')
             ->orderByDesc('updated_at')
-            ->limit(100)
+            ->limit(150)
             ->get([
                 'public_id',
                 'instance_name',
@@ -64,6 +64,20 @@ class WhatsAppInboxController extends Controller
                 'last_message_sender',
                 'unread_count',
             ]);
+
+        // Deduplicar: mesmo número/grupo = uma única conversa (mantém a mais recente)
+        $seen = [];
+        $items = $items->filter(function (WhatsAppConversation $c) use (&$seen) {
+            $key = $c->instance_name . '|' . ($c->kind === 'group' ? $c->peer_jid : ltrim(preg_replace('/\D/', '', (string) ($c->contact_number ?? '')), '0'));
+            if ($key === '|') {
+                return true;
+            }
+            if (isset($seen[$key])) {
+                return false;
+            }
+            $seen[$key] = true;
+            return true;
+        })->values();
 
         // Group names from whatsapp_groups (group subject)
         $groupConversations = $items->filter(fn (WhatsAppConversation $c) => ($c->kind ?? '') === 'group');
@@ -107,28 +121,84 @@ class WhatsAppInboxController extends Controller
             }
         }
 
+        // Nome do dono do número: prioridade tabela contacts (app). Parear por número em todos os formatos.
+        $appContactNamesByKey = [];
+        $directItems = $items->filter(fn (WhatsAppConversation $c) => ($c->kind ?? '') !== 'group');
+        if ($directItems->isNotEmpty()) {
+            $allContacts = Contact::forUser($accountId)->get(['name', 'phone']);
+            foreach ($directItems as $c) {
+                $convDigits = preg_replace('/\D/', '', (string) ($c->contact_number ?? ''));
+                $convDigits = ltrim($convDigits, '0');
+                if ($convDigits === '') continue;
+                foreach ($allContacts as $appCt) {
+                    $contactDigits = preg_replace('/\D/', '', (string) ($appCt->phone ?? ''));
+                    $contactDigits = ltrim($contactDigits, '0');
+                    if ($contactDigits === '') continue;
+                    if (!$this->conversationPhoneMatchesContact($convDigits, $contactDigits)) {
+                        continue;
+                    }
+                    $name = trim((string) ($appCt->name ?? ''));
+                    if ($name === '') continue;
+                    $inst = $c->instance_name;
+                    $appContactNamesByKey[$inst . '|' . $convDigits] = $name;
+                    $appContactNamesByKey[$inst . '|' . $contactDigits] = $name;
+                    if (strlen($convDigits) >= 11) {
+                        $appContactNamesByKey[$inst . '|' . substr($convDigits, -11)] = $name;
+                    }
+                    if (strlen($convDigits) >= 10) {
+                        $appContactNamesByKey[$inst . '|' . substr($convDigits, -10)] = $name;
+                    }
+                    if (strlen($contactDigits) >= 11) {
+                        $appContactNamesByKey[$inst . '|' . substr($contactDigits, -11)] = $name;
+                    }
+                    if (strlen($contactDigits) >= 10) {
+                        $appContactNamesByKey[$inst . '|' . substr($contactDigits, -10)] = $name;
+                    }
+                    break;
+                }
+            }
+        }
+
         return response()->json([
             'success' => true,
             // Do not expose internal numeric IDs
-            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid) {
-                $k = $c->instance_name . '|' . (preg_replace('/\D/', '', (string) $c->contact_number) ?: '');
+            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid, $appContactNamesByKey) {
+                $digits = preg_replace('/\D/', '', (string) ($c->contact_number ?? ''));
+                $digitsNorm = $digits !== '' ? ltrim($digits, '0') : '';
+                $k = $c->instance_name . '|' . $digits;
+                $kNorm = $digitsNorm !== '' ? $c->instance_name . '|' . $digitsNorm : $k;
                 $ct = $k !== '|' ? ($contactsByKey[$k] ?? null) : null;
 
                 $isGroup = ($c->kind ?? '') === 'group';
-                $displayName = $c->contact_name;
+                $displayName = null;
                 if ($isGroup && $c->peer_jid) {
                     $groupKey = $c->instance_name . '|' . $c->peer_jid;
                     if (isset($groupsByJid[$groupKey]) && $groupsByJid[$groupKey] !== '') {
                         $displayName = $groupsByJid[$groupKey];
                     }
-                } elseif (!$displayName && is_object($ct)) {
-                    $displayName = $ct->display_name ?? null;
+                }
+                if ($displayName === null && !$isGroup) {
+                    // Direto: nome do DONO do número. Ordem: (1) tabela contacts, (2) whatsapp_contacts, (3) conversation.contact_name
+                    $appName = $appContactNamesByKey[$k] ?? $appContactNamesByKey[$kNorm] ?? null;
+                    if ($appName === null && $digitsNorm !== '' && strlen($digitsNorm) >= 11) {
+                        $appName = $appContactNamesByKey[$c->instance_name . '|' . substr($digitsNorm, -11)] ?? null;
+                    }
+                    if ($appName === null && $digitsNorm !== '' && strlen($digitsNorm) >= 10) {
+                        $appName = $appContactNamesByKey[$c->instance_name . '|' . substr($digitsNorm, -10)] ?? null;
+                    }
+                    $waDisplayName = is_object($ct) ? ($ct->display_name ?? null) : null;
+                    $convName = $c->contact_name ?: null;
+                    $displayName = ($appName !== null && $appName !== '') ? $appName : (($waDisplayName !== null && $waDisplayName !== '') ? $waDisplayName : $convName);
+                }
+                if ($displayName === null && $isGroup) {
+                    $displayName = $c->contact_name;
                 }
 
                 return [
                     'id' => $c->public_id,
                     'instance_name' => $c->instance_name,
                     'kind' => $c->kind ?: 'direct',
+                    'peer_jid' => $c->peer_jid,
                     'contact_number' => $c->contact_number,
                     'contact_name' => $displayName,
                     'avatar_url' => is_object($ct) ? ($ct->avatar_url ?: null) : null,
@@ -336,7 +406,7 @@ class WhatsAppInboxController extends Controller
 
     /**
      * Garante que exista registro em whatsapp_contacts quando a conversa vem da tabela contacts (app).
-     * Assim o chat fica registrado e o nome/avatar funcionam na lista.
+     * display_name = nome do DESTINATÁRIO; só preencher se ainda estiver vazio (nunca sobrescrever com nome de quem envia).
      */
     private function ensureWhatsAppContactFromAppContact(
         int $userId,
@@ -349,16 +419,25 @@ class WhatsAppInboxController extends Controller
         if ($num === '') {
             return;
         }
+        $attrs = ['contact_jid' => $contactJid];
+        $displayNameTrim = trim($displayName);
+        if ($displayNameTrim !== '') {
+            $existing = WhatsAppContact::query()
+                ->where('user_id', $userId)
+                ->where('instance_name', $instanceName)
+                ->where('contact_number', $num)
+                ->first(['display_name']);
+            if (!$existing || $existing->display_name === null || $existing->display_name === '') {
+                $attrs['display_name'] = $displayNameTrim;
+            }
+        }
         WhatsAppContact::query()->updateOrCreate(
             [
                 'user_id' => $userId,
                 'instance_name' => $instanceName,
                 'contact_number' => $num,
             ],
-            [
-                'contact_jid' => $contactJid,
-                'display_name' => trim($displayName) ?: null,
-            ]
+            $attrs
         );
     }
 
@@ -411,6 +490,116 @@ class WhatsAppInboxController extends Controller
         }
 
         return response()->json(['success' => true, 'avatar_url' => $url]);
+    }
+
+    /**
+     * Retorna o registro da tabela contacts que corresponde a esta conversa (por telefone).
+     * Para grupos retorna found: false e is_group: true.
+     */
+    public function appContact(WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        if (($conversation->kind ?? '') === 'group') {
+            return response()->json([
+                'success' => true,
+                'found' => false,
+                'is_group' => true,
+                'message' => 'Conversa de grupo — não há contato único na tabela de contatos.',
+            ]);
+        }
+
+        $convDigits = preg_replace('/\D/', '', (string) ($conversation->contact_number ?? ''));
+        if ($convDigits === '') {
+            return response()->json([
+                'success' => true,
+                'found' => false,
+                'message' => 'Nenhum número associado a esta conversa.',
+            ]);
+        }
+
+        $contact = $this->findContactByConversationPhone($accountId, $convDigits);
+        if (!$contact) {
+            return response()->json([
+                'success' => true,
+                'found' => false,
+                'message' => 'Nenhum registro na tabela de contatos para este número.',
+            ]);
+        }
+
+        $fieldValues = $contact->fieldValues()
+            ->with('field:id,name,type')
+            ->get()
+            ->map(fn ($fv) => [
+                'field_name' => $fv->field?->name ?? 'Campo',
+                'value' => $fv->value,
+                'formatted_value' => $fv->formatted_value ?? $fv->value,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'found' => true,
+            'contact' => [
+                'id' => $contact->id,
+                'name' => $contact->name,
+                'phone' => $contact->phone,
+                'email' => $contact->email,
+                'notes' => $contact->notes,
+                'custom_fields' => $fieldValues,
+            ],
+        ]);
+    }
+
+    /**
+     * Compara dígitos da conversa com dígitos do contato (tabela contacts) para pareamento.
+     */
+    private function conversationPhoneMatchesContact(string $convDigits, string $contactDigits): bool
+    {
+        if ($convDigits === $contactDigits) {
+            return true;
+        }
+        if (strlen($convDigits) >= 10 && strlen($contactDigits) >= 10 && substr($convDigits, -10) === substr($contactDigits, -10)) {
+            return true;
+        }
+        if (strlen($convDigits) >= 11 && strlen($contactDigits) >= 11 && substr($convDigits, -11) === substr($contactDigits, -11)) {
+            return true;
+        }
+        if ($convDigits === '55' . $contactDigits || $contactDigits === '55' . $convDigits) {
+            return true;
+        }
+        if (strlen($convDigits) >= 11 && $contactDigits === substr($convDigits, -11)) {
+            return true;
+        }
+        if (strlen($convDigits) >= 10 && $contactDigits === substr($convDigits, -10)) {
+            return true;
+        }
+        if (strlen($contactDigits) >= 11 && $convDigits === substr($contactDigits, -11)) {
+            return true;
+        }
+        if (strlen($contactDigits) >= 10 && $convDigits === substr($contactDigits, -10)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Encontra um Contact da tabela contacts pelo número da conversa (comparação por dígitos).
+     */
+    private function findContactByConversationPhone(int $accountId, string $convDigits): ?Contact
+    {
+        $convDigits = ltrim($convDigits, '0');
+        return Contact::forUser($accountId)
+            ->get()
+            ->first(function (Contact $c) use ($convDigits) {
+                $d = preg_replace('/\D/', '', (string) ($c->phone ?? ''));
+                $d = ltrim($d, '0');
+                return $this->conversationPhoneMatchesContact($convDigits, $d);
+            });
     }
 
     public function messages(WhatsAppConversation $conversation): JsonResponse
@@ -586,14 +775,14 @@ class WhatsAppInboxController extends Controller
                 $conversation->save();
             }
 
-            // Garante registro em whatsapp_contacts ao enviar pelo chat (nome/avatar na lista)
+            // Garante registro em whatsapp_contacts ao enviar (só contact_jid). Não passar nome para não sobrescrever display_name do destinatário.
             if (str_ends_with($recipient, '@s.whatsapp.net')) {
                 $this->ensureWhatsAppContactFromAppContact(
                     (int) $accountId,
                     $conversation->instance_name,
                     $conversation->contact_number ?: preg_replace('/@.*/', '', $recipient),
                     $recipient,
-                    (string) ($conversation->contact_name ?? '')
+                    ''
                 );
             }
 
@@ -650,6 +839,7 @@ class WhatsAppInboxController extends Controller
             if (($conversation->kind ?? '') === 'group') {
                 $conversation->last_message_sender = null; // our message, no "Sender: " in list
             }
+            // Nunca alterar contact_name ao enviar: só atualizar last_message_*.
             $conversation->save();
 
             $avatarUrl = null;

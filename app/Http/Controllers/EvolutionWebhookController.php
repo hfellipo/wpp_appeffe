@@ -24,6 +24,11 @@ class EvolutionWebhookController extends Controller
 
         $payload = $request->all();
 
+        // Log completo do que a Evolution envia (storage/logs/laravel.log)
+        Log::channel('single')->info('Evolution webhook payload received', [
+            'payload' => $payload,
+        ]);
+
         // Evolution commonly sends { event: "...", instanceName: "...", data: {...} }
         $event = (string) ($payload['event'] ?? '');
         $data = $payload;
