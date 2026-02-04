@@ -82,6 +82,36 @@
             .wa-message-sender--member { color: #0ea5e9; }
             .message-card-wrapper.mc-sender .wa-message-sender { padding-right: 12px; }
 
+            /* Feedback de carregamento ao clicar em outro chat – centralizado na coluna do chat */
+            .messages-container { display: flex; flex-direction: column; }
+            .messages-container .messages {
+                position: relative;
+                flex: 1;
+                min-height: 100%;
+            }
+            .wa-chat-loading {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 1rem;
+                background: var(--secondary-bg-color, #f0f2f5);
+                z-index: 2;
+            }
+            .wa-chat-loading__spinner {
+                width: 40px;
+                height: 40px;
+                border: 3px solid var(--border-color, #e5e7eb);
+                border-top-color: var(--primary-color, #25D366);
+                border-radius: 50%;
+                animation: wa-spin 0.8s linear infinite;
+            }
+            .wa-chat-loading__text { margin: 0; font-size: 14px; color: var(--wa-list-meta-color, #667781); }
+            @keyframes wa-spin { to { transform: rotate(360deg); } }
+            .messages-list { width: 100%; }
+
             /* Lista de conversas – layout por item (avatar | nome+hora / preview+badge) */
             .wa-conversation-item {
                 display: flex;
@@ -325,34 +355,41 @@
                         </template>
 
                         <template x-if="activeConversation && loadingMessages">
-                            <p class="message-hint center-el"><span>Loading...</span></p>
-                        </template>
-
-                        <template x-for="m in messages" :key="m.id">
-                            <div class="message-card-wrapper" :class="m.direction === 'out' ? 'mc-sender' : ''">
-                                <template x-if="activeConversation && (activeConversation.kind || '') === 'group'">
-                                    <div class="wa-message-sender" :class="'wa-message-sender--' + (m.direction === 'out' ? 'you' : 'member')">
-                                        <span x-text="m.direction === 'out' ? 'Você' : (m.sender_name || 'Desconhecido')"></span>
-                                    </div>
-                                </template>
-                                <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''">
-                                    <div class="message-card-content">
-                                        <div class="message">
-                                            <span x-text="m.body || (m.message_type ? '['+m.message_type+']' : '')"></span>
-                                            <span class="message-time">
-                                                <span class="time" x-text="formatTimeShort(m.created_at)"></span>
-                                                <template x-if="m.direction === 'out'">
-                                                    <span class="wa-tick ml-1 inline-flex items-center" :class="(tickForMessage(m) || {}).colorClass || ''">
-                                                        <i :class="(tickForMessage(m) || {}).iconClass || ''"></i>
-                                                    </span>
-                                                </template>
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
+                            <div class="wa-chat-loading">
+                                <div class="wa-chat-loading__spinner"></div>
+                                <p class="wa-chat-loading__text">Carregando conversa...</p>
                             </div>
                         </template>
-                        <template x-if="activeConversation && isConversationTyping(activeConversation.id)">
+
+                        <template x-if="activeConversation && !loadingMessages">
+                            <div class="messages-list">
+                                <template x-for="m in messages" :key="m.id">
+                                    <div class="message-card-wrapper" :class="m.direction === 'out' ? 'mc-sender' : ''">
+                                        <template x-if="activeConversation && (activeConversation.kind || '') === 'group'">
+                                            <div class="wa-message-sender" :class="'wa-message-sender--' + (m.direction === 'out' ? 'you' : 'member')">
+                                                <span x-text="m.direction === 'out' ? 'Você' : (m.sender_name || 'Desconhecido')"></span>
+                                            </div>
+                                        </template>
+                                        <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''">
+                                            <div class="message-card-content">
+                                                <div class="message">
+                                                    <span x-text="m.body || (m.message_type ? '['+m.message_type+']' : '')"></span>
+                                                    <span class="message-time">
+                                                        <span class="time" x-text="formatTimeShort(m.created_at)"></span>
+                                                        <template x-if="m.direction === 'out'">
+                                                            <span class="wa-tick ml-1 inline-flex items-center" :class="(tickForMessage(m) || {}).colorClass || ''">
+                                                                <i :class="(tickForMessage(m) || {}).iconClass || ''"></i>
+                                                            </span>
+                                                        </template>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="activeConversation && !loadingMessages && isConversationTyping(activeConversation.id)">
                             <div class="typing-indicator">
                                 <div class="message-card typing">
                                     <div class="message">

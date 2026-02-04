@@ -84,6 +84,8 @@ window.waInboxChatify = function waInboxChatify() {
             this.conversationTab = tab;
             if (this.activeConversation && (this.activeConversation.kind || 'direct') !== tab) {
                 this.activeConversation = null;
+                this.loadingMessages = false;
+                this.messages = [];
             }
         },
 
@@ -110,6 +112,8 @@ window.waInboxChatify = function waInboxChatify() {
             });
             this.$watch('activeConversation', (value) => {
                 if (!value) {
+                    this.loadingMessages = false;
+                    this.messages = [];
                     this.appContact = null;
                     this.appContactMessage = null;
                     return;
@@ -511,15 +515,18 @@ window.waInboxChatify = function waInboxChatify() {
         },
 
         async openConversation(c) {
+            // Imediato ao clicar: mostrar carregando e limpar mensagens (evita ver conversa anterior)
+            this.loadingMessages = true;
+            this.messages = [];
             this.activeConversation = c;
             if (this.isCompact) this.showInfo = false;
             this._hasOlder = true;
-            if (!c.avatar_url) await this.fetchAvatarForConversation(c);
+            if (!c.avatar_url) this.fetchAvatarForConversation(c); // não await: não bloquear feedback
             await this.refreshMessages(c);
         },
 
         async refreshMessages(c) {
-            this.loadingMessages = true;
+            if (!this.loadingMessages) this.loadingMessages = true;
             try {
                 const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages`, { headers: { 'Accept': 'application/json' } });
                 const data = await resp.json().catch(() => ({}));
