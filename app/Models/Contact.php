@@ -50,8 +50,20 @@ class Contact extends Model
     }
 
     /**
+     * Prefixos de 2 dígitos que são código de país (não Brasil). Não adicionamos 55 nesses casos.
+     */
+    private static function nonBrazilTwoDigitCountryCodes(): array
+    {
+        return [
+            '1', '7', '20', '27', '30', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45',
+            '46', '47', '48', '49', '51', '52', '53', '54', '56', '57', '58', '60', '61', '62', '63', '64',
+            '65', '66', '84', '86', '90', '92', '93', '94', '95', '98',
+        ];
+    }
+
+    /**
      * Número no formato E.164 para envio no WhatsApp. Universal: qualquer país.
-     * Só adiciona +55 quando for claramente número local BR (DDD 11-99).
+     * Só adiciona +55 quando for claramente número local BR (DDD 11-99), não outro país (ex: 61 Austrália).
      */
     public function getPhoneForWhatsappAttribute(): string
     {
@@ -72,9 +84,12 @@ class Contact extends Model
             return $digits;
         }
         if (strlen($digits) === 10 || strlen($digits) === 11) {
-            $ddd = (int) substr($digits, 0, 2);
-            if ($ddd >= 11 && $ddd <= 99) {
-                return '55' . $digits;
+            $prefix2 = substr($digits, 0, 2);
+            if (! in_array($prefix2, self::nonBrazilTwoDigitCountryCodes(), true)) {
+                $ddd = (int) $prefix2;
+                if ($ddd >= 11 && $ddd <= 99) {
+                    return '55' . $digits;
+                }
             }
             return $digits;
         }

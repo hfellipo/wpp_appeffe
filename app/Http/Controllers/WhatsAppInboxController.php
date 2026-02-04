@@ -533,10 +533,11 @@ class WhatsAppInboxController extends Controller
                 ], 422);
             }
 
-            // Persiste JID normalizado (ex: 31994234090 -> 5531994234090) para próximos envios
+            // Persiste JID e contact_number corrigidos (ex: 55+outro país -> só E.164; BR sem 55 -> com 55)
             $currentPeer = trim((string) ($conversation->peer_jid ?? ''));
             if ($currentPeer !== '' && $currentPeer !== $recipient && str_ends_with($recipient, '@s.whatsapp.net')) {
                 $conversation->peer_jid = $recipient;
+                $conversation->contact_number = preg_replace('/@.*/', '', $recipient);
                 $conversation->save();
             }
 
@@ -754,7 +755,7 @@ class WhatsAppInboxController extends Controller
     }
 
     /**
-     * Formata JID para exibição: 5531994234090@s.whatsapp.net -> (31) 99423-4090
+     * Formata JID para exibição. Brasil (55): (31) 99423-4090. Outros países: só dígitos (ex: 61403256156).
      */
     private function formatJidForDisplay(string $jid): string
     {
@@ -762,7 +763,7 @@ class WhatsAppInboxController extends Controller
         if ($digits === '') {
             return $jid;
         }
-        if (str_starts_with($digits, '55')) {
+        if (str_starts_with($digits, '55') && strlen($digits) >= 12 && strlen($digits) <= 13) {
             $local = substr($digits, 2);
             $len = strlen($local);
             if ($len === 10) {
@@ -802,7 +803,17 @@ class WhatsAppInboxController extends Controller
     }
 
     /**
-     * Indica se os dígitos parecem número local brasileiro (DDD 11-99 + 8 ou 9 dígitos).
+     * Códigos de país de 2 dígitos (E.164) que não são DDD brasileiro. Se um número 10/11 dígitos
+     * começa com um deles, não adicionamos 55 (ex: 61 Austrália). Não incluir 31, 21, etc. (DDD BR).
+     */
+    private const NON_BRAZIL_TWO_DIGIT_COUNTRY_CODES = [
+        '1',  '7',  '20', '27', '30', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45',
+        '46', '47', '48', '49', '51', '52', '53', '54', '56', '57', '58', '60', '61', '62', '63', '64',
+        '65', '66', '84', '86', '90', '92', '93', '94', '95', '98',
+    ];
+
+    /**
+     * Indica se os dígitos parecem número local brasileiro (DDD 11-99), e não outro país.
      */
     private function isBrazilianLocalNumber(string $digits): bool
     {
@@ -810,7 +821,11 @@ class WhatsAppInboxController extends Controller
         if ($len !== 10 && $len !== 11) {
             return false;
         }
-        $ddd = (int) substr($digits, 0, 2);
+        $prefix2 = substr($digits, 0, 2);
+        if (in_array($prefix2, self::NON_BRAZIL_TWO_DIGIT_COUNTRY_CODES, true)) {
+            return false;
+        }
+        $ddd = (int) $prefix2;
         return $ddd >= 11 && $ddd <= 99;
     }
 
@@ -832,6 +847,13 @@ class WhatsAppInboxController extends Controller
         // Corrige JID salvos errados no BR: 55031994234090 -> 5531994234090
         if (str_starts_with($digits, '550') && strlen($digits) >= 13) {
             $digits = '55' . substr($digits, 3);
+        }
+        // Corrige número salvo como 55 + outro país (ex: 5561403256156 Austrália -> 61403256156)
+        if (str_starts_with($digits, '55') && strlen($digits) >= 13) {
+            $after55 = substr($digits, 2, 2);
+            if (in_array($after55, self::NON_BRAZIL_TWO_DIGIT_COUNTRY_CODES, true)) {
+                return substr($digits, 2);
+            }
         }
 
         // Já em E.164 (12-15 dígitos): qualquer país
