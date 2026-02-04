@@ -68,6 +68,10 @@ window.waInboxChatify = function waInboxChatify() {
         appContact: null,
         appContactMessage: null,
 
+        // emoji picker
+        showEmojiPicker: false,
+        emojiList: ['😀','😃','😄','😁','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😋','😜','🤔','🤗','👍','👎','👏','🙌','👋','❤️','🧡','💛','💚','💙','💜','🖤','💯','🔥','⭐','✨','🎉','🙏','✌️','🤝','💪','😎','🥳','😢','😭','😤','😡','🤬','😷','🤒','🤕','💀','💩','🤡','👻','🙈','🙉','🙊','💋','💌','💐','🌸','🌺','🌻','🌹','🥀','🌷','🍀','☀️','🌈','⚡','❄️','🔥','💧','🌊'],
+
         get filteredConversations() {
             const list = this.conversationTab === 'group' ? this.groupConversations : this.directConversations;
             const q = String(this.search || '').toLowerCase().trim();
@@ -589,9 +593,28 @@ window.waInboxChatify = function waInboxChatify() {
             }
         },
 
+        insertEmoji(emoji) {
+            const el = this.$refs.draftInput;
+            const current = String(this.draft || '');
+            if (el && typeof el.selectionStart === 'number') {
+                const start = el.selectionStart;
+                const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
+                this.draft = current.slice(0, start) + emoji + current.slice(end);
+                this.$nextTick(() => {
+                    if (!this.$refs.draftInput) return;
+                    const pos = start + emoji.length;
+                    this.$refs.draftInput.setSelectionRange(pos, pos);
+                    this.$refs.draftInput.focus();
+                });
+            } else {
+                this.draft = current + emoji;
+            }
+        },
+
         async sendMessage() {
             if (!this.activeConversation) return;
             const text = String(this.draft || '').trim();
+            if (!text) return;
             if (!text) return;
 
             const conversationId = String(this.activeConversation.id);

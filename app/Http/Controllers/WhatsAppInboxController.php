@@ -690,6 +690,7 @@ class WhatsAppInboxController extends Controller
                 return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
             }
 
+            // text aceita Unicode/emojis (UTF-8)
             $request->validate([
                 'text' => 'required|string|max:4000',
             ]);

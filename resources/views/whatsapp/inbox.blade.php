@@ -112,6 +112,49 @@
             @keyframes wa-spin { to { transform: rotate(360deg); } }
             .messages-list { width: 100%; }
 
+            /* Emoji picker – enviar e receber emojis */
+            .wa-send-card { position: relative; }
+            .wa-emoji-picker {
+                position: absolute;
+                bottom: 100%;
+                left: 0;
+                right: 0;
+                max-height: 220px;
+                overflow-y: auto;
+                background: var(--secondary-bg-color, #fff);
+                border: 1px solid var(--border-color, #e5e7eb);
+                border-radius: 12px 12px 0 0;
+                padding: 10px;
+                margin-bottom: 4px;
+                box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+                z-index: 10;
+            }
+            .wa-emoji-picker__grid {
+                display: grid;
+                grid-template-columns: repeat(8, 1fr);
+                gap: 4px;
+            }
+            .wa-emoji-picker__btn {
+                font-size: 24px;
+                line-height: 1.2;
+                padding: 6px;
+                border: none;
+                border-radius: 8px;
+                background: transparent;
+                cursor: pointer;
+                transition: background 0.15s;
+            }
+            .wa-emoji-picker__btn:hover {
+                background: var(--secondary-bg-color, #f0f2f5);
+            }
+            .wa-emoji-trigger {
+                color: var(--wa-list-meta-color, #667781);
+            }
+            .wa-emoji-trigger--open {
+                color: var(--primary-color, #25D366);
+            }
+            [x-cloak] { display: none !important; }
+
             /* Lista de conversas – layout por item (avatar | nome+hora / preview+badge) */
             .wa-conversation-item {
                 display: flex;
@@ -405,14 +448,30 @@
                     </div>
                 </div>
 
-                <div class="messenger-sendCard" x-show="!!activeConversation">
+                <div class="messenger-sendCard wa-send-card" x-show="!!activeConversation">
+                    {{-- Emoji picker (acima do campo de texto) --}}
+                    <div class="wa-emoji-picker" x-show="showEmojiPicker" x-cloak
+                         @click.outside="showEmojiPicker = false">
+                        <div class="wa-emoji-picker__grid">
+                            <template x-for="(emoji, i) in emojiList" :key="i">
+                                <button type="button" class="wa-emoji-picker__btn"
+                                        x-text="emoji"
+                                        @click="insertEmoji(emoji)"></button>
+                            </template>
+                        </div>
+                    </div>
                     <form @submit.prevent="sendMessage()">
-                        <button type="button" title="Emoji (em breve)" disabled><span class="fas fa-smile"></span></button>
+                        <button type="button" class="wa-emoji-trigger" title="Emoji"
+                                :class="{ 'wa-emoji-trigger--open': showEmojiPicker }"
+                                @click.prevent="showEmojiPicker = !showEmojiPicker">
+                            <span class="fas fa-smile"></span>
+                        </button>
                         <textarea
                             name="message"
                             class="m-send app-scroll"
-                            placeholder="Type a message.."
+                            placeholder="Digite uma mensagem..."
                             x-model="draft"
+                            x-ref="draftInput"
                             @keydown.enter.prevent="maybeSend($event)"
                             :disabled="!connected || sending"
                         ></textarea>
