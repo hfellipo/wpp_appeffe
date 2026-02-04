@@ -50,8 +50,8 @@ class Contact extends Model
     }
 
     /**
-     * Número no formato E.164 para envio no WhatsApp (ex: 5531994234090).
-     * Trata (XX)XXXXX-XXXX e variantes; retorna vazio se inválido.
+     * Número no formato E.164 para envio no WhatsApp. Universal: qualquer país.
+     * Só adiciona +55 quando for claramente número local BR (DDD 11-99).
      */
     public function getPhoneForWhatsappAttribute(): string
     {
@@ -65,16 +65,20 @@ class Contact extends Model
         if (str_starts_with($digits, '550') && strlen($digits) >= 13) {
             $digits = '55' . substr($digits, 3);
         }
+        if (strlen($digits) >= 12 && strlen($digits) <= 15) {
+            return $digits;
+        }
         if (str_starts_with($digits, '55') && strlen($digits) >= 12 && strlen($digits) <= 13) {
             return $digits;
         }
         if (strlen($digits) === 10 || strlen($digits) === 11) {
-            return '55' . $digits;
+            $ddd = (int) substr($digits, 0, 2);
+            if ($ddd >= 11 && $ddd <= 99) {
+                return '55' . $digits;
+            }
+            return $digits;
         }
-        if (strlen($digits) === 9 && str_starts_with($digits, '9')) {
-            return '55' . $digits;
-        }
-        if (strlen($digits) >= 10 && strlen($digits) <= 15) {
+        if (strlen($digits) >= 9 && strlen($digits) <= 15) {
             return $digits;
         }
         return $digits;

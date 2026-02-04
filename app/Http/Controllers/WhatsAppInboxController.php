@@ -672,6 +672,7 @@ class WhatsAppInboxController extends Controller
 
     /**
      * Tenta montar o JID a partir de contact_number quando peer_jid está vazio (ex.: conversas da lista de contatos).
+     * Universal: só adiciona 55 quando for número local BR (DDD 11-99); demais países mantêm dígitos.
      */
     private function buildRecipientFromConversation(WhatsAppConversation $conversation): string
     {
@@ -680,19 +681,15 @@ class WhatsAppInboxController extends Controller
             return '';
         }
         $digits = preg_replace('/\D/', '', $raw);
-        if (strlen($digits) < 10) {
+        if (strlen($digits) < 9) {
             return '';
         }
-        if (strlen($digits) === 10 || strlen($digits) === 11) {
-            if (!str_starts_with($digits, '55')) {
-                $digits = '55' . $digits;
-            }
+        $normalized = $this->normalizeWhatsappNumber($digits);
+        if ($normalized === '' || strlen($normalized) < 9) {
+            return '';
         }
-        if (strlen($digits) >= 12 && strlen($digits) <= 15) {
-            return $digits . '@s.whatsapp.net';
-        }
-        if (strlen($digits) >= 10) {
-            return $digits . '@s.whatsapp.net';
+        if (strlen($normalized) >= 10 && strlen($normalized) <= 15) {
+            return $normalized . '@s.whatsapp.net';
         }
         return '';
     }
@@ -805,41 +802,55 @@ class WhatsAppInboxController extends Controller
     }
 
     /**
-     * Normalize a phone number for WhatsApp sending.
-     * Default Brazil country code (+55) when missing (10/11 digits -> add 55).
-     * Números da lista de contatos podem vir como (31) 99999-9999, 0 31 99423-4090 ou 31999999999.
+     * Indica se os dígitos parecem número local brasileiro (DDD 11-99 + 8 ou 9 dígitos).
+     */
+    private function isBrazilianLocalNumber(string $digits): bool
+    {
+        $len = strlen($digits);
+        if ($len !== 10 && $len !== 11) {
+            return false;
+        }
+        $ddd = (int) substr($digits, 0, 2);
+        return $ddd >= 11 && $ddd <= 99;
+    }
+
+    /**
+     * Normaliza número para envio WhatsApp (E.164). Universal: qualquer país.
+     * Só adiciona +55 quando for claramente número local BR (DDD 11-99). Demais: retorna dígitos como estão.
      */
     private function normalizeWhatsappNumber(string $raw): string
     {
         $digits = preg_replace('/\D/', '', (string) $raw) ?: '';
-        if ($digits === '') return '';
+        if ($digits === '') {
+            return '';
+        }
 
-        // Remove zero à esquerda em números BR (ex: 031994234090 -> 31994234090) para não gerar 55031...
+        // Remove zero à esquerda (comum em vários países): 031994234090 -> 31994234090
         if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
             $digits = substr($digits, 1);
         }
-        // Corrige JID já salvos errados: 55031994234090 -> 5531994234090
+        // Corrige JID salvos errados no BR: 55031994234090 -> 5531994234090
         if (str_starts_with($digits, '550') && strlen($digits) >= 13) {
             $digits = '55' . substr($digits, 3);
         }
 
-        // Já tem código do país 55 e tamanho BR (55 + DDD 2 + número 8 ou 9)
+        // Já em E.164 (12-15 dígitos): qualquer país
+        if (strlen($digits) >= 12 && strlen($digits) <= 15) {
+            return $digits;
+        }
+
+        // Brasil: 55 + DDD 11-99 + 8 ou 9 dígitos
         if (str_starts_with($digits, '55') && strlen($digits) >= 12 && strlen($digits) <= 13) {
             return $digits;
         }
 
-        // Número local BR: DDD (2) + número (8 ou 9 dígitos) = 10 ou 11
-        if (strlen($digits) === 10 || strlen($digits) === 11) {
+        // Número local: só adiciona 55 se for padrão BR (DDD 11-99)
+        if ($this->isBrazilianLocalNumber($digits)) {
             return '55' . $digits;
         }
 
-        // 9 dígitos: provável celular sem DDD; assume Brasil e adiciona 55 (Evolution pode aceitar 55 + 9)
-        if (strlen($digits) === 9 && str_starts_with($digits, '9')) {
-            return '55' . $digits;
-        }
-
-        // Outros países: se já tem 10-15 dígitos, retorna como está
-        if (strlen($digits) >= 10 && strlen($digits) <= 15) {
+        // Outros países: 9-15 dígitos sem alteração (E.164 ou nacional; Evolution aceita)
+        if (strlen($digits) >= 9 && strlen($digits) <= 15) {
             return $digits;
         }
 
