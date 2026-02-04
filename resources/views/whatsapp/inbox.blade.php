@@ -67,6 +67,121 @@
             }
             .wa-typing-label { font-size: 0.75rem; color: #6b7280; font-style: italic; }
             .wa-tab--active { color: var(--primary-color, #25D366) !important; font-weight: 600; border-bottom: 2px solid var(--primary-color, #25D366); margin-bottom: -1px; }
+
+            /* Grupo: nome do remetente acima da bolha */
+            .message-card-wrapper { margin-bottom: 2px; }
+            .message-card-wrapper.mc-sender { display: flex; flex-direction: column; align-items: flex-end; }
+            .wa-message-sender {
+                font-size: 12px;
+                font-weight: 600;
+                margin-bottom: 2px;
+                padding-left: 2px;
+                padding-right: 2px;
+            }
+            .wa-message-sender--you { color: var(--primary-color, #25D366); }
+            .wa-message-sender--member { color: #0ea5e9; }
+            .message-card-wrapper.mc-sender .wa-message-sender { padding-right: 12px; }
+
+            /* Lista de conversas – layout por item (avatar | nome+hora / preview+badge) */
+            .wa-conversation-item {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                width: 100%;
+                padding: 10px 12px;
+                cursor: pointer;
+                transition: background 0.1s;
+                border: none;
+                border-radius: 0;
+                text-align: left;
+                background: transparent;
+            }
+            .wa-conversation-item:hover {
+                background: var(--secondary-bg-color, #f0f2f5);
+            }
+            .wa-conversation-item.m-list-active,
+            .wa-conversation-item.m-list-active:hover {
+                background: var(--primary-color) !important;
+            }
+            .wa-conversation-item__avatar {
+                flex-shrink: 0;
+                width: 49px;
+            }
+            .wa-conversation-item__avatar .avatar.av-m {
+                width: 49px;
+                height: 49px;
+            }
+            .wa-conversation-item__body {
+                flex: 1;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .wa-conversation-item__top {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+            }
+            .wa-conversation-item__name {
+                font-weight: 600;
+                font-size: 16px;
+                color: var(--wa-list-name-color, #111b21);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .wa-conversation-item__time {
+                flex-shrink: 0;
+                font-size: 12px;
+                color: var(--wa-list-meta-color, #667781);
+                font-weight: 400;
+            }
+            .wa-conversation-item__bottom {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+            }
+            .wa-conversation-item__preview {
+                flex: 1;
+                min-width: 0;
+                font-size: 14px;
+                color: var(--wa-list-meta-color, #667781);
+                font-weight: 400;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .wa-conversation-item__right {
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .wa-conversation-item__unread {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 20px;
+                height: 20px;
+                padding: 0 6px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #fff;
+                background: #25D366;
+                border-radius: 50%;
+            }
+            .wa-conversation-item.m-list-active .wa-conversation-item__name,
+            .wa-conversation-item.m-list-active .wa-conversation-item__time,
+            .wa-conversation-item.m-list-active .wa-conversation-item__preview {
+                color: #fff !important;
+            }
+            .wa-conversation-item.m-list-active .wa-conversation-item__unread {
+                background: #fff;
+                color: var(--primary-color);
+            }
         </style>
     @endpush
 
@@ -126,35 +241,39 @@
                             </template>
 
                             <template x-for="c in filteredConversations" :key="c.id">
-                                <table
-                                    class="messenger-list-item"
+                                <div
+                                    class="wa-conversation-item messenger-list-item"
                                     :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
                                     :data-contact="c.id"
+                                    data-action="0"
+                                    @click="openConversation(c)"
                                 >
-                                    <tr data-action="0" @click="openConversation(c)">
-                                        <td style="position: relative">
-                                            <div
-                                                class="avatar av-m wa-avatar"
-                                                :class="{ 'wa-avatar--fallback': !c.avatar_url }"
-                                                :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
-                                            >
-                                                <template x-if="!c.avatar_url">
-                                                    <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
+                                    <div class="wa-conversation-item__avatar">
+                                        <div
+                                            class="avatar av-m wa-avatar"
+                                            :class="{ 'wa-avatar--fallback': !c.avatar_url }"
+                                            :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
+                                        >
+                                            <template x-if="!c.avatar_url">
+                                                <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="wa-conversation-item__body">
+                                        <div class="wa-conversation-item__top">
+                                            <span class="wa-conversation-item__name" x-text="c.contact_name || formatNumber(c.contact_number)"></span>
+                                            <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                        </div>
+                                        <div class="wa-conversation-item__bottom">
+                                            <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
+                                            <div class="wa-conversation-item__right">
+                                                <template x-if="(c.unread_count || 0) > 0">
+                                                    <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
                                                 </template>
                                             </div>
-                                        </td>
-                                        <td>
-                                            <p>
-                                                <span x-text="c.contact_name || formatNumber(c.contact_number)"></span>
-                                                <span class="contact-item-time" x-text="formatTimeAgo(c.last_message_at)"></span>
-                                            </p>
-                                            <span x-text="c.last_message_preview || ''"></span>
-                                            <template x-if="(c.unread_count || 0) > 0">
-                                                <b x-text="c.unread_count"></b>
-                                            </template>
-                                        </td>
-                                    </tr>
-                                </table>
+                                        </div>
+                                    </div>
+                                </div>
                             </template>
                         </div>
                     </div>
@@ -210,18 +329,25 @@
                         </template>
 
                         <template x-for="m in messages" :key="m.id">
-                            <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''">
-                                <div class="message-card-content">
-                                    <div class="message">
-                                        <span x-text="m.body || (m.message_type ? '['+m.message_type+']' : '')"></span>
-                                        <span class="message-time">
-                                            <span class="time" x-text="formatTimeShort(m.created_at)"></span>
-                                            <template x-if="m.direction === 'out'">
-                                                <span class="wa-tick ml-1 inline-flex items-center" :class="(tickForMessage(m) || {}).colorClass || ''">
-                                                    <i :class="(tickForMessage(m) || {}).iconClass || ''"></i>
-                                                </span>
-                                            </template>
-                                        </span>
+                            <div class="message-card-wrapper" :class="m.direction === 'out' ? 'mc-sender' : ''">
+                                <template x-if="activeConversation && (activeConversation.kind || '') === 'group'">
+                                    <div class="wa-message-sender" :class="'wa-message-sender--' + (m.direction === 'out' ? 'you' : 'member')">
+                                        <span x-text="m.direction === 'out' ? 'Você' : (m.sender_name || 'Desconhecido')"></span>
+                                    </div>
+                                </template>
+                                <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''">
+                                    <div class="message-card-content">
+                                        <div class="message">
+                                            <span x-text="m.body || (m.message_type ? '['+m.message_type+']' : '')"></span>
+                                            <span class="message-time">
+                                                <span class="time" x-text="formatTimeShort(m.created_at)"></span>
+                                                <template x-if="m.direction === 'out'">
+                                                    <span class="wa-tick ml-1 inline-flex items-center" :class="(tickForMessage(m) || {}).colorClass || ''">
+                                                        <i :class="(tickForMessage(m) || {}).iconClass || ''"></i>
+                                                    </span>
+                                                </template>
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

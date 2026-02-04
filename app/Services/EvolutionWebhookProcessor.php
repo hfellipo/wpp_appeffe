@@ -190,6 +190,7 @@ class EvolutionWebhookProcessor
             $jid = (string) ($g['id'] ?? $g['jid'] ?? $g['remoteJid'] ?? $g['groupJid'] ?? '');
             if ($jid === '') continue;
 
+            $subject = (string) ($g['subject'] ?? $g['name'] ?? '');
             WhatsAppGroup::query()->updateOrCreate(
                 [
                     'user_id' => $accountId,
@@ -197,11 +198,19 @@ class EvolutionWebhookProcessor
                     'group_jid' => $jid,
                 ],
                 [
-                    'subject' => (string) ($g['subject'] ?? $g['name'] ?? ''),
+                    'subject' => $subject,
                     'description' => (string) ($g['desc'] ?? $g['description'] ?? ''),
                     'metadata' => $g,
                 ]
             );
+            if ($subject !== '') {
+                WhatsAppConversation::query()
+                    ->where('user_id', $accountId)
+                    ->where('instance_name', $wa->instance_name)
+                    ->where('peer_jid', $jid)
+                    ->where('kind', 'group')
+                    ->update(['contact_name' => $subject]);
+            }
         }
     }
 
@@ -245,9 +254,13 @@ class EvolutionWebhookProcessor
             $fromMe = (bool) Arr::get($m, 'key.fromMe', false);
             $remoteId = (string) Arr::get($m, 'key.id', Arr::get($m, 'id', ''));
             $pushName = (string) Arr::get($m, 'pushName', Arr::get($m, 'data.pushName', ''));
+            $participantJid = (string) Arr::get($m, 'key.participant', '');
             $messageTypeRaw = (string) Arr::get($m, 'messageType', 'unknown');
 
             $kind = str_contains($remoteJid, '@g.us') ? 'group' : 'direct';
+
+            // For groups, do NOT use sender's pushName as conversation name; we use group subject from WhatsAppGroup
+            $initialContactName = $kind === 'direct' && $pushName !== '' ? $pushName : null;
 
             $conversation = WhatsAppConversation::query()->firstOrCreate(
                 [
@@ -258,16 +271,27 @@ class EvolutionWebhookProcessor
                 [
                     'kind' => $kind,
                     'contact_number' => $this->normalizeNumber($remoteJid),
-                    'contact_name' => $pushName !== '' ? $pushName : null,
+                    'contact_name' => $initialContactName,
                     'unread_count' => 0,
                 ]
             );
 
-            if ($pushName !== '' && !$conversation->contact_name) {
+            if ($kind === 'direct' && $pushName !== '' && !$conversation->contact_name) {
                 $conversation->contact_name = $pushName;
             }
             if (!$conversation->kind) {
                 $conversation->kind = $kind;
+            }
+            // For groups: use group subject as display name (from whatsapp_groups)
+            if ($kind === 'group') {
+                $group = WhatsAppGroup::query()
+                    ->where('user_id', $accountId)
+                    ->where('instance_name', $wa->instance_name)
+                    ->where('group_jid', $remoteJid)
+                    ->first(['subject']);
+                if ($group && $group->subject !== '' && $group->subject !== null) {
+                    $conversation->contact_name = $group->subject;
+                }
             }
 
             // Dedupe by remote_id
@@ -283,9 +307,14 @@ class EvolutionWebhookProcessor
 
             [$body, $mappedType, $attachment] = $this->extractBodyAndAttachment($m, $messageTypeRaw);
 
+            $participantJidStored = $kind === 'group' && $participantJid !== '' ? $participantJid : null;
+            $senderNameStored = $kind === 'group' ? ($fromMe ? null : ($pushName !== '' ? $pushName : null)) : null;
+
             $msg = WhatsAppMessage::create([
                 'conversation_id' => $conversation->id,
                 'direction' => $fromMe ? 'out' : 'in',
+                'participant_jid' => $participantJidStored,
+                'sender_name' => $senderNameStored,
                 'message_type' => $mappedType,
                 'body' => $body,
                 'remote_id' => $remoteId !== '' ? $remoteId : null,
@@ -308,7 +337,18 @@ class EvolutionWebhookProcessor
             }
 
             $conversation->last_message_at = $msg->sent_at ?? $msg->created_at;
-            $conversation->last_message_preview = $body ? mb_substr($body, 0, 500) : '[' . $mappedType . ']';
+            $previewText = $body ? mb_substr($body, 0, 500) : '[' . $mappedType . ']';
+            if ($kind === 'group') {
+                $conversation->last_message_sender = $fromMe ? null : ($pushName !== '' ? $pushName : null);
+                $conversation->last_message_preview = $previewText;
+                // Show "Sender: preview" in list (like WhatsApp)
+                if ($conversation->last_message_sender) {
+                    $conversation->last_message_preview = $conversation->last_message_sender . ': ' . $previewText;
+                }
+            } else {
+                $conversation->last_message_sender = null;
+                $conversation->last_message_preview = $previewText;
+            }
             if (!$fromMe) {
                 $conversation->unread_count = (int) $conversation->unread_count + 1;
             }
@@ -337,6 +377,7 @@ class EvolutionWebhookProcessor
                 'message' => [
                     'id' => $msg->public_id,
                     'direction' => $msg->direction,
+                    'sender_name' => $msg->sender_name,
                     'message_type' => $msg->message_type,
                     'body' => $msg->body,
                     'status' => $msg->status,
@@ -351,6 +392,7 @@ class EvolutionWebhookProcessor
                     'avatar_url' => $avatarUrl,
                     'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
                     'last_message_preview' => $conversation->last_message_preview,
+                    'last_message_sender' => $conversation->last_message_sender,
                     'unread_count' => (int) $conversation->unread_count,
                 ],
             ]);

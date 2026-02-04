@@ -17,6 +17,8 @@ class WhatsAppMessage extends Model
         'public_id',
         'conversation_id',
         'direction', // in|out
+        'participant_jid', // in groups: who sent (e.g. 5511999@s.whatsapp.net)
+        'sender_name', // in groups: display name of sender
         'message_type', // text|image|video|document|audio|unknown
         'body',
         'remote_id',

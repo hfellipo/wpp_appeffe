@@ -24,6 +24,7 @@ class WhatsAppConversation extends Model
         'contact_name',
         'last_message_at',
         'last_message_preview',
+        'last_message_sender', // for groups: name of sender of last message
         'unread_count',
         'metadata',
     ];

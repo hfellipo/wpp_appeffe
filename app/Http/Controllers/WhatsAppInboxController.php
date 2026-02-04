@@ -56,12 +56,29 @@ class WhatsAppInboxController extends Controller
                 'public_id',
                 'instance_name',
                 'kind',
+                'peer_jid',
                 'contact_number',
                 'contact_name',
                 'last_message_at',
                 'last_message_preview',
+                'last_message_sender',
                 'unread_count',
             ]);
+
+        // Group names from whatsapp_groups (group subject)
+        $groupConversations = $items->filter(fn (WhatsAppConversation $c) => ($c->kind ?? '') === 'group');
+        $groupsByJid = [];
+        if ($groupConversations->isNotEmpty()) {
+            $groupJids = $groupConversations->pluck('peer_jid')->filter()->unique()->values()->all();
+            $groups = \App\Models\WhatsAppGroup::query()
+                ->where('user_id', $accountId)
+                ->whereIn('instance_name', $items->pluck('instance_name')->unique())
+                ->whereIn('group_jid', $groupJids)
+                ->get(['instance_name', 'group_jid', 'subject']);
+            foreach ($groups as $g) {
+                $groupsByJid[$g->instance_name . '|' . $g->group_jid] = $g->subject;
+            }
+        }
 
         // Best-effort avatar/name enrichment from whatsapp_contacts (single query)
         $keys = $items
@@ -93,19 +110,31 @@ class WhatsAppInboxController extends Controller
         return response()->json([
             'success' => true,
             // Do not expose internal numeric IDs
-            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey) {
+            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid) {
                 $k = $c->instance_name . '|' . (preg_replace('/\D/', '', (string) $c->contact_number) ?: '');
                 $ct = $k !== '|' ? ($contactsByKey[$k] ?? null) : null;
+
+                $isGroup = ($c->kind ?? '') === 'group';
+                $displayName = $c->contact_name;
+                if ($isGroup && $c->peer_jid) {
+                    $groupKey = $c->instance_name . '|' . $c->peer_jid;
+                    if (isset($groupsByJid[$groupKey]) && $groupsByJid[$groupKey] !== '') {
+                        $displayName = $groupsByJid[$groupKey];
+                    }
+                } elseif (!$displayName && is_object($ct)) {
+                    $displayName = $ct->display_name ?? null;
+                }
 
                 return [
                     'id' => $c->public_id,
                     'instance_name' => $c->instance_name,
                     'kind' => $c->kind ?: 'direct',
                     'contact_number' => $c->contact_number,
-                    'contact_name' => $c->contact_name ?: (is_object($ct) ? ($ct->display_name ?: null) : null),
+                    'contact_name' => $displayName,
                     'avatar_url' => is_object($ct) ? ($ct->avatar_url ?: null) : null,
                     'last_message_at' => optional($c->last_message_at)->toIso8601String(),
                     'last_message_preview' => $c->last_message_preview,
+                    'last_message_sender' => $c->last_message_sender,
                     'unread_count' => (int) $c->unread_count,
                 ];
             })->values(),
@@ -412,6 +441,7 @@ class WhatsAppInboxController extends Controller
         $items = $q->get([
             'public_id',
             'direction',
+            'sender_name',
             'message_type',
             'body',
             'status',
@@ -443,6 +473,7 @@ class WhatsAppInboxController extends Controller
                 return [
                     'id' => $m->public_id,
                     'direction' => $m->direction,
+                    'sender_name' => $m->sender_name,
                     'message_type' => $m->message_type,
                     'body' => $m->body,
                     'status' => $m->status,
@@ -616,6 +647,9 @@ class WhatsAppInboxController extends Controller
 
             $conversation->last_message_at = $msg->sent_at ?? $msg->created_at;
             $conversation->last_message_preview = mb_substr($text, 0, 500);
+            if (($conversation->kind ?? '') === 'group') {
+                $conversation->last_message_sender = null; // our message, no "Sender: " in list
+            }
             $conversation->save();
 
             $avatarUrl = null;
@@ -638,6 +672,7 @@ class WhatsAppInboxController extends Controller
                 'message' => [
                     'id' => $msg->public_id,
                     'direction' => $msg->direction,
+                    'sender_name' => $msg->sender_name,
                     'message_type' => $msg->message_type,
                     'body' => $msg->body,
                     'status' => $msg->status,
@@ -651,6 +686,7 @@ class WhatsAppInboxController extends Controller
                     'instance_name' => $conversation->instance_name,
                     'contact_number' => $conversation->contact_number,
                     'contact_name' => $conversation->contact_name ?: $displayName,
+                    'last_message_sender' => $conversation->last_message_sender,
                     'avatar_url' => $avatarUrl,
                     'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
                     'last_message_preview' => $conversation->last_message_preview,
@@ -663,6 +699,7 @@ class WhatsAppInboxController extends Controller
                 'message' => [
                     'id' => $msg->public_id,
                     'direction' => $msg->direction,
+                    'sender_name' => $msg->sender_name,
                     'message_type' => $msg->message_type,
                     'body' => $msg->body,
                     'status' => $msg->status,

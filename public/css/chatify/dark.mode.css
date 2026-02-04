@@ -116,6 +116,16 @@
 .messenger-list-item td p {
   color: #fff;
 }
+.wa-conversation-item__name {
+  color: #e9edef;
+}
+.wa-conversation-item__time,
+.wa-conversation-item__preview {
+  color: #8696a0;
+}
+.wa-conversation-item:hover {
+  background: var(--dark-secondary-bg-color);
+}
 .activeStatus {
   border: 2px solid var(--dark-border-color);
 }
