@@ -120,6 +120,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/api/conversations/{conversation}/app-contact', [WhatsAppInboxController::class, 'appContact'])->name('api.conversations.app-contact');
         Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');
         Route::post('/api/conversations/{conversation}/send', [WhatsAppInboxController::class, 'send'])->name('api.send');
+        Route::post('/api/conversations/{conversation}/send-media', [WhatsAppInboxController::class, 'sendMedia'])->name('api.send-media');
+        Route::get('/api/attachments/{attachment}', [WhatsAppInboxController::class, 'showAttachment'])->name('attachments.show');
     });
 
     // Profile routes

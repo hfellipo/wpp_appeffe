@@ -614,19 +614,25 @@ class EvolutionWebhookProcessor
             return [$body, 'text', null];
         }
 
-        // Media captions (best-effort)
+        // Media captions (best-effort) + media URL (Evolution pode enviar em vários lugares)
         foreach (['imageMessage' => 'image', 'videoMessage' => 'video', 'documentMessage' => 'document', 'audioMessage' => 'audio'] as $k => $t) {
             if (isset($msgNode[$k]) && is_array($msgNode[$k])) {
                 $caption = $msgNode[$k]['caption'] ?? null;
                 if (is_string($caption) && $caption !== '') {
                     $body = $caption;
                 }
-                $mediaUrl = $msgNode['mediaUrl'] ?? $payload['mediaUrl'] ?? null;
+                $mediaUrl = $msgNode['mediaUrl'] ?? $payload['mediaUrl'] ?? $payload['data']['mediaUrl'] ?? null;
+                if (!is_string($mediaUrl) || $mediaUrl === '') {
+                    $mediaUrl = $msgNode[$k]['url'] ?? null;
+                }
+                if (!is_string($mediaUrl) || $mediaUrl === '') {
+                    $mediaUrl = $msgNode[$k]['directPath'] ?? null;
+                }
                 $attachment = [
                     'type' => $t,
                     'mime' => is_string($msgNode[$k]['mimetype'] ?? null) ? $msgNode[$k]['mimetype'] : null,
                     'size' => is_numeric($msgNode[$k]['fileLength'] ?? null) ? (int) $msgNode[$k]['fileLength'] : null,
-                    'remote_url' => is_string($mediaUrl) ? $mediaUrl : null,
+                    'remote_url' => is_string($mediaUrl) && $mediaUrl !== '' ? $mediaUrl : null,
                     'caption_preview' => $body ? mb_substr($body, 0, 500) : null,
                     'raw_payload' => $msgNode[$k],
                 ];

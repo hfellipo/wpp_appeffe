@@ -615,7 +615,6 @@ window.waInboxChatify = function waInboxChatify() {
             if (!this.activeConversation) return;
             const text = String(this.draft || '').trim();
             if (!text) return;
-            if (!text) return;
 
             const conversationId = String(this.activeConversation.id);
 
@@ -702,6 +701,89 @@ window.waInboxChatify = function waInboxChatify() {
                     this._lastMessageId = serverMsg.id || this._lastMessageId;
                 }
 
+                await this.refreshConversations(true);
+            } finally {
+                this.sending = false;
+            }
+        },
+
+        onAttachSelected(evt) {
+            const file = evt.target?.files?.[0];
+            if (!file || !this.activeConversation) return;
+            evt.target.value = '';
+            this.sendMediaFile(file);
+        },
+
+        async sendMediaFile(file) {
+            if (!this.activeConversation) return;
+            const conversationId = String(this.activeConversation.id);
+            const caption = String(this.draft || '').trim();
+
+            const form = new FormData();
+            form.append('file', file);
+            if (caption) form.append('caption', caption);
+
+            const tmpId = `tmp-media-${nowIso()}-${Math.random().toString(16).slice(2)}`;
+            const mediaType = file.type.startsWith('image/') ? 'image' : (file.type.startsWith('video/') ? 'video' : 'document');
+            const optimistic = {
+                id: tmpId,
+                direction: 'out',
+                message_type: mediaType,
+                body: caption || '',
+                status: 'sending',
+                sent_at: nowIso(),
+                created_at: nowIso(),
+                attachment: { type: mediaType, url: null, caption_preview: caption || file.name },
+            };
+            this.messages.push(optimistic);
+            if (caption) this.draft = '';
+            this.$nextTick(() => this.scrollToBottom(true));
+
+            this.sending = true;
+            const url = `/whatsapp/api/conversations/${conversationId}/send-media`;
+            try {
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '',
+                    },
+                    body: form,
+                });
+                const data = await resp.json().catch(() => ({}));
+
+                const stillSameChat = this.activeConversation && String(this.activeConversation.id) === conversationId;
+                if (!resp.ok || data.success === false) {
+                    if (stillSameChat) {
+                        const idx = this.messages.findIndex((m) => String(m.id) === tmpId);
+                        if (idx >= 0) this.messages[idx].status = 'failed';
+                        if (typeof alert !== 'undefined') alert(data.error || 'Falha ao enviar mídia. Tente novamente.');
+                    } else {
+                        const idx = this.messages.findIndex((m) => String(m.id) === tmpId);
+                        if (idx >= 0) this.messages.splice(idx, 1);
+                    }
+                    return;
+                }
+
+                if (!stillSameChat) {
+                    const idx = this.messages.findIndex((m) => String(m.id) === tmpId);
+                    if (idx >= 0) this.messages.splice(idx, 1);
+                    return;
+                }
+
+                const serverMsg = data.message || null;
+                if (serverMsg) {
+                    const serverId = String(serverMsg.id || '');
+                    const idxTmp = this.messages.findIndex((m) => String(m.id) === tmpId);
+                    if (idxTmp >= 0) {
+                        const serverExists = this.messages.some((m) => String(m.id) === serverId);
+                        if (serverExists) this.messages.splice(idxTmp, 1);
+                        else this.messages.splice(idxTmp, 1, serverMsg);
+                    } else if (!this.messages.some((m) => String(m.id) === serverId)) {
+                        this.messages.push(serverMsg);
+                    }
+                    this._lastMessageId = serverMsg.id || this._lastMessageId;
+                }
                 await this.refreshConversations(true);
             } finally {
                 this.sending = false;

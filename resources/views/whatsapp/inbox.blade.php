@@ -68,6 +68,75 @@
             .wa-typing-label { font-size: 0.75rem; color: #6b7280; font-style: italic; }
             .wa-tab--active { color: var(--primary-color, #25D366) !important; font-weight: 600; border-bottom: 2px solid var(--primary-color, #25D366); margin-bottom: -1px; }
 
+            /* Message media (image / video / document) */
+            .wa-message-media { margin-bottom: 4px; }
+            .wa-message-media__link { display: block; border-radius: 8px; overflow: hidden; max-width: 280px; }
+            .wa-message-media__img { max-width: 100%; height: auto; display: block; vertical-align: top; }
+            .wa-message-media__video-wrap { max-width: 280px; }
+            .wa-message-media__video { max-width: 100%; height: auto; display: block; border-radius: 8px; }
+            .wa-message-media__caption, .wa-message-doc__caption { font-size: 0.95em; margin-top: 4px; margin-bottom: 0; color: inherit; }
+            .wa-message-doc { margin-bottom: 4px; }
+            .wa-message-doc__link { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(0,0,0,0.06); border-radius: 8px; color: inherit; text-decoration: none; max-width: 100%; }
+            .wa-message-doc__link:hover { background: rgba(0,0,0,0.1); }
+            .wa-message-doc__icon { color: #667781; font-size: 1.2rem; }
+            .wa-message-doc__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .wa-message--has-media .message-time { margin-top: 4px; }
+            /* Placeholder quando mídia recebida sem URL (ou enviando) */
+            .wa-message-media-placeholder {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 12px 16px;
+                background: rgba(0,0,0,0.06);
+                border-radius: 8px;
+                margin-bottom: 4px;
+            }
+            .message-card.mc-sender .message-card-content.wa-sender-media .wa-message-media-placeholder {
+                background: rgba(255,255,255,0.2);
+            }
+            .wa-message-media-placeholder__icon { font-size: 1.25rem; color: #667781; }
+            .message-card.mc-sender .message-card-content.wa-sender-media .wa-message-media-placeholder__icon { color: rgba(255,255,255,0.9); }
+            .wa-message-media-placeholder__label { font-size: 0.9rem; color: #374151; }
+            .message-card.mc-sender .message-card-content.wa-sender-media .wa-message-media-placeholder__label { color: #fff; }
+            /* Mensagem enviada com mídia: balão verde envolve imagem/vídeo/documento + hora */
+            .message-card.mc-sender .message-card-content.wa-sender-media {
+                background: var(--primary-color, #25D366);
+                color: #fff;
+                border-radius: 12px;
+                padding: 6px 10px 4px;
+                max-width: 85%;
+            }
+            .message-card.mc-sender .message-card-content.wa-sender-media .message {
+                background: transparent !important;
+                padding: 0 0 2px 0;
+            }
+            .message-card.mc-sender .message-card-content.wa-sender-media .message .message-time {
+                color: rgba(255, 255, 255, 0.85);
+            }
+            .message-card.mc-sender .message-card-content.wa-sender-media .wa-message-media__caption,
+            .message-card.mc-sender .message-card-content.wa-sender-media .wa-message-doc__caption {
+                color: rgba(255, 255, 255, 0.95);
+            }
+            .message-card.mc-sender .message-card-content.wa-sender-media .wa-message-doc__link {
+                background: rgba(255, 255, 255, 0.2);
+                color: #fff;
+            }
+            .message-card.mc-sender .message-card-content.wa-sender-media .wa-message-doc__link:hover {
+                background: rgba(255, 255, 255, 0.3);
+            }
+            /* Mensagem recebida com mídia: imagem/vídeo/documento dentro do balão (como no envio) */
+            .message-card:not(.mc-sender) .message-card-content.wa-received-media {
+                background: var(--message-card-color, #fff);
+                border-radius: 12px;
+                padding: 6px 10px 4px;
+                max-width: 85%;
+            }
+            .message-card:not(.mc-sender) .message-card-content.wa-received-media .message {
+                background: transparent !important;
+                padding: 0 0 2px 0;
+            }
+            .wa-emoji-trigger.wa-attach-trigger { margin-left: 0; }
+
             /* Grupo: nome do remetente acima da bolha */
             .message-card-wrapper { margin-bottom: 2px; }
             .message-card-wrapper.mc-sender { display: flex; flex-direction: column; align-items: flex-end; }
@@ -414,9 +483,48 @@
                                             </div>
                                         </template>
                                         <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''">
-                                            <div class="message-card-content">
-                                                <div class="message">
-                                                    <span x-text="m.body || (m.message_type ? '['+m.message_type+']' : '')"></span>
+                                            <div class="message-card-content" :class="{
+                                                'wa-sender-media': m.direction === 'out' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type)),
+                                                'wa-received-media': m.direction === 'in' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type))
+                                            }">
+                                                <!-- Mídia: preview simples + clique para abrir/baixar (como WhatsApp) -->
+                                                <template x-if="m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video') && m.attachment.url">
+                                                    <div class="wa-message-media">
+                                                        <a :href="m.attachment.url" target="_blank" rel="noopener" class="wa-message-media__link" :title="'Clique para abrir'">
+                                                            <img x-show="m.attachment.type === 'image'" class="wa-message-media__img" :src="m.attachment.url" :alt="m.attachment.caption_preview || 'Imagem'" loading="lazy" />
+                                                            <template x-if="m.attachment.type === 'video'">
+                                                                <div class="wa-message-media__video-wrap">
+                                                                    <video class="wa-message-media__video" :src="m.attachment.url" controls preload="metadata"></video>
+                                                                </div>
+                                                            </template>
+                                                        </a>
+                                                        <p x-show="m.body && !['[Imagem]','[Vídeo]','[Documento]','[image]','[video]','[document]'].includes(m.body)" class="wa-message-media__caption" x-text="m.body"></p>
+                                                    </div>
+                                                </template>
+                                                <!-- Mídia com URL: documento -->
+                                                <template x-if="m.attachment && m.attachment.type === 'document' && m.attachment.url">
+                                                    <div class="wa-message-doc">
+                                                        <a :href="m.attachment.url" target="_blank" rel="noopener" class="wa-message-doc__link">
+                                                            <i class="fas fa-file-alt wa-message-doc__icon"></i>
+                                                            <span class="wa-message-doc__name" x-text="m.attachment.caption_preview || 'Documento'"></span>
+                                                        </a>
+                                                        <p x-show="m.body && !['[Imagem]','[Vídeo]','[Documento]','[image]','[video]','[document]'].includes(m.body)" class="wa-message-doc__caption" x-text="m.body"></p>
+                                                    </div>
+                                                </template>
+                                                <!-- Placeholder quando é imagem/vídeo/documento mas não tem URL (ex.: recebida sem mediaUrl no webhook) -->
+                                                <template x-if="['image','video','document'].includes(m.message_type) && (!m.attachment || !m.attachment.url)">
+                                                    <div class="wa-message-media-placeholder">
+                                                        <span class="wa-message-media-placeholder__icon" x-show="m.message_type === 'image'"><i class="fas fa-image"></i></span>
+                                                        <span class="wa-message-media-placeholder__icon" x-show="m.message_type === 'video'"><i class="fas fa-video"></i></span>
+                                                        <span class="wa-message-media-placeholder__icon" x-show="m.message_type === 'document'"><i class="fas fa-file-alt"></i></span>
+                                                        <span class="wa-message-media-placeholder__label" x-text="m.message_type === 'image' ? 'Imagem' : (m.message_type === 'video' ? 'Vídeo' : 'Documento')"></span>
+                                                    </div>
+                                                </template>
+                                                <div class="message" :class="{ 'wa-message--has-media': (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document')) || ['image','video','document'].includes(m.message_type) }">
+                                                    <!-- Texto só quando não for mídia (evita exibir [image] / [Imagem]) -->
+                                                    <template x-if="!['image','video','document'].includes(m.message_type) || (m.body && !['[Imagem]','[Vídeo]','[Documento]','[image]','[video]','[document]'].includes(m.body))">
+                                                        <span x-text="m.body || (m.message_type && !['image','video','document'].includes(m.message_type) ? '['+m.message_type+']' : '')"></span>
+                                                    </template>
                                                     <span class="message-time">
                                                         <span class="time" x-text="formatTimeShort(m.created_at)"></span>
                                                         <template x-if="m.direction === 'out'">
@@ -461,6 +569,14 @@
                         </div>
                     </div>
                     <form @submit.prevent="sendMessage()">
+                        <input type="file" class="hidden" x-ref="attachInput" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                            @change="onAttachSelected($event)"
+                        />
+                        <button type="button" class="wa-emoji-trigger wa-attach-trigger" title="Anexar arquivo"
+                                @click.prevent="$refs.attachInput && $refs.attachInput.click()"
+                                :disabled="!connected || sending">
+                            <span class="fas fa-paperclip"></span>
+                        </button>
                         <button type="button" class="wa-emoji-trigger" title="Emoji"
                                 :class="{ 'wa-emoji-trigger--open': showEmojiPicker }"
                                 @click.prevent="showEmojiPicker = !showEmojiPicker">

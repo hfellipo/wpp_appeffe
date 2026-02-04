@@ -114,5 +114,46 @@ class EvolutionApiHttpClient
             'number' => $numberOrJid,
         ]);
     }
+
+    /**
+     * Send media (image, video or document) via Evolution API.
+     * POST /message/sendMedia/{instance}
+     * Body: number, mediatype, mimetype, media (base64 data URL or URL), caption?, fileName?
+     *
+     * @param  array{number: string, mediatype: string, mimetype: string, media: string, caption?: string, fileName?: string}  $payload
+     * @return array{status:int, json:array|null, text:string, headers:array}
+     */
+    public function sendMedia(string $instance, array $payload): array
+    {
+        $instance = trim($instance);
+        if ($instance === '') {
+            return ['status' => 0, 'json' => null, 'text' => 'Empty instance', 'headers' => []];
+        }
+        return $this->post("/message/sendMedia/{$instance}", $payload);
+    }
+
+    /**
+     * Get media (image/video/document) as base64 from a received message.
+     * POST /chat/getBase64FromMediaMessage/{instance}
+     * Body: { "message": { "key": { "id": "MESSAGE_ID" } }, "convertToMp4": false }
+     * Message ID = remote_id of the WhatsApp message.
+     *
+     * @return array{status:int, json:array|null, text:string, headers:array}
+     */
+    public function getBase64FromMediaMessage(string $instance, string $messageKeyId): array
+    {
+        $instance = trim($instance);
+        if ($instance === '' || trim($messageKeyId) === '') {
+            return ['status' => 0, 'json' => null, 'text' => 'Missing instance or message id', 'headers' => []];
+        }
+        return $this->post("/chat/getBase64FromMediaMessage/{$instance}", [
+            'message' => [
+                'key' => [
+                    'id' => $messageKeyId,
+                ],
+            ],
+            'convertToMp4' => false,
+        ]);
+    }
 }
 

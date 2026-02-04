@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class WhatsAppAttachment extends Model
@@ -32,6 +33,11 @@ class WhatsAppAttachment extends Model
     public function getRouteKeyName(): string
     {
         return 'public_id';
+    }
+
+    public function message(): BelongsTo
+    {
+        return $this->belongsTo(WhatsAppMessage::class, 'message_id');
     }
 
     protected static function booted(): void

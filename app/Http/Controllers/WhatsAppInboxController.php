@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Contact;
+use App\Models\WhatsAppAttachment;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppMessage;
@@ -13,7 +14,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class WhatsAppInboxController extends Controller
 {
@@ -627,7 +630,8 @@ class WhatsAppInboxController extends Controller
             $q->orderByDesc('public_id')->limit($limit);
         }
 
-        $items = $q->get([
+        $items = $q->with('attachments')->get([
+            'id',
             'public_id',
             'direction',
             'sender_name',
@@ -658,7 +662,19 @@ class WhatsAppInboxController extends Controller
         return response()->json([
             'success' => true,
             // Do not expose internal numeric IDs
-            'items' => $items->map(function (WhatsAppMessage $m) {
+            'items' => $items->map(function (WhatsAppMessage $m) use ($accountId) {
+                $attachmentData = null;
+                $first = $m->attachments->first();
+                if ($first) {
+                    $attachmentData = [
+                        'id' => $first->public_id,
+                        'type' => $first->type,
+                        'mime' => $first->mime,
+                        'caption_preview' => $first->caption_preview,
+                        'remote_url' => $first->remote_url,
+                        'url' => $this->attachmentUrl($first),
+                    ];
+                }
                 return [
                     'id' => $m->public_id,
                     'direction' => $m->direction,
@@ -670,12 +686,141 @@ class WhatsAppInboxController extends Controller
                     'delivered_at' => optional($m->delivered_at)->toIso8601String(),
                     'read_at' => optional($m->read_at)->toIso8601String(),
                     'created_at' => optional($m->created_at)->toIso8601String(),
+                    'attachment' => $attachmentData,
                 ];
             })->values(),
             'meta' => [
                 'limit' => $limit,
             ],
         ]);
+    }
+
+    /**
+     * Serve attachment file (image/document) for the authenticated user.
+     * Verifies ownership via message -> conversation -> user_id.
+     */
+    public function showAttachment(WhatsAppAttachment $attachment): JsonResponse|StreamedResponse|\Illuminate\Http\RedirectResponse
+    {
+        $accountId = auth()->user()->accountId();
+        $attachment->load('message.conversation');
+        $conversation = $attachment->message?->conversation;
+        if (!$conversation || (int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        if ($attachment->storage_path && $attachment->storage_disk) {
+            $disk = Storage::disk($attachment->storage_disk);
+            if (!$disk->exists($attachment->storage_path)) {
+                return response()->json(['error' => 'File not found'], 404);
+            }
+            $mime = $attachment->mime ?: 'application/octet-stream';
+            $filename = basename($attachment->storage_path);
+            return $disk->response($attachment->storage_path, $filename, [
+                'Content-Type' => $mime,
+            ]);
+        }
+
+        if ($attachment->remote_url) {
+            return redirect()->away($attachment->remote_url);
+        }
+
+        // Imagem/vídeo/documento recebido sem URL: buscar na Evolution sob demanda (preview + clique para abrir)
+        if ($this->resolveAttachmentFromEvolution($attachment)) {
+            $attachment->refresh();
+            if ($attachment->storage_path && $attachment->storage_disk) {
+                $disk = Storage::disk($attachment->storage_disk);
+                if ($disk->exists($attachment->storage_path)) {
+                    $mime = $attachment->mime ?: 'application/octet-stream';
+                    return $disk->response($attachment->storage_path, basename($attachment->storage_path), [
+                        'Content-Type' => $mime,
+                    ]);
+                }
+            }
+        }
+
+        return response()->json(['error' => 'Attachment not available'], 404);
+    }
+
+    /**
+     * Busca mídia da Evolution (getBase64FromMediaMessage), salva em storage e atualiza o anexo.
+     */
+    private function resolveAttachmentFromEvolution(WhatsAppAttachment $attachment): bool
+    {
+        $message = $attachment->message;
+        if (!$message || !$message->remote_id) {
+            return false;
+        }
+        $conversation = $message->conversation;
+        if (!$conversation) {
+            return false;
+        }
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return false;
+        }
+        if (!$this->client->isConfigured()) {
+            return false;
+        }
+
+        $instanceName = trim((string) $conversation->instance_name);
+        if ($instanceName === '') {
+            return false;
+        }
+
+        $resp = $this->client->getBase64FromMediaMessage($instanceName, $message->remote_id);
+        if ($resp['status'] < 200 || $resp['status'] >= 300) {
+            Log::channel('single')->debug('Evolution getBase64FromMediaMessage falhou', [
+                'attachment_id' => $attachment->public_id,
+                'remote_id' => $message->remote_id,
+                'status' => $resp['status'],
+            ]);
+            return false;
+        }
+
+        $json = $resp['json'] ?? null;
+        if (!is_array($json)) {
+            return false;
+        }
+
+        $base64 = $json['base64'] ?? Arr::get($json, 'data.base64') ?? Arr::get($json, 'data') ?? Arr::get($json, 'response.base64') ?? null;
+        if (!is_string($base64) || $base64 === '') {
+            return false;
+        }
+
+        if (str_starts_with($base64, 'data:')) {
+            $base64 = preg_replace('/^data:[^;]+;base64,/', '', $base64);
+        }
+        $contents = base64_decode($base64, true);
+        if ($contents === false || $contents === '') {
+            return false;
+        }
+
+        $mime = $attachment->mime ?: (Arr::get($json, 'mimetype') ?? 'application/octet-stream');
+        $ext = match (true) {
+            str_starts_with((string) $mime, 'image/jpeg'), str_starts_with((string) $mime, 'image/jpg') => 'jpg',
+            str_starts_with((string) $mime, 'image/png') => 'png',
+            str_starts_with((string) $mime, 'image/gif') => 'gif',
+            str_starts_with((string) $mime, 'image/webp') => 'webp',
+            str_starts_with((string) $mime, 'video/') => 'mp4',
+            default => 'bin',
+        };
+        $dir = 'whatsapp_attachments/'.now()->format('Y/m');
+        $filename = \Illuminate\Support\Str::ulid().'.'.$ext;
+        $storedPath = $dir.'/'.$filename;
+
+        $disk = Storage::disk('local');
+        if (!$disk->put($storedPath, $contents)) {
+            return false;
+        }
+
+        $attachment->storage_disk = 'local';
+        $attachment->storage_path = $storedPath;
+        if (!$attachment->mime) {
+            $attachment->mime = $mime;
+        }
+        $attachment->save();
+
+        return true;
     }
 
     public function send(Request $request, WhatsAppConversation $conversation): JsonResponse
@@ -914,6 +1059,232 @@ class WhatsAppInboxController extends Controller
     }
 
     /**
+     * Send media (image, video or document) to the conversation via Evolution API.
+     */
+    public function sendMedia(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        try {
+            $accountId = auth()->user()->accountId();
+            if ((int) $conversation->user_id !== (int) $accountId) {
+                return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+            }
+
+            $request->validate([
+                'file' => 'required|file|max:'. (16 * 1024), // 16MB
+            ]);
+
+            $file = $request->file('file');
+            $caption = $request->input('caption', '');
+            $mime = $file->getMimeType() ?: 'application/octet-stream';
+            $originalName = $file->getClientOriginalName() ?: $file->hashName();
+
+            // mediatype for Evolution: image | video | document
+            $mediatype = 'document';
+            if (str_starts_with((string) $mime, 'image/')) {
+                $mediatype = 'image';
+            } elseif (str_starts_with((string) $mime, 'video/')) {
+                $mediatype = 'video';
+            }
+
+            if (!$this->client->isConfigured()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Evolution API não configurada.',
+                ], 400);
+            }
+
+            $instanceNormalized = preg_replace('/\D/', '', (string) $conversation->instance_name);
+            $waInstance = WhatsAppInstance::query()
+                ->where('user_id', $accountId)
+                ->where(function ($q) use ($instanceNormalized, $conversation) {
+                    $q->where('instance_name', $instanceNormalized)
+                        ->orWhere('instance_name', $conversation->instance_name);
+                })
+                ->first();
+            if (!$waInstance) {
+                $candidates = WhatsAppInstance::query()->where('user_id', $accountId)->get(['instance_name']);
+                foreach ($candidates as $c) {
+                    if (preg_replace('/\D/', '', (string) $c->instance_name) === $instanceNormalized) {
+                        $waInstance = $c;
+                        break;
+                    }
+                }
+            }
+            if (!$waInstance) {
+                return response()->json(['success' => false, 'error' => 'Instância não encontrada.'], 404);
+            }
+            $instanceForApi = trim((string) $waInstance->instance_name) ?: $instanceNormalized;
+
+            $recipient = $this->recipientForEvolution($conversation);
+            if ($recipient === '') {
+                $recipient = $this->buildRecipientFromConversation($conversation);
+            }
+            if ($recipient === '') {
+                return response()->json(['success' => false, 'error' => 'Não foi possível identificar o destinatário.'], 422);
+            }
+
+            $numberForPayload = $this->numberForEvolutionPayload($recipient);
+
+            // Store file locally for our attachment record and future serving
+            $disk = Storage::disk('local');
+            $dir = 'whatsapp_attachments/'.now()->format('Y/m');
+            $storedPath = $file->storeAs($dir, \Illuminate\Support\Str::ulid().'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName), ['disk' => 'local']);
+            if (!$storedPath) {
+                return response()->json(['success' => false, 'error' => 'Falha ao salvar arquivo.'], 500);
+            }
+
+            $contents = $disk->get($storedPath);
+            $base64 = base64_encode($contents);
+            // Evolution API expects raw base64 string, not data URL
+            $mediaValue = $base64;
+
+            $payload = [
+                'number' => $numberForPayload,
+                'mediatype' => $mediatype,
+                'mimetype' => $mime,
+                'media' => $mediaValue,
+                'fileName' => $originalName,
+            ];
+            if ($caption !== '') {
+                $payload['caption'] = mb_substr($caption, 0, 1024);
+            }
+
+            $resp = $this->client->sendMedia($instanceForApi, $payload);
+
+            if ($resp['status'] < 200 || $resp['status'] >= 300) {
+                Log::channel('single')->warning('Evolution sendMedia falhou', [
+                    'conversation_id' => $conversation->public_id,
+                    'http_status' => $resp['status'],
+                    'response' => $resp['json'] ?? $resp['text'],
+                ]);
+                $errMsg = $this->evolutionErrorMessage($resp);
+                $httpStatus = $resp['status'] === 0 ? 502 : ($resp['status'] >= 400 && $resp['status'] < 500 ? 422 : 503);
+                return response()->json([
+                    'success' => false,
+                    'error' => $errMsg,
+                    'details' => $resp['json'] ?? $resp['text'],
+                ], $httpStatus);
+            }
+
+            $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+            // Body vazio quando sem legenda, para não exibir "[Imagem]" no balão
+            $bodyForMessage = $caption !== '' ? $caption : '';
+            $listPreview = $caption !== '' ? mb_substr($caption, 0, 500) : ($mediatype === 'image' ? 'Foto' : ($mediatype === 'video' ? 'Vídeo' : 'Documento'));
+
+            $msg = WhatsAppMessage::create([
+                'conversation_id' => $conversation->id,
+                'direction' => 'out',
+                'message_type' => $mediatype,
+                'body' => $bodyForMessage,
+                'remote_id' => $remoteId ?: null,
+                'status' => 'sent',
+                'sent_at' => now(),
+                'raw_payload' => is_array($resp['json']) ? $resp['json'] : null,
+            ]);
+
+            WhatsAppAttachment::create([
+                'message_id' => $msg->id,
+                'type' => $mediatype,
+                'mime' => $mime,
+                'size' => $file->getSize(),
+                'storage_disk' => 'local',
+                'storage_path' => $storedPath,
+                'caption_preview' => $caption !== '' ? mb_substr($caption, 0, 500) : null,
+            ]);
+
+            $conversation->last_message_at = $msg->sent_at ?? $msg->created_at;
+            $conversation->last_message_preview = $listPreview;
+            if (($conversation->kind ?? '') === 'group') {
+                $conversation->last_message_sender = null;
+            }
+            $conversation->save();
+
+            $firstAttachment = $msg->attachments()->first();
+            $attachmentData = null;
+            if ($firstAttachment) {
+                $attachmentData = [
+                    'id' => $firstAttachment->public_id,
+                    'type' => $firstAttachment->type,
+                    'mime' => $firstAttachment->mime,
+                    'caption_preview' => $firstAttachment->caption_preview,
+                    'remote_url' => $firstAttachment->remote_url,
+                    'url' => $this->attachmentUrl($firstAttachment),
+                ];
+            }
+
+            $avatarUrl = null;
+            $displayName = null;
+            $num = preg_replace('/\D/', '', (string) $conversation->contact_number) ?: '';
+            if ($num !== '') {
+                $ct = WhatsAppContact::query()
+                    ->where('user_id', $accountId)
+                    ->where('instance_name', $conversation->instance_name)
+                    ->where('contact_number', $num)
+                    ->first(['avatar_url', 'display_name']);
+                if ($ct) {
+                    $avatarUrl = $ct->avatar_url ?: null;
+                    $displayName = $ct->display_name ?: null;
+                }
+            }
+
+            $this->events->publish((int) $accountId, 'wa.message.created', [
+                'conversation_id' => $conversation->public_id,
+                'message' => [
+                    'id' => $msg->public_id,
+                    'direction' => $msg->direction,
+                    'sender_name' => $msg->sender_name,
+                    'message_type' => $msg->message_type,
+                    'body' => $msg->body,
+                    'status' => $msg->status,
+                    'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                    'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                    'read_at' => optional($msg->read_at)->toIso8601String(),
+                    'created_at' => optional($msg->created_at)->toIso8601String(),
+                    'attachment' => $attachmentData,
+                ],
+                'conversation' => [
+                    'id' => $conversation->public_id,
+                    'instance_name' => $conversation->instance_name,
+                    'contact_number' => $conversation->contact_number,
+                    'contact_name' => $conversation->contact_name ?: $displayName,
+                    'last_message_sender' => $conversation->last_message_sender,
+                    'avatar_url' => $avatarUrl,
+                    'last_message_at' => optional($conversation->last_message_at)->toIso8601String(),
+                    'last_message_preview' => $conversation->last_message_preview,
+                    'unread_count' => (int) $conversation->unread_count,
+                ],
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => [
+                    'id' => $msg->public_id,
+                    'direction' => $msg->direction,
+                    'sender_name' => $msg->sender_name,
+                    'message_type' => $msg->message_type,
+                    'body' => $msg->body,
+                    'status' => $msg->status,
+                    'sent_at' => optional($msg->sent_at)->toIso8601String(),
+                    'delivered_at' => optional($msg->delivered_at)->toIso8601String(),
+                    'read_at' => optional($msg->read_at)->toIso8601String(),
+                    'created_at' => optional($msg->created_at)->toIso8601String(),
+                    'attachment' => $attachmentData,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::channel('single')->error('WhatsApp sendMedia exception', [
+                'conversation_id' => $conversation->public_id ?? null,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Erro ao enviar mídia. Tente novamente.',
+            ], 500);
+        }
+    }
+
+    /**
      * Tenta montar o JID a partir de contact_number quando peer_jid está vazio (ex.: conversas da lista de contatos).
      * Universal: só adiciona 55 quando for número local BR (DDD 11-99); demais países mantêm dígitos.
      */
@@ -1119,6 +1490,22 @@ class WhatsAppInboxController extends Controller
         }
 
         return $digits;
+    }
+
+    /**
+     * URL para exibir/baixar anexo. Sempre retorna nossa rota quando possível,
+     * para imagens recebidas sem URL: ao acessar a rota, resolvemos da Evolution sob demanda.
+     */
+    private function attachmentUrl(WhatsAppAttachment $a): ?string
+    {
+        if ($a->storage_path && $a->storage_disk) {
+            return route('whatsapp.inbox.attachments.show', ['attachment' => $a->public_id]);
+        }
+        if ($a->remote_url) {
+            return $a->remote_url;
+        }
+        // Anexo sem arquivo ainda (ex.: imagem recebida): retorna nossa rota para resolver sob demanda
+        return route('whatsapp.inbox.attachments.show', ['attachment' => $a->public_id]);
     }
 
     /**
