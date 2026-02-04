@@ -60,3 +60,17 @@ jobs:
             --exclude "storage/***" \
             --exclude "bootstrap/cache/***" \
             "./" "${USER}@${HOST}:${REMOTE_DIR}/"
+
+      - name: 📦 npm build no servidor
+        env:
+          SSHPASS: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          set -e
+          PORT="${{ secrets.SFTP_PORT != '' && secrets.SFTP_PORT || '22' }}"
+          HOST="${{ secrets.SFTP_HOST }}"
+          USER="${{ secrets.SFTP_USERNAME }}"
+          REMOTE_DIR="${{ secrets.SFTP_REMOTE_DIR }}"
+
+          echo "📦 Running npm ci && npm run build on server..."
+          sshpass -e ssh -p "${PORT}" -o StrictHostKeyChecking=no "${USER}@${HOST}" \
+            "cd ${REMOTE_DIR} && npm ci && npm run build"
