@@ -553,10 +553,8 @@ class WhatsAppInboxController extends Controller
 
             $text = (string) $request->input('text');
 
-            // Evolution API (v2) espera "number" em E.164 (só dígitos), não JID; ela monta o JID internamente
-            $numberForPayload = str_ends_with($recipient, '@s.whatsapp.net')
-                ? preg_replace('/\D/', '', explode('@', $recipient)[0])
-                : $recipient;
+            // Formato correto para Evolution em todos os envios (contacts, whatsapp_contacts, conversas recebidas)
+            $numberForPayload = $this->numberForEvolutionPayload($recipient);
 
             $payload = [
                 'number' => $numberForPayload,
@@ -739,6 +737,23 @@ class WhatsAppInboxController extends Controller
         }
         $normalized = $this->normalizeWhatsappNumber($digits);
         return $normalized !== '' ? $normalized . '@s.whatsapp.net' : $jid;
+    }
+
+    /**
+     * Formato do campo "number" no payload da Evolution para qualquer origem (contacts, whatsapp_contacts, webhook).
+     * Contatos diretos: E.164 só dígitos (ex: 5531994234090). Grupos: JID completo (ex: 120363...@g.us).
+     */
+    private function numberForEvolutionPayload(string $recipient): string
+    {
+        if (str_ends_with($recipient, '@s.whatsapp.net')) {
+            $digits = preg_replace('/\D/', '', explode('@', $recipient)[0]) ?: '';
+            if ($digits === '') {
+                return $recipient;
+            }
+            $normalized = $this->normalizeWhatsappNumber($digits);
+            return $normalized !== '' ? $normalized : $digits;
+        }
+        return $recipient;
     }
 
     /**
