@@ -72,6 +72,9 @@ window.waInboxChatify = function waInboxChatify() {
         showEmojiPicker: false,
         emojiList: ['😀','😃','😄','😁','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😋','😜','🤔','🤗','👍','👎','👏','🙌','👋','❤️','🧡','💛','💚','💙','💜','🖤','💯','🔥','⭐','✨','🎉','🙏','✌️','🤝','💪','😎','🥳','😢','😭','😤','😡','🤬','😷','🤒','🤕','💀','💩','🤡','👻','🙈','🙉','🙊','💋','💌','💐','🌸','🌺','🌻','🌹','🥀','🌷','🍀','☀️','🌈','⚡','❄️','🔥','💧','🌊'],
 
+        // fallback quando preview de imagem falha ao carregar
+        imageLoadFail: {},
+
         get filteredConversations() {
             const list = this.conversationTab === 'group' ? this.groupConversations : this.directConversations;
             const q = String(this.search || '').toLowerCase().trim();
@@ -118,6 +121,7 @@ window.waInboxChatify = function waInboxChatify() {
                 if (!value) {
                     this.loadingMessages = false;
                     this.messages = [];
+                    this.imageLoadFail = {};
                     this.appContact = null;
                     this.appContactMessage = null;
                     return;
@@ -522,6 +526,7 @@ window.waInboxChatify = function waInboxChatify() {
             // Imediato ao clicar: mostrar carregando e limpar mensagens (evita ver conversa anterior)
             this.loadingMessages = true;
             this.messages = [];
+            this.imageLoadFail = {};
             this.activeConversation = c;
             if (this.isCompact) this.showInfo = false;
             this._hasOlder = true;
@@ -826,6 +831,20 @@ window.waInboxChatify = function waInboxChatify() {
             const d = new Date(v);
             if (Number.isNaN(d.getTime())) return '';
             return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        },
+
+        formatFileSize(bytes) {
+            if (bytes == null || bytes === '') return '';
+            const n = Number(bytes);
+            if (Number.isNaN(n) || n < 0) return '';
+            if (n < 1024) return n + ' B';
+            if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+            return (n / (1024 * 1024)).toFixed(1) + ' MB';
+        },
+
+        setImageLoadFail(msgId) {
+            if (msgId) this.imageLoadFail[msgId] = true;
+            this.imageLoadFail = { ...this.imageLoadFail };
         },
 
         formatTimeAgo(v) {

@@ -670,6 +670,7 @@ class WhatsAppInboxController extends Controller
                         'id' => $first->public_id,
                         'type' => $first->type,
                         'mime' => $first->mime,
+                        'size' => $first->size,
                         'caption_preview' => $first->caption_preview,
                         'remote_url' => $first->remote_url,
                         'url' => $this->attachmentUrl($first),
@@ -711,13 +712,14 @@ class WhatsAppInboxController extends Controller
         if ($attachment->storage_path && $attachment->storage_disk) {
             $disk = Storage::disk($attachment->storage_disk);
             if (!$disk->exists($attachment->storage_path)) {
-                return response()->json(['error' => 'File not found'], 404);
+                return $this->attachmentNotFoundResponse();
             }
-            $mime = $attachment->mime ?: 'application/octet-stream';
-            $filename = basename($attachment->storage_path);
+            $mime = $this->attachmentMime($attachment);
+            $filename = $this->attachmentDownloadFilename($attachment);
+            $disposition = $this->attachmentDisposition($mime, $attachment->type);
             return $disk->response($attachment->storage_path, $filename, [
                 'Content-Type' => $mime,
-            ]);
+            ], $disposition);
         }
 
         if ($attachment->remote_url) {
@@ -730,15 +732,61 @@ class WhatsAppInboxController extends Controller
             if ($attachment->storage_path && $attachment->storage_disk) {
                 $disk = Storage::disk($attachment->storage_disk);
                 if ($disk->exists($attachment->storage_path)) {
-                    $mime = $attachment->mime ?: 'application/octet-stream';
-                    return $disk->response($attachment->storage_path, basename($attachment->storage_path), [
+                    $mime = $this->attachmentMime($attachment);
+                    $filename = $this->attachmentDownloadFilename($attachment);
+                    $disposition = $this->attachmentDisposition($mime, $attachment->type);
+                    return $disk->response($attachment->storage_path, $filename, [
                         'Content-Type' => $mime,
-                    ]);
+                    ], $disposition);
                 }
             }
         }
 
-        return response()->json(['error' => 'Attachment not available'], 404);
+        return $this->attachmentNotFoundResponse();
+    }
+
+    /**
+     * Resposta quando anexo não está disponível (evita download de JSON como "file.enc").
+     */
+    private function attachmentNotFoundResponse(): JsonResponse
+    {
+        return response()->json(['error' => 'Attachment not available'], 404, [
+            'Content-Disposition' => 'inline',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * Mime type para servir o anexo (fallback por tipo quando mime está vazio).
+     */
+    private function attachmentMime(WhatsAppAttachment $a): string
+    {
+        if ($a->mime && trim((string) $a->mime) !== '') {
+            return trim($a->mime);
+        }
+        $t = strtolower((string) ($a->type ?? ''));
+        return match ($t) {
+            'image' => 'image/jpeg',
+            'video' => 'video/mp4',
+            'audio' => 'audio/ogg',
+            default => 'application/octet-stream',
+        };
+    }
+
+    /**
+     * inline = abre na aba (imagem, PDF). attachment = baixa com nome correto (documentos).
+     */
+    private function attachmentDisposition(string $mime, ?string $attachmentType): string
+    {
+        $m = strtolower($mime);
+        $t = strtolower((string) $attachmentType);
+        if (str_starts_with($m, 'image/') || str_starts_with($m, 'video/') || $t === 'image' || $t === 'video') {
+            return 'inline';
+        }
+        if (str_contains($m, 'pdf')) {
+            return 'inline';
+        }
+        return 'attachment';
     }
 
     /**
@@ -796,16 +844,15 @@ class WhatsAppInboxController extends Controller
         }
 
         $mime = $attachment->mime ?: (Arr::get($json, 'mimetype') ?? 'application/octet-stream');
-        $ext = match (true) {
-            str_starts_with((string) $mime, 'image/jpeg'), str_starts_with((string) $mime, 'image/jpg') => 'jpg',
-            str_starts_with((string) $mime, 'image/png') => 'png',
-            str_starts_with((string) $mime, 'image/gif') => 'gif',
-            str_starts_with((string) $mime, 'image/webp') => 'webp',
-            str_starts_with((string) $mime, 'video/') => 'mp4',
-            default => 'bin',
-        };
+        $ext = $this->extensionFromMime((string) $mime, $attachment->type ?? 'document');
         $dir = 'whatsapp_attachments/'.now()->format('Y/m');
-        $filename = \Illuminate\Support\Str::ulid().'.'.$ext;
+        $baseName = \Illuminate\Support\Str::ulid();
+        $fileNameFromApi = is_string(Arr::get($json, 'fileName')) ? trim(Arr::get($json, 'fileName')) : null;
+        if ($fileNameFromApi !== '' && $fileNameFromApi !== null) {
+            $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $fileNameFromApi);
+            $baseName = pathinfo($safeName, PATHINFO_FILENAME) ?: $baseName;
+        }
+        $filename = $baseName.'.'.$ext;
         $storedPath = $dir.'/'.$filename;
 
         $disk = Storage::disk('local');
@@ -1059,7 +1106,13 @@ class WhatsAppInboxController extends Controller
     }
 
     /**
+     * Limite de envio (KB). Evolution/WhatsApp: documentos até ~100MB; usar valor que o PHP permitir (upload_max_filesize).
+     */
+    private const SEND_MEDIA_MAX_KB = 64 * 1024; // 64MB
+
+    /**
      * Send media (image, video or document) to the conversation via Evolution API.
+     * Aceita todos os tipos: imagens (preview simples), vídeos e documentos (download).
      */
     public function sendMedia(Request $request, WhatsAppConversation $conversation): JsonResponse
     {
@@ -1070,7 +1123,7 @@ class WhatsAppInboxController extends Controller
             }
 
             $request->validate([
-                'file' => 'required|file|max:'. (16 * 1024), // 16MB
+                'file' => 'required|file|max:'. self::SEND_MEDIA_MAX_KB,
             ]);
 
             $file = $request->file('file');
@@ -1206,6 +1259,7 @@ class WhatsAppInboxController extends Controller
                     'id' => $firstAttachment->public_id,
                     'type' => $firstAttachment->type,
                     'mime' => $firstAttachment->mime,
+                    'size' => $firstAttachment->size,
                     'caption_preview' => $firstAttachment->caption_preview,
                     'remote_url' => $firstAttachment->remote_url,
                     'url' => $this->attachmentUrl($firstAttachment),
@@ -1490,6 +1544,59 @@ class WhatsAppInboxController extends Controller
         }
 
         return $digits;
+    }
+
+    /**
+     * Extensão do arquivo a partir do mime type (para documentos chegarem como .pdf, .docx, etc.).
+     */
+    private function extensionFromMime(string $mime, string $attachmentType): string
+    {
+        $m = strtolower($mime);
+        if (str_starts_with($m, 'image/')) {
+            return match (true) {
+                str_contains($m, 'jpeg'), str_contains($m, 'jpg') => 'jpg',
+                str_contains($m, 'png') => 'png',
+                str_contains($m, 'gif') => 'gif',
+                str_contains($m, 'webp') => 'webp',
+                default => 'jpg',
+            };
+        }
+        if (str_starts_with($m, 'video/')) {
+            return str_contains($m, 'mp4') ? 'mp4' : (str_contains($m, 'webm') ? 'webm' : 'mp4');
+        }
+        return match (true) {
+            str_contains($m, 'pdf') => 'pdf',
+            str_contains($m, 'msword') && !str_contains($m, 'wordprocessingml') => 'doc',
+            str_contains($m, 'wordprocessingml'), str_contains($m, 'document') => 'docx',
+            str_contains($m, 'ms-excel') && !str_contains($m, 'spreadsheetml') => 'xls',
+            str_contains($m, 'spreadsheetml'), str_contains($m, 'sheet') => 'xlsx',
+            str_contains($m, 'powerpoint') && !str_contains($m, 'presentationml') => 'ppt',
+            str_contains($m, 'presentationml') => 'pptx',
+            str_contains($m, 'text/plain') => 'txt',
+            str_contains($m, 'csv') => 'csv',
+            str_contains($m, 'zip') => 'zip',
+            str_contains($m, 'rar') => 'rar',
+            default => 'bin',
+        };
+    }
+
+    /**
+     * Nome do arquivo para download (com extensão correta a partir do mime).
+     */
+    /**
+     * Nome seguro para Content-Disposition (evita "file.enc" no navegador).
+     * Sempre com extensão correta a partir do mime/tipo.
+     */
+    private function attachmentDownloadFilename(WhatsAppAttachment $a): string
+    {
+        $base = pathinfo($a->storage_path ?? '', PATHINFO_FILENAME);
+        if ($base === '' || $base === false) {
+            $base = ($a->type === 'image' ? 'image' : ($a->type === 'video' ? 'video' : 'document'));
+        }
+        $ext = $this->extensionFromMime($this->attachmentMime($a), $a->type ?? 'document');
+        $safe = preg_replace('/[^a-zA-Z0-9._-]/', '_', $base);
+        $safe = $safe !== '' ? $safe : 'file';
+        return $safe.'.'.$ext;
     }
 
     /**
