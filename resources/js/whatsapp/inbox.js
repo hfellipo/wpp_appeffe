@@ -74,6 +74,8 @@ window.waInboxChatify = function waInboxChatify() {
 
         // fallback quando preview de imagem falha ao carregar
         imageLoadFail: {},
+        // true/undefined = carregando, false = carregou (para mostrar feedback "Carregando...")
+        imageLoading: {},
 
         get filteredConversations() {
             const list = this.conversationTab === 'group' ? this.groupConversations : this.directConversations;
@@ -122,6 +124,7 @@ window.waInboxChatify = function waInboxChatify() {
                     this.loadingMessages = false;
                     this.messages = [];
                     this.imageLoadFail = {};
+                    this.imageLoading = {};
                     this.appContact = null;
                     this.appContactMessage = null;
                     return;
@@ -527,6 +530,7 @@ window.waInboxChatify = function waInboxChatify() {
             this.loadingMessages = true;
             this.messages = [];
             this.imageLoadFail = {};
+            this.imageLoading = {};
             this.activeConversation = c;
             if (this.isCompact) this.showInfo = false;
             this._hasOlder = true;
@@ -843,8 +847,17 @@ window.waInboxChatify = function waInboxChatify() {
         },
 
         setImageLoadFail(msgId) {
-            if (msgId) this.imageLoadFail[msgId] = true;
+            if (msgId) {
+                this.imageLoadFail[msgId] = true;
+                this.imageLoading[msgId] = false;
+            }
             this.imageLoadFail = { ...this.imageLoadFail };
+            this.imageLoading = { ...this.imageLoading };
+        },
+
+        setImageLoaded(msgId) {
+            if (msgId) this.imageLoading[msgId] = false;
+            this.imageLoading = { ...this.imageLoading };
         },
 
         formatTimeAgo(v) {

@@ -71,6 +71,31 @@
             /* Message media (image / video / document) */
             .wa-message-media { margin-bottom: 4px; }
             .wa-message-media__link { display: block; border-radius: 8px; overflow: hidden; max-width: 280px; }
+            .wa-message-media__img-wrap { position: relative; min-height: 120px; display: block; }
+            /* Overlay "Carregando imagem..." sobre o preview até a imagem carregar */
+            .wa-message-media__loading {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                background: rgba(0,0,0,0.5);
+                border-radius: 8px;
+                z-index: 1;
+            }
+            .wa-message-media__loading-spinner {
+                width: 32px;
+                height: 32px;
+                border: 3px solid rgba(255,255,255,0.3);
+                border-top-color: #fff;
+                border-radius: 50%;
+                animation: wa-spin 0.8s linear infinite;
+            }
+            .wa-message-media__loading-text { font-size: 13px; color: #fff; margin: 0; }
+            .message-card.mc-sender .wa-message-media__loading { background: rgba(0,0,0,0.4); }
+            .message-card.mc-sender .wa-message-media__loading-text { color: #fff; }
             /* Preview simples: sem processamento no servidor; lazy load + tamanho limitado */
             .wa-message-media__img { max-width: 100%; max-height: 320px; width: auto; height: auto; object-fit: contain; display: block; vertical-align: top; }
             .wa-message-media__video-wrap { max-width: 280px; }
@@ -524,11 +549,16 @@
                                                 'wa-sender-media': m.direction === 'out' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type)),
                                                 'wa-received-media': m.direction === 'in' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type))
                                             }">
-                                                <!-- Imagem: preview dentro do balão (como desejado). Fallback se não carregar. -->
+                                                <!-- Imagem: preview + feedback "Carregando..." até abrir; fallback se falhar. -->
                                                 <template x-if="m.attachment && m.attachment.type === 'image' && m.attachment.url && !imageLoadFail[m.id]">
-                                                    <div class="wa-message-media">
-                                                        <a :href="m.attachment.url" target="_blank" rel="noopener" class="wa-message-media__link" :title="'Clique para abrir'">
+                                                    <div class="wa-message-media wa-message-media--img">
+                                                        <a :href="m.attachment.url" target="_blank" rel="noopener" class="wa-message-media__link wa-message-media__img-wrap" :title="'Clique para abrir'">
+                                                            <div class="wa-message-media__loading" x-show="imageLoading[m.id] !== false">
+                                                                <span class="wa-message-media__loading-spinner"></span>
+                                                                <span class="wa-message-media__loading-text">Carregando imagem...</span>
+                                                            </div>
                                                             <img class="wa-message-media__img" :src="m.attachment.url" :alt="m.attachment.caption_preview || 'Imagem'" loading="lazy"
+                                                                @@load="setImageLoaded(m.id)"
                                                                 @@error="setImageLoadFail(m.id)"
                                                             />
                                                         </a>
@@ -578,7 +608,7 @@
                                                         <span class="wa-message-media-placeholder__icon" x-show="m.message_type === 'image'"><i class="fas fa-image"></i></span>
                                                         <span class="wa-message-media-placeholder__icon" x-show="m.message_type === 'video'"><i class="fas fa-video"></i></span>
                                                         <span class="wa-message-media-placeholder__icon" x-show="m.message_type === 'document'"><i class="fas fa-file-alt"></i></span>
-                                                        <span class="wa-message-media-placeholder__label" x-text="m.message_type === 'image' ? 'Imagem' : (m.message_type === 'video' ? 'Vídeo' : 'Documento')"></span>
+                                                        <span class="wa-message-media-placeholder__label" x-text="m.message_type === 'image' ? (m.attachment && !m.attachment.url ? 'Carregando imagem...' : (imageLoadFail[m.id] ? 'Imagem indisponível' : 'Imagem')) : (m.message_type === 'video' ? 'Vídeo' : 'Documento')"></span>
                                                     </div>
                                                 </template>
                                                 <div class="message" :class="{ 'wa-message--has-media': (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document')) || ['image','video','document'].includes(m.message_type) }">
