@@ -66,6 +66,7 @@
                 border: 2px solid #fff;
             }
             .wa-typing-label { font-size: 0.75rem; color: #6b7280; font-style: italic; }
+            .wa-tab--active { color: var(--primary-color, #25D366) !important; font-weight: 600; border-bottom: 2px solid var(--primary-color, #25D366); margin-bottom: -1px; }
         </style>
     @endpush
 
@@ -93,15 +94,35 @@
 
                 <div class="m-body contacts-container">
                     <div class="show messenger-tab users-tab app-scroll" data-view="users">
-                        <p class="messenger-title"><span>All Messages</span></p>
+                        <div class="wa-list-tabs" style="display: flex; border-bottom: 1px solid #e5e7eb; margin-bottom: 8px;">
+                            <button
+                                type="button"
+                                class="wa-tab"
+                                :class="{ 'wa-tab--active': conversationTab === 'direct' }"
+                                @click="setConversationTab('direct')"
+                                style="flex: 1; padding: 10px 12px; border: none; background: none; cursor: pointer; font-size: 0.9rem; color: #6b7280;"
+                            >
+                                <i class="fas fa-user"></i> Conversas
+                            </button>
+                            <button
+                                type="button"
+                                class="wa-tab"
+                                :class="{ 'wa-tab--active': conversationTab === 'group' }"
+                                @click="setConversationTab('group')"
+                                style="flex: 1; padding: 10px 12px; border: none; background: none; cursor: pointer; font-size: 0.9rem; color: #6b7280;"
+                            >
+                                <i class="fas fa-users"></i> Grupos
+                            </button>
+                        </div>
+                        <p class="messenger-title" style="margin-top: 0;"><span x-text="conversationTab === 'direct' ? 'Conversas' : 'Grupos'"></span></p>
 
-                        <div style="width: 100%; height: calc(100% - 120px); position: relative;">
+                        <div style="width: 100%; height: calc(100% - 160px); position: relative;">
                             <template x-if="loadingConversations">
                                 <p class="message-hint center-el"><span>Loading...</span></p>
                             </template>
 
                             <template x-if="!loadingConversations && filteredConversations.length === 0">
-                                <p class="message-hint center-el"><span>No conversations yet</span></p>
+                                <p class="message-hint center-el"><span x-text="conversationTab === 'group' ? 'Nenhum grupo' : 'Nenhuma conversa'"></span></p>
                             </template>
 
                             <template x-for="c in filteredConversations" :key="c.id">

@@ -23,7 +23,10 @@ window.waInboxChatify = function waInboxChatify() {
         sending: false,
 
         search: '',
+        conversationTab: 'direct',
         conversations: [],
+        directConversations: [],
+        groupConversations: [],
         activeConversation: null,
         messages: [],
         draft: '',
@@ -61,14 +64,27 @@ window.waInboxChatify = function waInboxChatify() {
         _presenceTimeout: null,
 
         get filteredConversations() {
+            const list = this.conversationTab === 'group' ? this.groupConversations : this.directConversations;
             const q = String(this.search || '').toLowerCase().trim();
-            if (!q) return this.conversations;
-            return this.conversations.filter((c) => {
+            if (!q) return list;
+            return list.filter((c) => {
                 const name = String(c.contact_name || '').toLowerCase();
                 const num = String(c.contact_number || '').toLowerCase();
                 const prev = String(c.last_message_preview || '').toLowerCase();
                 return name.includes(q) || num.includes(q) || prev.includes(q);
             });
+        },
+
+        setConversationTab(tab) {
+            this.conversationTab = tab;
+            if (this.activeConversation && (this.activeConversation.kind || 'direct') !== tab) {
+                this.activeConversation = null;
+            }
+        },
+
+        syncConversationLists() {
+            this.directConversations = this.conversations.filter((c) => String(c.kind || 'direct') === 'direct');
+            this.groupConversations = this.conversations.filter((c) => String(c.kind) === 'group');
         },
 
         async init() {
@@ -156,7 +172,7 @@ window.waInboxChatify = function waInboxChatify() {
                         conv,
                         ...this.conversations.filter((x) => String(x.id) !== String(conv.id)),
                     ];
-
+                    this.syncConversationLists();
                     this.closeContactPicker();
                     await this.openConversation(conv);
                 }
@@ -263,6 +279,7 @@ window.waInboxChatify = function waInboxChatify() {
                         conv,
                         ...this.conversations.filter((x) => String(x.id) !== String(conv.id)),
                     ];
+                    this.syncConversationLists();
                 }
                 this.bumpLastEventId(data);
             });
@@ -368,6 +385,7 @@ window.waInboxChatify = function waInboxChatify() {
                 c,
                 ...this.conversations.filter((x) => String(x.id) !== String(c.id)),
             ];
+            this.syncConversationLists();
 
             // If active conversation, append message immediately
             if (this.activeConversation && String(this.activeConversation.id) === convId) {
@@ -405,7 +423,10 @@ window.waInboxChatify = function waInboxChatify() {
             try {
                 const resp = await fetch('/whatsapp/api/conversations', { headers: { 'Accept': 'application/json' } });
                 const data = await resp.json().catch(() => ({}));
-                this.conversations = Array.isArray(data.items) ? data.items : [];
+                const items = Array.isArray(data.items) ? data.items : [];
+                this.conversations = items;
+                this.directConversations = items.filter((c) => String(c.kind || 'direct') === 'direct');
+                this.groupConversations = items.filter((c) => String(c.kind) === 'group');
                 this.fetchAvatarsForList();
             } finally {
                 if (!silent) this.loadingConversations = false;

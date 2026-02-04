@@ -31,18 +31,31 @@ class WhatsAppInboxController extends Controller
         return view('whatsapp.inbox');
     }
 
-    public function conversations(): JsonResponse
+    public function conversations(Request $request): JsonResponse
     {
         $accountId = auth()->user()->accountId();
 
-        $items = WhatsAppConversation::query()
-            ->where('user_id', $accountId)
-            ->orderByDesc('last_message_at')
+        $q = WhatsAppConversation::query()
+            ->where('user_id', $accountId);
+
+        $kind = $request->query('kind');
+        if ($kind === 'direct' || $kind === 'group') {
+            $q->where(function ($query) use ($kind) {
+                if ($kind === 'group') {
+                    $query->where('kind', 'group');
+                } else {
+                    $query->whereNull('kind')->orWhere('kind', 'direct');
+                }
+            });
+        }
+
+        $items = $q->orderByDesc('last_message_at')
             ->orderByDesc('updated_at')
             ->limit(100)
             ->get([
                 'public_id',
                 'instance_name',
+                'kind',
                 'contact_number',
                 'contact_name',
                 'last_message_at',
@@ -87,6 +100,7 @@ class WhatsAppInboxController extends Controller
                 return [
                     'id' => $c->public_id,
                     'instance_name' => $c->instance_name,
+                    'kind' => $c->kind ?: 'direct',
                     'contact_number' => $c->contact_number,
                     'contact_name' => $c->contact_name ?: (is_object($ct) ? ($ct->display_name ?: null) : null),
                     'avatar_url' => is_object($ct) ? ($ct->avatar_url ?: null) : null,
