@@ -13,8 +13,9 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Executa as ações de uma automação a partir de uma posição (ex.: após um delay).
- * Ao encontrar "Aguardar (delay)", reenvia o job com atraso para continuar depois.
+ * Executa o próximo nó do fluxo (estilo n8n) na hora exata de resume_at.
+ * Disparado pelo AutomationRunnerService quando encontra um nó "Aguardar (delay)".
+ * Se no meio do fluxo houver outro delay, reenvia este job para o próximo resume_at.
  */
 class RunAutomationFromActionJob implements ShouldQueue
 {
@@ -46,19 +47,7 @@ class RunAutomationFromActionJob implements ShouldQueue
             return;
         }
 
-        $result = $runner->runForContactFromPosition($automation, $contact, $run, $this->startFromPosition);
-
-        if ($result['done'] ?? true) {
-            return;
-        }
-
-        $delayMinutes = (int) ($result['delay_minutes'] ?? 0);
-        $nextPosition = (int) ($result['next_position'] ?? 0);
-        if ($delayMinutes <= 0 || $nextPosition <= 0) {
-            return;
-        }
-
-        self::dispatch($this->automationId, $this->contactId, $this->automationRunId, $nextPosition)
-            ->delay(now()->addMinutes($delayMinutes));
+        $runner->runForContactFromPosition($automation, $contact, $run, $this->startFromPosition);
+        // Se houver outro wait_delay no fluxo, o AutomationRunnerService já dispara o próximo job em resume_at.
     }
 }

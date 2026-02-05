@@ -2,15 +2,19 @@
 
 namespace App\Services;
 
+use App\Jobs\RunAutomationFromActionJob;
 use App\Models\Automation;
 use App\Models\AutomationRun;
 use App\Models\Contact;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Executa uma automação para um contato (ações em sequência).
- * Usado pelo comando automations:run e pelo teste manual.
- * Ao encontrar "Aguardar (delay)", grava no run quando retomar; o cron automations:run retoma o fluxo.
+ * Executa uma automação para um contato como fluxo de nós (estilo n8n).
+ *
+ * - Cada ação é um "nó"; os nós são executados em sequência (position).
+ * - Nó "Aguardar (delay)": agenda o próximo nó para rodar em resume_at e encerra este passo.
+ * - Assim que resume_at chega, o job RunAutomationFromActionJob roda e executa o próximo nó, e assim por diante.
+ * - Cron automations:run ainda pode retomar runs como fallback se a fila não estiver rodando.
  */
 class AutomationRunnerService
 {
@@ -56,11 +60,11 @@ class AutomationRunnerService
             'metadata' => [],
         ]);
 
-        $result = $this->runForContactFromPosition($automation, $contact, $run, 0);
+        $result = $this->runNodesFrom($automation, $contact, $run, 0);
 
         if (! ($result['done'] ?? true)) {
             $delayMinutes = (int) ($result['delay_minutes'] ?? 0);
-            $message = __('Automação iniciada. Próximas ações serão executadas em :min min (pelo cron).', ['min' => $delayMinutes]);
+            $message = __('Automação iniciada. Próximo nó será executado em :min min.', ['min' => $delayMinutes]);
             return [
                 'success' => true,
                 'message' => $message,
@@ -84,19 +88,27 @@ class AutomationRunnerService
     }
 
     /**
-     * Executa ações a partir de uma posição. Ao encontrar wait_delay retorna done=false para o job ser agendado.
+     * Executa nós a partir de uma posição (estilo n8n: um nó por vez, em ordem).
+     * Ao encontrar nó wait_delay: grava resume_at, agenda job para rodar no exato resume_at e retorna done=false.
      *
-     * @return array{done: bool, status?: string, details: array, delay_minutes?: int, next_position?: int}
+     * @return array{done: bool, status?: string, details: array, delay_minutes?: int, next_position?: int, resume_at?: \Carbon\CarbonImmutable}
      */
     public function runForContactFromPosition(Automation $automation, Contact $contact, AutomationRun $run, int $startFromPosition): array
     {
+        return $this->runNodesFrom($automation, $contact, $run, $startFromPosition);
+    }
+
+    /**
+     * Fluxo de nós: executa cada nó (action) em ordem; wait_delay agenda o próximo nó em resume_at.
+     */
+    private function runNodesFrom(Automation $automation, Contact $contact, AutomationRun $run, int $startFromPosition): array
+    {
         $accountId = (int) $automation->user_id;
-        $actions = $automation->actions->values();
+        $nodes = $automation->actions->values();
         $details = (array) ($run->metadata['details'] ?? []);
 
-        // Ao retomar (após o delay), "reivindicar" o run para outro cron não processar em paralelo
         if ($startFromPosition > 0) {
-            Log::info('automation run resuming', [
+            Log::info('automation run resuming (next node)', [
                 'run_id' => $run->id,
                 'contact_id' => $contact->id,
                 'automation_id' => $automation->id,
@@ -110,47 +122,54 @@ class AutomationRunnerService
 
         $runStatus = 'success';
 
-        for ($i = $startFromPosition; $i < $actions->count(); $i++) {
-            $action = $actions[$i];
+        for ($i = $startFromPosition; $i < $nodes->count(); $i++) {
+            $node = $nodes[$i];
 
-            if ($action->type === 'wait_delay') {
-                $minutes = (int) ($action->config['minutes'] ?? 0);
-                $minutes = max(1, min(10080, $minutes)); // 1 min a 7 dias
+            if ($node->type === 'wait_delay') {
+                $minutes = (int) ($node->config['minutes'] ?? 0);
+                $minutes = max(1, min(10080, $minutes));
                 $resumeAt = now()->addMinutes($minutes);
-                $details[] = ['action' => $action->type, 'scheduled_after_minutes' => $minutes];
+                $details[] = ['action' => $node->type, 'scheduled_after_minutes' => $minutes];
                 $run->update([
                     'metadata' => ['details' => $details],
                     'resume_at' => $resumeAt,
                     'resume_from_position' => $i + 1,
                 ]);
+                // Executar o próximo nó exatamente em resume_at (job na fila)
+                RunAutomationFromActionJob::dispatch(
+                    $automation->id,
+                    $contact->id,
+                    $run->id,
+                    $i + 1
+                )->delay($resumeAt);
                 return [
                     'done' => false,
                     'details' => $details,
                     'delay_minutes' => $minutes,
                     'next_position' => $i + 1,
+                    'resume_at' => $resumeAt,
                 ];
             }
 
-            Log::info('automation executing action', [
+            Log::info('automation executing node', [
                 'run_id' => $run->id,
                 'position' => $i,
-                'action_type' => $action->type,
+                'action_type' => $node->type,
             ]);
-            $ok = $this->executeAction($action, $accountId, $contact, $run);
+            $ok = $this->executeAction($node, $accountId, $contact, $run);
             $details[] = [
-                'action' => $action->type,
+                'action' => $node->type,
                 'success' => $ok,
             ];
 
             if (! $ok) {
                 $runStatus = 'partial';
-                if ($action->type === 'send_whatsapp_message') {
+                if ($node->type === 'send_whatsapp_message') {
                     $details[array_key_last($details)]['reason'] = $this->lastSendFailureReason();
                 }
             }
         }
 
-        // Limpa resume_at ao terminar para o cron não reprocessar
         $run->update([
             'status' => $runStatus,
             'metadata' => ['details' => $details],
