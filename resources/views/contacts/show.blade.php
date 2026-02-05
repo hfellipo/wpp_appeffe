@@ -19,8 +19,10 @@
     </x-slot>
 
     <div class="py-12">
-        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
-            <div class="space-y-6">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-4">
+                {{-- Coluna esquerda: Dados do contato --}}
+                <div class="lg:col-span-3 order-1 space-y-6">
                 {{-- Dados principais --}}
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
@@ -121,6 +123,19 @@
                         </div>
                     </div>
                 @endif
+                </div>
+
+                {{-- Coluna direita: Histórico de eventos (reservado para o futuro) --}}
+                <div class="lg:col-span-1 order-2">
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg sticky top-4">
+                        <div class="px-4 py-3 border-b border-gray-200">
+                            <h3 class="text-sm font-medium text-gray-900">{{ __('Histórico de eventos') }}</h3>
+                        </div>
+                        <div class="p-4 min-h-[200px] flex items-center justify-center">
+                            <p class="text-sm text-gray-400 text-center">{{ __('Em breve.') }}</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
