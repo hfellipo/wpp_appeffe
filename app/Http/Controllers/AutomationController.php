@@ -6,8 +6,10 @@ use App\Models\Automation;
 use App\Models\AutomationAction;
 use App\Models\AutomationCondition;
 use App\Models\AutomationTrigger;
+use App\Models\Contact;
 use App\Models\Lista;
 use App\Models\Tag;
+use App\Services\AutomationRunnerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -250,5 +252,51 @@ class AutomationController extends Controller
         return redirect()
             ->route('automacao.index')
             ->with('success', $automacao->is_active ? __('Automação ativada.') : __('Automação pausada.'));
+    }
+
+    /**
+     * Página para testar a automação com um contato.
+     */
+    public function test(Automation $automacao): View
+    {
+        $this->authorize('update', $automacao);
+
+        $contacts = Contact::forUser(auth()->user()->accountId())
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone', 'email']);
+
+        return view('automacao.test', [
+            'automation' => $automacao,
+            'contacts' => $contacts,
+        ]);
+    }
+
+    /**
+     * Executa a automação uma vez para o contato selecionado (teste).
+     */
+    public function runTest(Request $request, Automation $automacao, AutomationRunnerService $runner): RedirectResponse
+    {
+        $this->authorize('update', $automacao);
+
+        $request->validate([
+            'contact_id' => ['required', 'integer', 'exists:contacts,id'],
+        ]);
+
+        $contact = Contact::forUser(auth()->user()->accountId())
+            ->where('id', $request->input('contact_id'))
+            ->firstOrFail();
+
+        $result = $runner->runForContact($automacao, $contact);
+
+        if ($result['success']) {
+            return redirect()
+                ->route('automacao.edit', ['automacao' => $automacao, 'step' => 'action'])
+                ->with('success', $result['message']);
+        }
+
+        return redirect()
+            ->back()
+            ->withInput()
+            ->with('error', $result['message']);
     }
 }

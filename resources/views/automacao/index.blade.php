@@ -26,6 +26,9 @@
                     <p class="text-sm text-gray-600">
                         {{ __('Automações disparam ações (ex: enviar mensagem WhatsApp) com base em gatilhos e condições.') }}
                     </p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        {{ __('Execução automática: o servidor precisa do cron') }} <code class="bg-gray-100 px-1 rounded">* * * * * php artisan schedule:run</code>. {{ __('Use "Testar com um contato" na edição para validar.') }}
+                    </p>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -53,10 +56,10 @@
                                         @endif
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                        @if($a->condition)
-                                            {{ \App\Models\Automation::conditionTypes()[$a->condition->type] ?? $a->condition->type }}
+                                        @if($a->condition_logic === null)
+                                            {{ __('Todos') }}
                                         @else
-                                            <span class="text-gray-400">—</span>
+                                            {{ $a->conditions->count() }} {{ __('regra(s)') }} ({{ $a->condition_logic === 'and' ? __('E') : __('OU') }})
                                         @endif
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">

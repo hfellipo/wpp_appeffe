@@ -240,6 +240,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/automacao/{automacao}', [AutomationController::class, 'destroy'])->name('automacao.destroy');
     Route::post('/automacao/{automacao}/toggle', [AutomationController::class, 'toggle'])->name('automacao.toggle');
     Route::delete('/automacao/{automacao}/actions/{action}', [AutomationController::class, 'destroyAction'])->name('automacao.actions.destroy');
+    Route::get('/automacao/{automacao}/test', [AutomationController::class, 'test'])->name('automacao.test');
+    Route::post('/automacao/{automacao}/test', [AutomationController::class, 'runTest'])->name('automacao.runTest');
 });
 
 require __DIR__.'/auth.php';
