@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\RunAutomationFromActionJob;
 use App\Models\Automation;
 use App\Models\AutomationRun;
 use App\Models\Contact;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Executa uma automação para um contato (ações em sequência).
  * Usado pelo comando automations:run e pelo teste manual.
+ * Ao encontrar "Aguardar (delay)", agenda job para continuar após o tempo.
  */
 class AutomationRunnerService
 {
@@ -20,7 +22,7 @@ class AutomationRunnerService
 
     /**
      * Executa a automação para um único contato (teste ou fila).
-     * Ignora gatilho/condição no teste; no cron são aplicados antes.
+     * Se houver "Aguardar (delay)", o restante das ações é agendado em job com atraso.
      *
      * @return array{success: bool, message: string, run: ?AutomationRun, details: array}
      */
@@ -55,13 +57,69 @@ class AutomationRunnerService
             'metadata' => [],
         ]);
 
-        $details = [];
+        $result = $this->runForContactFromPosition($automation, $contact, $run, 0);
+
+        if (! ($result['done'] ?? true)) {
+            $delayMinutes = (int) ($result['delay_minutes'] ?? 0);
+            $nextPosition = (int) ($result['next_position'] ?? 0);
+            if ($delayMinutes > 0 && $nextPosition > 0) {
+                RunAutomationFromActionJob::dispatch(
+                    $automation->id,
+                    $contact->id,
+                    $run->id,
+                    $nextPosition
+                )->delay(now()->addMinutes($delayMinutes));
+            }
+            $message = __('Automação iniciada. Próximas ações agendadas para :min min.', ['min' => $delayMinutes]);
+            return [
+                'success' => true,
+                'message' => $message,
+                'run' => $run,
+                'details' => $result['details'] ?? [],
+            ];
+        }
+
+        $run->update(['status' => $result['status'] ?? 'success', 'metadata' => ['details' => $result['details'] ?? []]]);
+
+        $message = ($result['status'] ?? 'success') === 'success'
+            ? __('Automação executada com sucesso para :name.', ['name' => $contact->name])
+            : __('Automação executada com ressalvas (alguma ação falhou). Veja os detalhes.');
+
+        return [
+            'success' => ($result['status'] ?? 'success') === 'success',
+            'message' => $message,
+            'run' => $run,
+            'details' => $result['details'] ?? [],
+        ];
+    }
+
+    /**
+     * Executa ações a partir de uma posição. Ao encontrar wait_delay retorna done=false para o job ser agendado.
+     *
+     * @return array{done: bool, status?: string, details: array, delay_minutes?: int, next_position?: int}
+     */
+    public function runForContactFromPosition(Automation $automation, Contact $contact, AutomationRun $run, int $startFromPosition): array
+    {
+        $accountId = (int) $automation->user_id;
+        $actions = $automation->actions->values();
+        $details = (array) ($run->metadata['details'] ?? []);
+
         $runStatus = 'success';
 
-        foreach ($automation->actions as $action) {
+        for ($i = $startFromPosition; $i < $actions->count(); $i++) {
+            $action = $actions[$i];
+
             if ($action->type === 'wait_delay') {
-                $details[] = ['action' => $action->type, 'skipped' => true];
-                continue;
+                $minutes = (int) ($action->config['minutes'] ?? 0);
+                $minutes = max(1, min(10080, $minutes)); // 1 min a 7 dias
+                $details[] = ['action' => $action->type, 'scheduled_after_minutes' => $minutes];
+                $run->update(['metadata' => ['details' => $details]]);
+                return [
+                    'done' => false,
+                    'details' => $details,
+                    'delay_minutes' => $minutes,
+                    'next_position' => $i + 1,
+                ];
             }
 
             $ok = $this->executeAction($action, $accountId, $contact, $run);
@@ -80,14 +138,9 @@ class AutomationRunnerService
 
         $run->update(['status' => $runStatus, 'metadata' => ['details' => $details]]);
 
-        $message = $runStatus === 'success'
-            ? __('Automação executada com sucesso para :name.', ['name' => $contact->name])
-            : __('Automação executada com ressalvas (alguma ação falhou). Veja os detalhes.');
-
         return [
-            'success' => $runStatus === 'success',
-            'message' => $message,
-            'run' => $run,
+            'done' => true,
+            'status' => $runStatus,
             'details' => $details,
         ];
     }

@@ -48,6 +48,9 @@
                 {{ __('A execução automática (cron) roda a cada minuto no servidor. Verifique se o agendador está ativo') }}
                 (<code class="bg-gray-100 px-1 rounded">php artisan schedule:run</code> {{ __('no crontab a cada minuto') }}).
             </p>
+            <p class="mt-2 text-sm text-gray-500">
+                {{ __('Ações "Aguardar (delay)" exigem fila: use') }} <code class="bg-gray-100 px-1 rounded">QUEUE_CONNECTION=database</code> {{ __('e rode') }} <code class="bg-gray-100 px-1 rounded">php artisan queue:work</code> {{ __('para o envio após o tempo.') }}
+            </p>
         </div>
     </div>
 </x-app-layout>
