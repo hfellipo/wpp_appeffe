@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Jobs\RunAutomationFromActionJob;
 use App\Models\Automation;
 use App\Models\AutomationRun;
 use App\Models\Contact;
@@ -11,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Executa uma automação para um contato (ações em sequência).
  * Usado pelo comando automations:run e pelo teste manual.
- * Ao encontrar "Aguardar (delay)", agenda job para continuar após o tempo.
+ * Ao encontrar "Aguardar (delay)", grava no run quando retomar; o cron automations:run retoma o fluxo.
  */
 class AutomationRunnerService
 {
@@ -22,7 +21,7 @@ class AutomationRunnerService
 
     /**
      * Executa a automação para um único contato (teste ou fila).
-     * Se houver "Aguardar (delay)", o restante das ações é agendado em job com atraso.
+     * Se houver "Aguardar (delay)", o run fica com resume_at no metadata; o cron retoma depois.
      *
      * @return array{success: bool, message: string, run: ?AutomationRun, details: array}
      */
@@ -61,16 +60,7 @@ class AutomationRunnerService
 
         if (! ($result['done'] ?? true)) {
             $delayMinutes = (int) ($result['delay_minutes'] ?? 0);
-            $nextPosition = (int) ($result['next_position'] ?? 0);
-            if ($delayMinutes > 0 && $nextPosition > 0) {
-                RunAutomationFromActionJob::dispatch(
-                    $automation->id,
-                    $contact->id,
-                    $run->id,
-                    $nextPosition
-                )->delay(now()->addMinutes($delayMinutes));
-            }
-            $message = __('Automação iniciada. Próximas ações agendadas para :min min.', ['min' => $delayMinutes]);
+            $message = __('Automação iniciada. Próximas ações serão executadas em :min min (pelo cron).', ['min' => $delayMinutes]);
             return [
                 'success' => true,
                 'message' => $message,
@@ -112,8 +102,15 @@ class AutomationRunnerService
             if ($action->type === 'wait_delay') {
                 $minutes = (int) ($action->config['minutes'] ?? 0);
                 $minutes = max(1, min(10080, $minutes)); // 1 min a 7 dias
+                $resumeAt = now()->addMinutes($minutes)->timestamp;
                 $details[] = ['action' => $action->type, 'scheduled_after_minutes' => $minutes];
-                $run->update(['metadata' => ['details' => $details]]);
+                $run->update([
+                    'metadata' => [
+                        'details' => $details,
+                        'resume_at' => $resumeAt,
+                        'resume_from_position' => $i + 1,
+                    ],
+                ]);
                 return [
                     'done' => false,
                     'details' => $details,
@@ -136,6 +133,7 @@ class AutomationRunnerService
             }
         }
 
+        // Limpa resume_at ao terminar para o cron não reprocessar
         $run->update(['status' => $runStatus, 'metadata' => ['details' => $details]]);
 
         return [
