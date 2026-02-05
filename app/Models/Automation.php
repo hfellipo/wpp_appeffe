@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Automation extends Model
 {
@@ -16,6 +15,7 @@ class Automation extends Model
         'user_id',
         'name',
         'is_active',
+        'condition_logic', // 'and' | 'or'; null = sem filtro (todos passam)
     ];
 
     protected $casts = [
@@ -32,9 +32,10 @@ class Automation extends Model
         return $this->hasOne(AutomationTrigger::class)->orderBy('id');
     }
 
-    public function condition(): HasOne
+    /** Regras de condição (várias por automação). condition_logic na automation define AND/OR. Vazio = todos passam. */
+    public function conditions(): HasMany
     {
-        return $this->hasOne(AutomationCondition::class)->orderBy('id');
+        return $this->hasMany(AutomationCondition::class)->orderBy('position');
     }
 
     public function actions(): HasMany
@@ -55,23 +56,28 @@ class Automation extends Model
     public static function triggerTypes(): array
     {
         return [
-            'list_added' => __('Adicionado a uma lista'),
-            'tag_added' => __('Recebeu uma tag'),
-            'manual' => __('Manual (para teste)'),
-            'schedule_daily' => __('Recorrência: todo dia'),
-            'schedule_weekly' => __('Recorrência: toda semana'),
-            'schedule_monthly' => __('Recorrência: todo mês'),
-            'schedule_yearly' => __('Recorrência: todo ano'),
+            'tag_added' => __('Quando o contato receber uma tag'),
+            'list_added' => __('Quando o contato for adicionado a uma lista'),
         ];
     }
 
-    public static function conditionTypes(): array
+    public static function conditionOperators(): array
     {
         return [
-            'always_yes' => __('Sempre (sim)'),
-            'always_no' => __('Nunca (não)'),
-            'contact_in_list' => __('Contato está na lista'),
-            'contact_has_tag' => __('Contato tem a tag'),
+            'equals' => __('é igual a'),
+            'not_equals' => __('é diferente de'),
+            'contains' => __('contém'),
+            'is_empty' => __('está vazio'),
+            'is_not_empty' => __('não está vazio'),
+        ];
+    }
+
+    public static function attributeFields(): array
+    {
+        return [
+            'name' => __('Nome'),
+            'email' => __('E-mail'),
+            'phone' => __('Telefone'),
         ];
     }
 

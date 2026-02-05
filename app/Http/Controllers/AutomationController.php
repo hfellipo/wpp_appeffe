@@ -17,7 +17,7 @@ class AutomationController extends Controller
     public function index(): View
     {
         $automations = Automation::forUser(auth()->user()->accountId())
-            ->with(['trigger', 'condition', 'actions'])
+            ->with(['trigger', 'conditions', 'actions'])
             ->orderBy('updated_at', 'desc')
             ->paginate(15);
 
@@ -55,18 +55,22 @@ class AutomationController extends Controller
             $step = 'trigger';
         }
 
-        $automacao->load(['trigger', 'condition', 'actions']);
+        $automacao->load(['trigger', 'conditions.contactField', 'actions']);
 
-        $listas = Lista::forUser(auth()->user()->accountId())->orderBy('name')->get(['id', 'name']);
-        $tags = Tag::forUser(auth()->user()->accountId())->orderBy('name')->get(['id', 'name', 'color']);
+        $accountId = auth()->user()->accountId();
+        $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
+        $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+        $customFields = \App\Models\ContactField::forUser($accountId)->active()->ordered()->get(['id', 'name']);
 
         return view('automacao.edit', [
             'automation' => $automacao,
             'step' => $step,
             'listas' => $listas,
             'tags' => $tags,
+            'customFields' => $customFields,
             'triggerTypes' => Automation::triggerTypes(),
-            'conditionTypes' => Automation::conditionTypes(),
+            'conditionOperators' => Automation::conditionOperators(),
+            'attributeFields' => Automation::attributeFields(),
             'actionTypes' => Automation::actionTypes(),
         ]);
     }
@@ -79,13 +83,9 @@ class AutomationController extends Controller
 
         if ($step === 'trigger') {
             $validated = $request->validate([
-                'trigger_type' => ['required', 'string', 'in:list_added,tag_added,manual,schedule_daily,schedule_weekly,schedule_monthly,schedule_yearly'],
+                'trigger_type' => ['required', 'string', 'in:tag_added,list_added'],
                 'trigger_lista_id' => ['nullable', 'required_if:trigger_type,list_added', 'exists:listas,id'],
                 'trigger_tag_id' => ['nullable', 'required_if:trigger_type,tag_added', 'exists:tags,id'],
-                'schedule_time' => ['nullable', 'string', 'regex:/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/'],
-                'schedule_weekday' => ['nullable', 'integer', 'min:0', 'max:6'],
-                'schedule_day' => ['nullable', 'integer', 'min:1', 'max:31'],
-                'schedule_month' => ['nullable', 'integer', 'min:1', 'max:12'],
             ]);
 
             $accountId = auth()->user()->accountId();
@@ -100,20 +100,6 @@ class AutomationController extends Controller
                     $config['tag_id'] = (int) $validated['trigger_tag_id'];
                 }
             }
-            if (str_starts_with($validated['trigger_type'], 'schedule_')) {
-                if (!empty($validated['schedule_time'])) {
-                    $config['time'] = $validated['schedule_time'];
-                }
-                if (isset($validated['schedule_weekday'])) {
-                    $config['weekday'] = (int) $validated['schedule_weekday'];
-                }
-                if (!empty($validated['schedule_day'])) {
-                    $config['day'] = (int) $validated['schedule_day'];
-                }
-                if (!empty($validated['schedule_month'])) {
-                    $config['month'] = (int) $validated['schedule_month'];
-                }
-            }
 
             $automacao->trigger()->updateOrCreate(
                 ['automation_id' => $automacao->id],
@@ -122,37 +108,64 @@ class AutomationController extends Controller
 
             return redirect()
                 ->route('automacao.edit', ['automacao' => $automacao, 'step' => 'condition'])
-                ->with('success', __('Gatilho salvo. Configure a condição.'));
+                ->with('success', __('Gatilho salvo. Configure quem deve receber (condições).'));
         }
 
         if ($step === 'condition') {
             $validated = $request->validate([
-                'condition_type' => ['required', 'string', 'in:always_yes,always_no,contact_in_list,contact_has_tag'],
-                'condition_lista_id' => ['nullable', 'required_if:condition_type,contact_in_list', 'exists:listas,id'],
-                'condition_tag_id' => ['nullable', 'required_if:condition_type,contact_has_tag', 'exists:tags,id'],
+                'condition_mode' => ['required', 'string', 'in:all,rules'],
+                'condition_logic' => ['nullable', 'required_if:condition_mode,rules', 'string', 'in:and,or'],
+                'conditions' => ['nullable', 'array'],
+                'conditions.*.field_type' => ['required_with:conditions', 'string', 'in:attribute,custom'],
+                'conditions.*.field_key' => ['nullable', 'required_if:conditions.*.field_type,attribute', 'string', 'in:name,email,phone'],
+                'conditions.*.contact_field_id' => ['nullable', 'required_if:conditions.*.field_type,custom', 'exists:contact_fields,id'],
+                'conditions.*.operator' => ['required_with:conditions', 'string', 'in:equals,not_equals,contains,is_empty,is_not_empty'],
+                'conditions.*.value' => ['nullable', 'string', 'max:500'],
             ]);
 
             $accountId = auth()->user()->accountId();
-            $config = [];
-            if ($validated['condition_type'] === 'contact_in_list' && !empty($validated['condition_lista_id'])) {
-                if (Lista::forUser($accountId)->where('id', $validated['condition_lista_id'])->exists()) {
-                    $config['lista_id'] = (int) $validated['condition_lista_id'];
-                }
-            }
-            if ($validated['condition_type'] === 'contact_has_tag' && !empty($validated['condition_tag_id'])) {
-                if (Tag::forUser($accountId)->where('id', $validated['condition_tag_id'])->exists()) {
-                    $config['tag_id'] = (int) $validated['condition_tag_id'];
-                }
-            }
 
-            $automacao->condition()->updateOrCreate(
-                ['automation_id' => $automacao->id],
-                ['type' => $validated['condition_type'], 'config' => $config]
-            );
+            if ($validated['condition_mode'] === 'all') {
+                $automacao->update(['condition_logic' => null]);
+                $automacao->conditions()->delete();
+            } else {
+                $automacao->update(['condition_logic' => $validated['condition_logic'] ?? 'and']);
+                $automacao->conditions()->delete();
+                $rules = $validated['conditions'] ?? [];
+                foreach ($rules as $i => $r) {
+                    if (empty($r['field_type']) || empty($r['operator'])) {
+                        continue;
+                    }
+                    if ($r['field_type'] === 'custom' && empty($r['contact_field_id'])) {
+                        continue;
+                    }
+                    if ($r['field_type'] === 'attribute' && empty($r['field_key'])) {
+                        continue;
+                    }
+                    $contactFieldId = null;
+                    $fieldKey = null;
+                    if ($r['field_type'] === 'custom') {
+                        $contactFieldId = (int) $r['contact_field_id'];
+                        if (!\App\Models\ContactField::forUser($accountId)->where('id', $contactFieldId)->exists()) {
+                            continue;
+                        }
+                    } else {
+                        $fieldKey = $r['field_key'];
+                    }
+                    $automacao->conditions()->create([
+                        'position' => $i,
+                        'field_type' => $r['field_type'],
+                        'field_key' => $fieldKey,
+                        'contact_field_id' => $contactFieldId,
+                        'operator' => $r['operator'],
+                        'value' => $r['value'] ?? null,
+                    ]);
+                }
+            }
 
             return redirect()
                 ->route('automacao.edit', ['automacao' => $automacao, 'step' => 'action'])
-                ->with('success', __('Condição salva. Configure a ação.'));
+                ->with('success', __('Condições salvas. Configure as ações.'));
         }
 
         if ($step === 'action') {

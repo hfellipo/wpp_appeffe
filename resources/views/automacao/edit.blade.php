@@ -14,7 +14,6 @@
                 <div class="alert-success mb-6">{{ session('success') }}</div>
             @endif
 
-            {{-- Steps (estilo ActiveCampaign) --}}
             <div class="flex items-center justify-between mb-8">
                 <a href="{{ route('automacao.edit', ['automacao' => $automation, 'step' => 'trigger']) }}" class="flex flex-col items-center flex-1 {{ $step === 'trigger' ? 'text-brand-600 font-medium' : 'text-gray-500' }}">
                     <span class="w-10 h-10 rounded-full flex items-center justify-center text-sm {{ $step === 'trigger' ? 'bg-brand-100' : 'bg-gray-100' }}">1</span>
@@ -23,67 +22,50 @@
                 <div class="flex-1 h-0.5 bg-gray-200 mx-2"></div>
                 <a href="{{ route('automacao.edit', ['automacao' => $automation, 'step' => 'condition']) }}" class="flex flex-col items-center flex-1 {{ $step === 'condition' ? 'text-brand-600 font-medium' : 'text-gray-500' }}">
                     <span class="w-10 h-10 rounded-full flex items-center justify-center text-sm {{ $step === 'condition' ? 'bg-brand-100' : 'bg-gray-100' }}">2</span>
-                    <span class="mt-1 text-xs">{{ __('Condição') }}</span>
+                    <span class="mt-1 text-xs">{{ __('Condições') }}</span>
                 </a>
                 <div class="flex-1 h-0.5 bg-gray-200 mx-2"></div>
                 <a href="{{ route('automacao.edit', ['automacao' => $automation, 'step' => 'action']) }}" class="flex flex-col items-center flex-1 {{ $step === 'action' ? 'text-brand-600 font-medium' : 'text-gray-500' }}">
                     <span class="w-10 h-10 rounded-full flex items-center justify-center text-sm {{ $step === 'action' ? 'bg-brand-100' : 'bg-gray-100' }}">3</span>
-                    <span class="mt-1 text-xs">{{ __('Ação') }}</span>
+                    <span class="mt-1 text-xs">{{ __('Ações') }}</span>
                 </a>
             </div>
 
             @if($step === 'trigger')
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">{{ __('Quando esta automação deve disparar?') }}</h3>
+                        <h3 class="text-lg font-medium text-gray-900">{{ __('Quando disparar esta automação?') }}</h3>
+                        <p class="text-sm text-gray-500 mt-1">{{ __('Escolha o evento que inicia a automação para cada contato.') }}</p>
                     </div>
                     <form action="{{ route('automacao.update', $automation) }}" method="POST" class="p-6">
                         @csrf
                         @method('PUT')
                         <input type="hidden" name="step" value="trigger">
                         <div class="mb-4">
-                            <x-input-label :value="__('Tipo de gatilho')" />
+                            <x-input-label :value="__('Gatilho')" />
                             <select name="trigger_type" id="trigger_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500" required>
                                 @foreach($triggerTypes as $value => $label)
                                     <option value="{{ $value }}" {{ old('trigger_type', $automation->trigger?->type) == $value ? 'selected' : '' }}>{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div id="trigger-list" class="mb-4 hidden">
+                        <div id="trigger-list" class="mb-4 {{ old('trigger_type', $automation->trigger?->type) !== 'list_added' ? 'hidden' : '' }}">
                             <x-input-label for="trigger_lista_id" :value="__('Lista')" />
                             <select name="trigger_lista_id" id="trigger_lista_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                                <option value="">{{ __('Selecione') }}</option>
+                                <option value="">{{ __('Selecione a lista') }}</option>
                                 @foreach($listas as $l)
                                     <option value="{{ $l->id }}" {{ old('trigger_lista_id', $automation->trigger?->config['lista_id'] ?? '') == $l->id ? 'selected' : '' }}>{{ $l->name }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div id="trigger-tag" class="mb-4 hidden">
+                        <div id="trigger-tag" class="mb-4 {{ old('trigger_type', $automation->trigger?->type) !== 'tag_added' ? 'hidden' : '' }}">
                             <x-input-label for="trigger_tag_id" :value="__('Tag')" />
                             <select name="trigger_tag_id" id="trigger_tag_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                                <option value="">{{ __('Selecione') }}</option>
+                                <option value="">{{ __('Selecione a tag') }}</option>
                                 @foreach($tags as $t)
                                     <option value="{{ $t->id }}" {{ old('trigger_tag_id', $automation->trigger?->config['tag_id'] ?? '') == $t->id ? 'selected' : '' }}>{{ $t->name }}</option>
                                 @endforeach
                             </select>
-                        </div>
-                        <div id="trigger-schedule" class="space-y-4 hidden">
-                            <div>
-                                <x-input-label for="schedule_time" :value="__('Horário (HH:MM)')" />
-                                <x-text-input name="schedule_time" id="schedule_time" type="text" class="mt-1 block w-full" :value="old('schedule_time', $automation->trigger?->config['time'] ?? '09:00')" placeholder="09:00" />
-                            </div>
-                            <div id="schedule-weekday" class="hidden">
-                                <x-input-label for="schedule_weekday" :value="__('Dia da semana (0=Dom, 1=Seg, … 6=Sáb)')" />
-                                <x-text-input name="schedule_weekday" id="schedule_weekday" type="number" min="0" max="6" class="mt-1 block w-full" :value="old('schedule_weekday', $automation->trigger?->config['weekday'] ?? '1')" />
-                            </div>
-                            <div id="schedule-day" class="hidden">
-                                <x-input-label for="schedule_day" :value="__('Dia do mês (1-31)')" />
-                                <x-text-input name="schedule_day" id="schedule_day" type="number" min="1" max="31" class="mt-1 block w-full" :value="old('schedule_day', $automation->trigger?->config['day'] ?? '1')" />
-                            </div>
-                            <div id="schedule-month" class="hidden">
-                                <x-input-label for="schedule_month" :value="__('Mês (1-12)')" />
-                                <x-text-input name="schedule_month" id="schedule_month" type="number" min="1" max="12" class="mt-1 block w-full" :value="old('schedule_month', $automation->trigger?->config['month'] ?? '1')" />
-                            </div>
                         </div>
                         <div class="flex justify-end">
                             <x-primary-button type="submit">{{ __('Salvar gatilho') }}</x-primary-button>
@@ -95,41 +77,81 @@
             @if($step === 'condition')
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">{{ __('Quem deve receber a ação? (condição Sim/Não)') }}</h3>
-                        <p class="text-sm text-gray-500 mt-1">{{ __('Só executa a ação se a condição for atendida.') }}</p>
+                        <h3 class="text-lg font-medium text-gray-900">{{ __('Quem deve receber as ações?') }}</h3>
+                        <p class="text-sm text-gray-500 mt-1">{{ __('Deixe passar todos ou defina regras (campos do contato) com lógica E ou OU.') }}</p>
                     </div>
-                    <form action="{{ route('automacao.update', $automation) }}" method="POST" class="p-6">
+                    <form action="{{ route('automacao.update', $automation) }}" method="POST" class="p-6" id="form-conditions">
                         @csrf
                         @method('PUT')
                         <input type="hidden" name="step" value="condition">
-                        <div class="mb-4">
-                            <x-input-label :value="__('Tipo de condição')" />
-                            <select name="condition_type" id="condition_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500" required>
-                                @foreach($conditionTypes as $value => $label)
-                                    <option value="{{ $value }}" {{ old('condition_type', $automation->condition?->type) == $value ? 'selected' : '' }}>{{ $label }}</option>
-                                @endforeach
-                            </select>
+
+                        <div class="space-y-4 mb-6">
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="condition_mode" value="all" {{ old('condition_mode', $automation->condition_logic === null ? 'all' : 'rules') == 'all' ? 'checked' : '' }} class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                <span class="font-medium">{{ __('Todos os contatos que acionarem o gatilho') }}</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="condition_mode" value="rules" {{ old('condition_mode', $automation->condition_logic !== null ? 'rules' : 'all') == 'rules' ? 'checked' : '' }} class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                <span class="font-medium">{{ __('Só quem atender às regras abaixo') }}</span>
+                            </label>
                         </div>
-                        <div id="condition-list" class="mb-4 hidden">
-                            <x-input-label for="condition_lista_id" :value="__('Lista')" />
-                            <select name="condition_lista_id" id="condition_lista_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                                <option value="">{{ __('Selecione') }}</option>
-                                @foreach($listas as $l)
-                                    <option value="{{ $l->id }}" {{ old('condition_lista_id', $automation->condition?->config['lista_id'] ?? '') == $l->id ? 'selected' : '' }}>{{ $l->name }}</option>
+
+                        <div id="condition-rules-wrap" class="{{ $automation->condition_logic === null && !old('condition_mode') ? 'hidden' : '' }} {{ old('condition_mode') === 'rules' ? '' : 'hidden' }}">
+                            <div class="mb-4">
+                                <x-input-label :value="__('Lógica entre as regras')" />
+                                <select name="condition_logic" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500">
+                                    <option value="and" {{ old('condition_logic', $automation->condition_logic) === 'and' ? 'selected' : '' }}>{{ __('E (todas as regras devem ser verdadeiras)') }}</option>
+                                    <option value="or" {{ old('condition_logic', $automation->condition_logic) === 'or' ? 'selected' : '' }}>{{ __('OU (pelo menos uma regra deve ser verdadeira)') }}</option>
+                                </select>
+                            </div>
+
+                            <div class="space-y-4" id="condition-rules-list">
+                                @foreach(old('conditions', $automation->conditions) as $idx => $rule)
+                                    @php
+                                        $rule = is_array($rule) ? $rule : (array) $rule;
+                                        $rule = array_merge(['field_type' => 'attribute', 'field_key' => 'name', 'operator' => 'equals', 'value' => ''], $rule);
+                                    @endphp
+                                    <div class="condition-rule flex flex-wrap items-end gap-3 p-4 bg-gray-50 rounded-lg" data-index="{{ $idx }}">
+                                        <div class="flex-1 min-w-[120px]">
+                                            <x-input-label :value="__('Campo')" class="text-xs" />
+                                            <select name="conditions[{{ $idx }}][field_type]" class="rule-field-type mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" data-index="{{ $idx }}">
+                                                <optgroup label="{{ __('Atributos') }}">
+                                                    @foreach($attributeFields as $key => $label)
+                                                        <option value="attribute" data-key="{{ $key }}" {{ ($rule['field_type'] ?? '') === 'attribute' && ($rule['field_key'] ?? '') === $key ? 'selected' : '' }}>{{ $label }}</option>
+                                                    @endforeach
+                                                </optgroup>
+                                                @if($customFields->count() > 0)
+                                                    <optgroup label="{{ __('Campos personalizados') }}">
+                                                        @foreach($customFields as $cf)
+                                                            <option value="custom" data-field-id="{{ $cf->id }}" {{ ($rule['field_type'] ?? '') === 'custom' && ($rule['contact_field_id'] ?? '') == $cf->id ? 'selected' : '' }}>{{ $cf->name }}</option>
+                                                        @endforeach
+                                                    </optgroup>
+                                                @endif
+                                            </select>
+                                            <input type="hidden" name="conditions[{{ $idx }}][field_key]" class="rule-field-key" value="{{ $rule['field_key'] ?? 'name' }}">
+                                            <input type="hidden" name="conditions[{{ $idx }}][contact_field_id]" class="rule-contact-field-id" value="{{ $rule['contact_field_id'] ?? '' }}">
+                                        </div>
+                                        <div class="w-40">
+                                            <x-input-label :value="__('Operador')" class="text-xs" />
+                                            <select name="conditions[{{ $idx }}][operator]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm rule-operator">
+                                                @foreach($conditionOperators as $op => $label)
+                                                    <option value="{{ $op }}" {{ ($rule['operator'] ?? '') === $op ? 'selected' : '' }}>{{ $label }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="rule-value-wrap flex-1 min-w-[140px] {{ in_array($rule['operator'] ?? '', ['is_empty', 'is_not_empty']) ? 'hidden' : '' }}">
+                                            <x-input-label :value="__('Valor')" class="text-xs" />
+                                            <input type="text" name="conditions[{{ $idx }}][value]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" value="{{ $rule['value'] ?? '' }}" placeholder="{{ __('Valor') }}">
+                                        </div>
+                                        <button type="button" class="remove-rule text-red-600 hover:text-red-800 text-sm py-1">{{ __('Remover') }}</button>
+                                    </div>
                                 @endforeach
-                            </select>
+                            </div>
+                            <button type="button" id="add-condition-rule" class="mt-2 text-brand-600 hover:text-brand-800 text-sm font-medium">{{ __('+ Adicionar regra') }}</button>
                         </div>
-                        <div id="condition-tag" class="mb-4 hidden">
-                            <x-input-label for="condition_tag_id" :value="__('Tag')" />
-                            <select name="condition_tag_id" id="condition_tag_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500">
-                                <option value="">{{ __('Selecione') }}</option>
-                                @foreach($tags as $t)
-                                    <option value="{{ $t->id }}" {{ old('condition_tag_id', $automation->condition?->config['tag_id'] ?? '') == $t->id ? 'selected' : '' }}>{{ $t->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="flex justify-end">
-                            <x-primary-button type="submit">{{ __('Salvar condição') }}</x-primary-button>
+
+                        <div class="flex justify-end mt-6">
+                            <x-primary-button type="submit">{{ __('Salvar condições') }}</x-primary-button>
                         </div>
                     </form>
                 </div>
@@ -138,7 +160,8 @@
             @if($step === 'action')
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">{{ __('Ações configuradas') }}</h3>
+                        <h3 class="text-lg font-medium text-gray-900">{{ __('Ações em sequência') }}</h3>
+                        <p class="text-sm text-gray-500 mt-1">{{ __('O que fazer com cada contato que passar pelo gatilho e condições.') }}</p>
                     </div>
                     <div class="p-6">
                         @forelse($automation->actions as $act)
@@ -184,11 +207,11 @@
                             <x-input-label :value="__('Tipo de ação')" />
                             <select name="action_type" id="action_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500" required>
                                 @foreach($actionTypes as $value => $label)
-                                    <option value="{{ $value }}" {{ old('action_type') == $value ? 'selected' : '' }}>{{ $label }}</option>
+                                    <option value="{{ $value }}" {{ old('action_type', 'send_whatsapp_message') == $value ? 'selected' : '' }}>{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div id="action-message" class="mb-4 hidden">
+                        <div id="action-message" class="mb-4">
                             <x-input-label for="action_message" :value="__('Mensagem WhatsApp')" />
                             <textarea name="action_message" id="action_message" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500" placeholder="{{ __('Digite a mensagem...') }}">{{ old('action_message') }}</textarea>
                         </div>
@@ -225,39 +248,123 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            function showTriggerExtra() {
-                var t = document.getElementById('trigger_type').value;
-                document.getElementById('trigger-list').classList.toggle('hidden', t !== 'list_added');
-                document.getElementById('trigger-tag').classList.toggle('hidden', t !== 'tag_added');
-                var isSchedule = t && t.startsWith('schedule_');
-                document.getElementById('trigger-schedule').classList.toggle('hidden', !isSchedule);
-                document.getElementById('schedule-weekday').classList.toggle('hidden', t !== 'schedule_weekly');
-                document.getElementById('schedule-day').classList.toggle('hidden', t !== 'schedule_monthly' && t !== 'schedule_yearly');
-                document.getElementById('schedule-month').classList.toggle('hidden', t !== 'schedule_yearly');
+            var triggerType = document.getElementById('trigger_type');
+            if (triggerType) {
+                function showTrigger() {
+                    var t = triggerType.value;
+                    document.getElementById('trigger-list').classList.toggle('hidden', t !== 'list_added');
+                    document.getElementById('trigger-tag').classList.toggle('hidden', t !== 'tag_added');
+                }
+                showTrigger();
+                triggerType.addEventListener('change', showTrigger);
             }
-            function showConditionExtra() {
-                var t = document.getElementById('condition_type').value;
-                document.getElementById('condition-list').classList.toggle('hidden', t !== 'contact_in_list');
-                document.getElementById('condition-tag').classList.toggle('hidden', t !== 'contact_has_tag');
+
+            var conditionModeRadios = document.querySelectorAll('input[name="condition_mode"]');
+            var rulesWrap = document.getElementById('condition-rules-wrap');
+            if (conditionModeRadios.length && rulesWrap) {
+                function toggleRules() {
+                    var mode = document.querySelector('input[name="condition_mode"]:checked');
+                    rulesWrap.classList.toggle('hidden', !mode || mode.value !== 'rules');
+                }
+                conditionModeRadios.forEach(function(r) { r.addEventListener('change', toggleRules); });
+                toggleRules();
             }
-            function showActionExtra() {
-                var t = document.getElementById('action_type').value;
-                document.getElementById('action-message').classList.toggle('hidden', t !== 'send_whatsapp_message');
-                document.getElementById('action-list').classList.toggle('hidden', t !== 'add_to_list');
-                document.getElementById('action-tag').classList.toggle('hidden', t !== 'add_tag');
-                document.getElementById('action-wait').classList.toggle('hidden', t !== 'wait_delay');
+
+            var rulesList = document.getElementById('condition-rules-list');
+            var addRuleBtn = document.getElementById('add-condition-rule');
+            var attributeFields = @json($attributeFields ?? []);
+            var customFields = @json($customFields->keyBy('id')->map(fn($f) => ['id' => $f->id, 'name' => $f->name]) ?? []);
+            var operators = @json($conditionOperators ?? []);
+
+            function ruleHtml(index) {
+                var optgroups = '<optgroup label="{{ __("Atributos") }}">';
+                for (var k in attributeFields) { optgroups += '<option value="attribute" data-key="'+k+'">'+attributeFields[k]+'</option>'; }
+                optgroups += '</optgroup>';
+                if (Object.keys(customFields).length) {
+                    optgroups += '<optgroup label="{{ __("Campos personalizados") }}">';
+                    for (var id in customFields) { optgroups += '<option value="custom" data-field-id="'+id+'">'+customFields[id].name+'</option>'; }
+                    optgroups += '</optgroup>';
+                }
+                var opOptions = '';
+                for (var o in operators) { opOptions += '<option value="'+o+'">'+operators[o]+'</option>'; }
+                return '<div class="condition-rule flex flex-wrap items-end gap-3 p-4 bg-gray-50 rounded-lg" data-index="'+index+'">'+
+                    '<div class="flex-1 min-w-[120px]">'+
+                    '<label class="text-xs block text-gray-700">{{ __("Campo") }}</label>'+
+                    '<select name="conditions['+index+'][field_type]" class="rule-field-type mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" data-index="'+index+'">'+optgroups+'</select>'+
+                    '<input type="hidden" name="conditions['+index+'][field_key]" class="rule-field-key" value="name">'+
+                    '<input type="hidden" name="conditions['+index+'][contact_field_id]" class="rule-contact-field-id" value="">'+
+                    '</div>'+
+                    '<div class="w-40">'+
+                    '<label class="text-xs block text-gray-700">{{ __("Operador") }}</label>'+
+                    '<select name="conditions['+index+'][operator]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm rule-operator">'+opOptions+'</select>'+
+                    '</div>'+
+                    '<div class="rule-value-wrap flex-1 min-w-[140px]">'+
+                    '<label class="text-xs block text-gray-700">{{ __("Valor") }}</label>'+
+                    '<input type="text" name="conditions['+index+'][value]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" placeholder="{{ __("Valor") }}">'+
+                    '</div>'+
+                    '<button type="button" class="remove-rule text-red-600 hover:text-red-800 text-sm py-1">{{ __("Remover") }}</button>'+
+                    '</div>';
             }
-            if (document.getElementById('trigger_type')) {
-                showTriggerExtra();
-                document.getElementById('trigger_type').addEventListener('change', showTriggerExtra);
+
+            if (addRuleBtn && rulesList) {
+                addRuleBtn.addEventListener('click', function() {
+                    var count = rulesList.querySelectorAll('.condition-rule').length;
+                    rulesList.insertAdjacentHTML('beforeend', ruleHtml(count));
+                    bindRuleEvents();
+                });
+
+                function bindRuleEvents() {
+                    rulesList.querySelectorAll('.condition-rule').forEach(function(block) {
+                        var idx = block.getAttribute('data-index');
+                        var fieldSelect = block.querySelector('.rule-field-type');
+                        var opSelect = block.querySelector('.rule-operator');
+                        var keyInput = block.querySelector('.rule-field-key');
+                        var fieldIdInput = block.querySelector('.rule-contact-field-id');
+                        var valueWrap = block.querySelector('.rule-value-wrap');
+
+                        if (fieldSelect && !fieldSelect.dataset.bound) {
+                            fieldSelect.dataset.bound = '1';
+                            fieldSelect.addEventListener('change', function() {
+                                var opt = this.options[this.selectedIndex];
+                                if (opt.value === 'attribute') {
+                                    keyInput.value = opt.getAttribute('data-key') || 'name';
+                                    fieldIdInput.value = '';
+                                } else {
+                                    keyInput.value = '';
+                                    fieldIdInput.value = opt.getAttribute('data-field-id') || '';
+                                }
+                            });
+                        }
+                        if (opSelect && !opSelect.dataset.bound) {
+                            opSelect.dataset.bound = '1';
+                            opSelect.addEventListener('change', function() {
+                                var hide = ['is_empty','is_not_empty'].indexOf(this.value) >= 0;
+                                valueWrap.classList.toggle('hidden', hide);
+                            });
+                        }
+                    });
+                    rulesList.querySelectorAll('.remove-rule').forEach(function(btn) {
+                        if (btn.dataset.bound) return;
+                        btn.dataset.bound = '1';
+                        btn.addEventListener('click', function() {
+                            this.closest('.condition-rule').remove();
+                        });
+                    });
+                }
+                bindRuleEvents();
             }
-            if (document.getElementById('condition_type')) {
-                showConditionExtra();
-                document.getElementById('condition_type').addEventListener('change', showConditionExtra);
-            }
-            if (document.getElementById('action_type')) {
-                showActionExtra();
-                document.getElementById('action_type').addEventListener('change', showActionExtra);
+
+            var actionType = document.getElementById('action_type');
+            if (actionType) {
+                function showAction() {
+                    var t = actionType.value;
+                    document.getElementById('action-message').classList.toggle('hidden', t !== 'send_whatsapp_message');
+                    document.getElementById('action-list').classList.toggle('hidden', t !== 'add_to_list');
+                    document.getElementById('action-tag').classList.toggle('hidden', t !== 'add_tag');
+                    document.getElementById('action-wait').classList.toggle('hidden', t !== 'wait_delay');
+                }
+                showAction();
+                actionType.addEventListener('change', showAction);
             }
         });
     </script>
