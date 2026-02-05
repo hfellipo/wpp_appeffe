@@ -158,6 +158,9 @@ class AutomationController extends Controller
                     } else {
                         $fieldKey = $r['field_key'];
                     }
+                    // Valor: ler do request direto para garantir que não se perde (validated pode não incluir)
+                    $value = $request->input("conditions.{$i}.value", $r['value'] ?? null);
+                    $value = $value !== null && $value !== '' ? trim((string) $value) : null;
                     $automacao->conditions()->create([
                         'type' => 'rule', // legado: tabela exige type; regras novas usam field_type/operator/value
                         'position' => $i,
@@ -165,7 +168,7 @@ class AutomationController extends Controller
                         'field_key' => $fieldKey,
                         'contact_field_id' => $contactFieldId,
                         'operator' => $r['operator'],
-                        'value' => $r['value'] ?? null,
+                        'value' => $value,
                     ]);
                 }
             }
