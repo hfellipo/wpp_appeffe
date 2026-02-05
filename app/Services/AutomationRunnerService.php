@@ -102,14 +102,12 @@ class AutomationRunnerService
             if ($action->type === 'wait_delay') {
                 $minutes = (int) ($action->config['minutes'] ?? 0);
                 $minutes = max(1, min(10080, $minutes)); // 1 min a 7 dias
-                $resumeAt = now()->addMinutes($minutes)->timestamp;
+                $resumeAt = now()->addMinutes($minutes);
                 $details[] = ['action' => $action->type, 'scheduled_after_minutes' => $minutes];
                 $run->update([
-                    'metadata' => [
-                        'details' => $details,
-                        'resume_at' => $resumeAt,
-                        'resume_from_position' => $i + 1,
-                    ],
+                    'metadata' => ['details' => $details],
+                    'resume_at' => $resumeAt,
+                    'resume_from_position' => $i + 1,
                 ]);
                 return [
                     'done' => false,
@@ -134,7 +132,12 @@ class AutomationRunnerService
         }
 
         // Limpa resume_at ao terminar para o cron não reprocessar
-        $run->update(['status' => $runStatus, 'metadata' => ['details' => $details]]);
+        $run->update([
+            'status' => $runStatus,
+            'metadata' => ['details' => $details],
+            'resume_at' => null,
+            'resume_from_position' => null,
+        ]);
 
         return [
             'done' => true,

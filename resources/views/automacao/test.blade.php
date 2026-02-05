@@ -48,6 +48,10 @@
                 {{ __('A execução automática (cron) roda a cada minuto. O mesmo cron retoma ações após "Aguardar (delay)"') }}
                 — <code class="bg-gray-100 px-1 rounded">php artisan schedule:run</code> {{ __('no crontab a cada minuto') }}.
             </p>
+            <p class="mt-2 text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">
+                {{ __('Para testar o delay sem cron: após rodar o teste, espere 1 min e execute no servidor') }}
+                <code class="bg-amber-100 px-1 rounded">php artisan automations:run</code> {{ __('— ele retoma e envia a segunda mensagem.') }}
+            </p>
         </div>
     </div>
 </x-app-layout>

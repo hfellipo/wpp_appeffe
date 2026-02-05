@@ -19,10 +19,13 @@ class AutomationRun extends Model
         'ran_at',
         'status',
         'metadata',
+        'resume_at',
+        'resume_from_position',
     ];
 
     protected $casts = [
         'ran_at' => 'datetime',
+        'resume_at' => 'datetime',
         'metadata' => 'array',
     ];
 

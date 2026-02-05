@@ -17,13 +17,12 @@ class RunAutomationsCommand extends Command
     public function handle(AutomationRunnerService $runner): int
     {
         $now = now();
-        $timestamp = $now->timestamp;
 
         // Retomar runs pausados no "Aguardar (delay)" — o cron roda a cada minuto e continua o fluxo
         $toResume = AutomationRun::query()
-            ->whereNotNull('metadata->resume_at')
-            ->get()
-            ->filter(fn (AutomationRun $r) => ((int) ($r->metadata['resume_at'] ?? 0)) <= $timestamp);
+            ->whereNotNull('resume_at')
+            ->where('resume_at', '<=', $now)
+            ->get();
 
         foreach ($toResume as $run) {
             $automation = Automation::query()->with('actions')->find($run->automation_id);
@@ -31,7 +30,10 @@ class RunAutomationsCommand extends Command
             if (! $automation || ! $contact || (int) $contact->user_id !== (int) $automation->user_id) {
                 continue;
             }
-            $fromPosition = (int) ($run->metadata['resume_from_position'] ?? 0);
+            $fromPosition = (int) $run->resume_from_position;
+            if ($fromPosition < 0) {
+                continue;
+            }
             $runner->runForContactFromPosition($automation, $contact, $run->fresh(), $fromPosition);
         }
 
