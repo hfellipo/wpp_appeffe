@@ -84,14 +84,12 @@
                                                 name="fields[{{ $field->id }}]" 
                                                 rows="3"
                                                 class="mt-1 block w-full border-gray-300 focus:border-brand-500 focus:ring-brand-500 rounded-md shadow-sm"
-                                                @if($field->required) required @endif
                                             >{{ old('fields.' . $field->id) }}</textarea>
                                         @elseif($field->type === 'select')
                                             <select 
                                                 id="field_{{ $field->id }}" 
                                                 name="fields[{{ $field->id }}]"
                                                 class="mt-1 block w-full border-gray-300 focus:border-brand-500 focus:ring-brand-500 rounded-md shadow-sm"
-                                                @if($field->required) required @endif
                                             >
                                                 <option value="">{{ __('Selecione...') }}</option>
                                                 @foreach($field->options ?? [] as $option)
@@ -107,7 +105,6 @@
                                                 type="date" 
                                                 class="mt-1 block w-full" 
                                                 :value="old('fields.' . $field->id)"
-                                                :required="$field->required"
                                             />
                                         @elseif($field->type === 'number')
                                             <x-text-input 
@@ -117,7 +114,6 @@
                                                 step="any"
                                                 class="mt-1 block w-full" 
                                                 :value="old('fields.' . $field->id)"
-                                                :required="$field->required"
                                             />
                                         @else
                                             <x-text-input 
@@ -126,7 +122,6 @@
                                                 :type="$field->type === 'url' ? 'url' : ($field->type === 'email' ? 'email' : 'text')" 
                                                 class="mt-1 block w-full" 
                                                 :value="old('fields.' . $field->id)"
-                                                :required="$field->required"
                                             />
                                         @endif
 
