@@ -67,6 +67,29 @@
                                 @endforeach
                             </select>
                         </div>
+                        <div class="mb-4">
+                            <x-input-label for="interval_minutes" :value="__('Verificar a cada (tempo que o cron dispara em busca desta automação)')" />
+                            <select name="interval_minutes" id="interval_minutes" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500" required>
+                                <option value="5" {{ old('interval_minutes', $automation->interval_minutes ?? 15) == 5 ? 'selected' : '' }}>{{ __('5 minutos') }}</option>
+                                <option value="15" {{ old('interval_minutes', $automation->interval_minutes ?? 15) == 15 ? 'selected' : '' }}>{{ __('15 minutos') }}</option>
+                                <option value="30" {{ old('interval_minutes', $automation->interval_minutes ?? 15) == 30 ? 'selected' : '' }}>{{ __('30 minutos') }}</option>
+                                <option value="60" {{ old('interval_minutes', $automation->interval_minutes ?? 15) == 60 ? 'selected' : '' }}>{{ __('60 minutos') }}</option>
+                            </select>
+                            <p class="mt-1 text-sm text-gray-500">{{ __('O sistema verifica a cada minuto; esta automação só será executada após esse intervalo desde a última verificação.') }}</p>
+                        </div>
+                        <div class="mb-4">
+                            <x-input-label :value="__('Quantas vezes pode rodar para o mesmo contato?')" />
+                            <div class="mt-2 space-y-2">
+                                <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50">
+                                    <input type="radio" name="run_once_per_contact" value="1" {{ old('run_once_per_contact', $automation->run_once_per_contact ?? true) ? 'checked' : '' }} class="mt-1 rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                    <span class="text-sm">{{ __('Esta automação poderá rodar apenas uma vez por contato.') }}</span>
+                                </label>
+                                <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50">
+                                    <input type="radio" name="run_once_per_contact" value="0" {{ old('run_once_per_contact', $automation->run_once_per_contact ?? true) ? '' : 'checked' }} class="mt-1 rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                    <span class="text-sm">{{ __('Esta automação poderá rodar todas as vezes que o contato atender às condições programadas.') }}</span>
+                                </label>
+                            </div>
+                        </div>
                         <div class="flex justify-end">
                             <x-primary-button type="submit">{{ __('Salvar gatilho') }}</x-primary-button>
                         </div>

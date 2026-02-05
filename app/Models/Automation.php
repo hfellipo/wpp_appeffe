@@ -17,10 +17,15 @@ class Automation extends Model
         'name',
         'is_active',
         'condition_logic', // 'and' | 'or'; null = sem filtro (todos passam)
+        'interval_minutes', // intervalo que o cron verifica esta automação (ex: 15 = a cada 15 min)
+        'last_checked_at',
+        'run_once_per_contact', // true = só uma vez por contato; false = toda vez que atender às condições
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'last_checked_at' => 'datetime',
+        'run_once_per_contact' => 'boolean',
     ];
 
     public function user(): BelongsTo

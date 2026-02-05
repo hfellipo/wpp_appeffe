@@ -86,6 +86,8 @@ class AutomationController extends Controller
                 'trigger_type' => ['required', 'string', 'in:tag_added,list_added'],
                 'trigger_lista_id' => ['nullable', 'required_if:trigger_type,list_added', 'exists:listas,id'],
                 'trigger_tag_id' => ['nullable', 'required_if:trigger_type,tag_added', 'exists:tags,id'],
+                'interval_minutes' => ['required', 'integer', 'in:5,15,30,60'],
+                'run_once_per_contact' => ['required', 'boolean'],
             ]);
 
             $accountId = auth()->user()->accountId();
@@ -101,6 +103,10 @@ class AutomationController extends Controller
                 }
             }
 
+            $automacao->update([
+                'interval_minutes' => (int) $validated['interval_minutes'],
+                'run_once_per_contact' => (bool) $validated['run_once_per_contact'],
+            ]);
             $automacao->trigger()->updateOrCreate(
                 ['automation_id' => $automacao->id],
                 ['type' => $validated['trigger_type'], 'config' => $config]
