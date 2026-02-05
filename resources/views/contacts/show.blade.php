@@ -23,7 +23,7 @@
             <div class="grid grid-cols-1 gap-6 lg:grid-cols-4">
                 {{-- Coluna esquerda: Dados do contato --}}
                 <div class="lg:col-span-3 order-1 space-y-6">
-                {{-- Dados principais --}}
+                {{-- 1. Dados do contato --}}
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ __('Dados do contato') }}</h3>
@@ -60,51 +60,7 @@
                     </div>
                 </div>
 
-                {{-- Tags --}}
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">{{ __('Tags') }}</h3>
-                    </div>
-                    <div class="p-6">
-                        @if($contact->tags->isEmpty())
-                            <p class="text-sm text-gray-500">{{ __('Nenhuma tag atribuída.') }} <a href="{{ route('contacts.edit', $contact) }}" class="text-brand-600 hover:underline">{{ __('Editar contato') }}</a> {{ __('para adicionar tags.') }}</p>
-                        @else
-                            <div class="flex flex-wrap gap-2">
-                                @foreach($contact->tags as $tag)
-                                    <a href="{{ route('tags.index', ['tag' => $tag->id]) }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium {{ $tag->color ? '' : 'bg-gray-100 text-gray-800' }}" @if($tag->color) style="background-color: {{ $tag->color }}20; color: {{ $tag->color }};" @endif>
-                                        @if($tag->color)
-                                            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {{ $tag->color }}"></span>
-                                        @endif
-                                        {{ $tag->name }}
-                                    </a>
-                                @endforeach
-                            </div>
-                        @endif
-                    </div>
-                </div>
-
-                {{-- Listas --}}
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">{{ __('Listas') }}</h3>
-                        <p class="text-sm text-gray-500">{{ __('Listas em que este contato está incluído.') }}</p>
-                    </div>
-                    <div class="p-6">
-                        @if($contact->listas->isEmpty())
-                            <p class="text-sm text-gray-500">{{ __('Este contato não está em nenhuma lista.') }} {{ __('Adicione em') }} <a href="{{ route('listas.index') }}" class="text-brand-600 hover:underline">{{ __('Listas') }}</a>.</p>
-                        @else
-                            <ul class="space-y-2">
-                                @foreach($contact->listas as $lista)
-                                    <li>
-                                        <a href="{{ route('listas.show', $lista) }}" class="text-sm font-medium text-brand-600 hover:text-brand-800">{{ $lista->name }}</a>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        @endif
-                    </div>
-                </div>
-
-                {{-- Campos personalizados --}}
+                {{-- 2. Campos personalizados --}}
                 @if($customFields->count() > 0)
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
@@ -123,6 +79,50 @@
                         </div>
                     </div>
                 @endif
+
+                {{-- 3. Listas e Tags (lado a lado) --}}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-medium text-gray-900">{{ __('Listas') }}</h3>
+                            <p class="text-sm text-gray-500">{{ __('Listas em que este contato está incluído.') }}</p>
+                        </div>
+                        <div class="p-6">
+                            @if($contact->listas->isEmpty())
+                                <p class="text-sm text-gray-500">{{ __('Este contato não está em nenhuma lista.') }} {{ __('Adicione em') }} <a href="{{ route('listas.index') }}" class="text-brand-600 hover:underline">{{ __('Listas') }}</a>.</p>
+                            @else
+                                <ul class="space-y-2">
+                                    @foreach($contact->listas as $lista)
+                                        <li>
+                                            <a href="{{ route('listas.show', $lista) }}" class="text-sm font-medium text-brand-600 hover:text-brand-800">{{ $lista->name }}</a>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-medium text-gray-900">{{ __('Tags') }}</h3>
+                        </div>
+                        <div class="p-6">
+                            @if($contact->tags->isEmpty())
+                                <p class="text-sm text-gray-500">{{ __('Nenhuma tag atribuída.') }} <a href="{{ route('contacts.edit', $contact) }}" class="text-brand-600 hover:underline">{{ __('Editar contato') }}</a> {{ __('para adicionar tags.') }}</p>
+                            @else
+                                <div class="flex flex-wrap gap-2">
+                                    @foreach($contact->tags as $tag)
+                                        <a href="{{ route('tags.index', ['tag' => $tag->id]) }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium {{ $tag->color ? '' : 'bg-gray-100 text-gray-800' }}" @if($tag->color) style="background-color: {{ $tag->color }}20; color: {{ $tag->color }};" @endif>
+                                            @if($tag->color)
+                                                <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {{ $tag->color }}"></span>
+                                            @endif
+                                            {{ $tag->name }}
+                                        </a>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
                 </div>
 
                 {{-- Coluna direita: Histórico de eventos (reservado para o futuro) --}}
