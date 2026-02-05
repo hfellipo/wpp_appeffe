@@ -159,6 +159,7 @@ class AutomationController extends Controller
                         $fieldKey = $r['field_key'];
                     }
                     $automacao->conditions()->create([
+                        'type' => 'rule', // legado: tabela exige type; regras novas usam field_type/operator/value
                         'position' => $i,
                         'field_type' => $r['field_type'],
                         'field_key' => $fieldKey,
