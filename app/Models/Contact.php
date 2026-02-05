@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -105,6 +106,24 @@ class Contact extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Listas (lists) this contact belongs to.
+     */
+    public function listas(): BelongsToMany
+    {
+        return $this->belongsToMany(Lista::class, 'lista_contact')
+            ->withTimestamps();
+    }
+
+    /**
+     * Tags this contact has.
+     */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class, 'contact_tag')
+            ->withTimestamps();
     }
 
     /**

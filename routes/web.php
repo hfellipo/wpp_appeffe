@@ -3,7 +3,9 @@
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactFieldController;
 use App\Http\Controllers\ContactImportController;
+use App\Http\Controllers\ListaController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TagController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\WhatsAppEvolutionController;
 use App\Http\Controllers\WhatsAppInboxController;
@@ -20,6 +22,7 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
+
 
 // Rota de debug para testar se o Laravel está recebendo requisições
 Route::match(['get', 'post'], '/debug/test', function (Request $request) {
@@ -214,6 +217,18 @@ Route::middleware('auth')->group(function () {
 
     // Contacts resource routes
     Route::resource('contacts', ContactController::class);
+
+    // Listas (lists) - create/list/edit/delete listas and manage contacts
+    Route::resource('listas', ListaController::class);
+    Route::get('listas/{lista}/contacts', [ListaController::class, 'editContacts'])->name('listas.contacts.edit');
+    Route::post('listas/{lista}/contacts', [ListaController::class, 'updateContacts'])->name('listas.contacts.update');
+    Route::post('listas/{lista}/contacts/detach-contact', [ListaController::class, 'detachContact'])->name('listas.contacts.detach-contact');
+    Route::post('listas/{lista}/contacts/detach-whatsapp', [ListaController::class, 'detachWhatsAppContact'])->name('listas.contacts.detach-whatsapp');
+
+    // Tags - create/list/edit/delete tags and filter contacts by tag
+    Route::resource('tags', TagController::class)->except(['show']);
+    Route::get('tags/{tag}/contacts', [TagController::class, 'editContacts'])->name('tags.contacts.edit');
+    Route::post('tags/{tag}/contacts', [TagController::class, 'updateContacts'])->name('tags.contacts.update');
 });
 
 require __DIR__.'/auth.php';

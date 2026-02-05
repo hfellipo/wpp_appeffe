@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ContactRequest;
 use App\Models\Contact;
 use App\Models\ContactField;
+use App\Models\Tag;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -98,14 +99,16 @@ class ContactController extends Controller
     {
         $this->authorize('update', $contact);
 
-        $contact->load('fieldValues');
-        
+        $contact->load('fieldValues', 'tags');
+
         $customFields = ContactField::forUser(auth()->user()->accountId())
             ->active()
             ->ordered()
             ->get();
 
-        return view('contacts.edit', compact('contact', 'customFields'));
+        $tags = Tag::forUser(auth()->user()->accountId())->orderBy('name')->get(['id', 'name', 'color']);
+
+        return view('contacts.edit', compact('contact', 'customFields', 'tags'));
     }
 
     /**
@@ -128,6 +131,11 @@ class ContactController extends Controller
                 $contact->setFieldValue($fieldId, $value ?: null);
             }
         }
+
+        // Update tags
+        $tagIds = $request->input('tag_ids', []);
+        $validTagIds = Tag::forUser(auth()->user()->accountId())->whereIn('id', $tagIds)->pluck('id')->all();
+        $contact->tags()->sync($validTagIds);
 
         return redirect()
             ->route('contacts.index')

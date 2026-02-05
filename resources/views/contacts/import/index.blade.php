@@ -13,7 +13,8 @@
         </div>
     </x-slot>
 
-    <div class="py-12">
+    <div class="py-12" x-data="{ listaOption: '{{ old('lista_option', 'none') }}' }">
+        <style>[x-cloak]{display:none!important}</style>
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
             @if(session('error'))
                 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6">
@@ -81,6 +82,48 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                                 </svg>
                             </button>
+                        </div>
+
+                        {{-- Atribuir contatos importados a uma lista --}}
+                        <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <h4 class="text-sm font-medium text-gray-900 mb-3">{{ __('Atribuir a uma lista') }}</h4>
+                            <p class="text-sm text-gray-500 mb-4">{{ __('Opcional: os contatos importados podem ser adicionados a uma lista existente ou a uma nova.') }}</p>
+                            <div class="space-y-3">
+                                <label class="flex items-center">
+                                    <input type="radio" name="lista_option" value="none" x-model="listaOption" class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                    <span class="ml-2 text-sm text-gray-700">{{ __('Não atribuir a nenhuma lista') }}</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" name="lista_option" value="existing" x-model="listaOption" class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                    <span class="ml-2 text-sm text-gray-700">{{ __('Lista existente') }}</span>
+                                </label>
+                                <div x-show="listaOption === 'existing'" x-cloak class="ml-6 mt-2">
+                                    <select name="lista_id" class="rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 block w-full max-w-xs text-sm">
+                                        <option value="">{{ __('Selecione a lista') }}</option>
+                                        @foreach($listas as $l)
+                                            <option value="{{ $l->id }}" {{ old('lista_id') == $l->id ? 'selected' : '' }}>{{ $l->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    @if($listas->isEmpty())
+                                        <p class="mt-1 text-xs text-amber-600">{{ __('Você ainda não tem listas.') }} <a href="{{ route('listas.create') }}" class="underline">{{ __('Criar lista') }}</a></p>
+                                    @endif
+                                    <x-input-error :messages="$errors->get('lista_id')" class="mt-1" />
+                                </div>
+                                <label class="flex items-center">
+                                    <input type="radio" name="lista_option" value="new" x-model="listaOption" class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                                    <span class="ml-2 text-sm text-gray-700">{{ __('Criar nova lista') }}</span>
+                                </label>
+                                <div x-show="listaOption === 'new'" x-cloak class="ml-6 mt-2">
+                                    <x-text-input
+                                        name="new_list_name"
+                                        type="text"
+                                        class="block w-full max-w-xs text-sm"
+                                        :value="old('new_list_name')"
+                                        placeholder="{{ __('Nome da nova lista') }}"
+                                    />
+                                    <x-input-error :messages="$errors->get('new_list_name')" class="mt-1" />
+                                </div>
+                            </div>
                         </div>
 
                         <div class="flex justify-end">

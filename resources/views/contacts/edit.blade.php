@@ -68,6 +68,27 @@
                             <x-input-error :messages="$errors->get('notes')" class="mt-2" />
                         </div>
 
+                        <!-- Tags -->
+                        @if(isset($tags) && $tags->count() > 0)
+                            <div class="border-t border-gray-200 pt-4 mt-6">
+                                <h3 class="text-lg font-medium text-gray-900 mb-4">{{ __('Tags') }}</h3>
+                                <div class="flex flex-wrap gap-3">
+                                    @foreach($tags as $tag)
+                                        <label class="inline-flex items-center">
+                                            <input type="checkbox" name="tag_ids[]" value="{{ $tag->id }}" class="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                                {{ in_array($tag->id, old('tag_ids', $contact->tags->pluck('id')->all())) ? 'checked' : '' }}>
+                                            <span class="ml-2 text-sm flex items-center gap-1">
+                                                @if($tag->color)
+                                                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {{ $tag->color }}"></span>
+                                                @endif
+                                                {{ $tag->name }}
+                                            </span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
+
                         <!-- Custom Fields -->
                         @if($customFields->count() > 0)
                             <div class="border-t border-gray-200 pt-4 mt-6">

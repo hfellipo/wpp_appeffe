@@ -3,7 +3,11 @@
 namespace App\Providers;
 
 use App\Models\Contact;
+use App\Models\Lista;
+use App\Models\Tag;
 use App\Policies\ContactPolicy;
+use App\Policies\ListaPolicy;
+use App\Policies\TagPolicy;
 use App\Services\EvolutionApiHttpClient;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\Facades\Gate;
@@ -29,6 +33,8 @@ class AppServiceProvider extends ServiceProvider
     {
         // Register policies
         Gate::policy(Contact::class, ContactPolicy::class);
+        Gate::policy(Lista::class, ListaPolicy::class);
+        Gate::policy(Tag::class, TagPolicy::class);
 
         /**
          * Vite safety for production/shared hosting.

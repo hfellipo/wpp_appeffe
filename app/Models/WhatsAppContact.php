@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Str;
 
 class WhatsAppContact extends Model
@@ -30,6 +31,15 @@ class WhatsAppContact extends Model
     public function getRouteKeyName(): string
     {
         return 'public_id';
+    }
+
+    /**
+     * Listas (lists) this WhatsApp contact belongs to.
+     */
+    public function listas(): BelongsToMany
+    {
+        return $this->belongsToMany(Lista::class, 'lista_whatsapp_contact', 'whatsapp_contact_id', 'lista_id')
+            ->withTimestamps();
     }
 
     protected static function booted(): void

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Contact;
 use App\Models\ContactField;
+use App\Models\Lista;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,11 @@ class ContactImportController extends Controller
      */
     public function index(): View
     {
-        return view('contacts.import.index');
+        $listas = Lista::forUser(auth()->user()->accountId())
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return view('contacts.import.index', compact('listas'));
     }
 
     /**
@@ -29,9 +34,21 @@ class ContactImportController extends Controller
      */
     public function upload(Request $request): View|RedirectResponse
     {
-        $request->validate([
+        $rules = [
             'file' => 'required|file|mimes:xlsx,xls,csv,txt|max:10240', // 10MB max
-        ]);
+            'lista_option' => 'nullable|in:none,existing,new',
+            'lista_id' => 'nullable|required_if:lista_option,existing|integer|exists:listas,id',
+            'new_list_name' => 'nullable|required_if:lista_option,new|string|max:255',
+        ];
+        $validated = $request->validate($rules);
+
+        // Ensure lista_id belongs to user's account when "existing"
+        if (($validated['lista_option'] ?? '') === 'existing' && !empty($validated['lista_id'] ?? null)) {
+            $exists = Lista::forUser(auth()->user()->accountId())->where('id', $validated['lista_id'])->exists();
+            if (!$exists) {
+                return back()->withErrors(['lista_id' => __('A lista selecionada não é válida.')])->withInput();
+            }
+        }
 
         // Ensure imports directory exists
         $importsPath = storage_path('app/imports');
@@ -98,9 +115,20 @@ class ContactImportController extends Controller
                 ->ordered()
                 ->get();
 
-            // Store file path in session (use put to ensure persistence)
+            // Store file path and optional list assignment in session
             session()->put('import_file', $path);
             session()->put('import_headers', $headers);
+            $listaOption = $validated['lista_option'] ?? 'none';
+            session()->put('import_lista_option', $listaOption);
+            if ($listaOption === 'existing' && !empty($validated['lista_id'] ?? null)) {
+                session()->put('import_lista_id', (int) $validated['lista_id']);
+                session()->forget('import_new_list_name');
+            } elseif ($listaOption === 'new' && !empty(trim($validated['new_list_name'] ?? ''))) {
+                session()->put('import_new_list_name', trim($validated['new_list_name']));
+                session()->forget('import_lista_id');
+            } else {
+                session()->forget(['import_lista_id', 'import_new_list_name']);
+            }
             session()->save(); // Force save session
             
             Log::info('Arquivo salvo na sessão', [
@@ -437,7 +465,10 @@ class ContactImportController extends Controller
             if (empty($chunkRows)) {
                 // Clean up
                 Storage::disk('imports')->delete($path);
-                session()->forget(['import_file', 'import_headers', 'import_columns', 'import_stats', 'import_cancelled']);
+                session()->forget([
+                    'import_file', 'import_headers', 'import_columns', 'import_stats', 'import_cancelled',
+                    'import_lista_option', 'import_lista_id', 'import_new_list_name', 'import_existing_contacts', 'import_mapping',
+                ]);
                 
                 $stats = session('import_stats', ['imported' => 0, 'updated' => 0, 'skipped' => 0]);
                 
@@ -477,8 +508,27 @@ class ContactImportController extends Controller
                 $mapping = $this->buildMapping($columns, $newFields);
                 session()->put('import_mapping', $mapping);
                 session()->put('import_stats', ['imported' => 0, 'updated' => 0, 'skipped' => 0]);
-            } else {
-                $mapping = session('import_mapping');
+
+                // Resolve list for attaching imported contacts
+                $listaOption = session('import_lista_option', 'none');
+                if ($listaOption === 'existing' && session()->has('import_lista_id')) {
+                    // already have list id
+                } elseif ($listaOption === 'new' && session()->has('import_new_list_name')) {
+                    $newListName = trim(session('import_new_list_name'));
+                    if ($newListName !== '') {
+                        $lista = Lista::create([
+                            'user_id' => auth()->user()->accountId(),
+                            'name' => $newListName,
+                        ]);
+                        session()->put('import_lista_id', $lista->id);
+                        session()->forget('import_new_list_name');
+                    }
+                }
+            }
+
+            $listId = null;
+            if (in_array(session('import_lista_option', 'none'), ['existing', 'new'], true) && session()->has('import_lista_id')) {
+                $listId = (int) session('import_lista_id');
             }
 
             $stats = session('import_stats', ['imported' => 0, 'updated' => 0, 'skipped' => 0]);
@@ -490,7 +540,7 @@ class ContactImportController extends Controller
                 $rowNumber = $start + $index + 2;
 
                 // Process row (same logic as before)
-                $result = $this->processRow($row, $rowNumber, $mapping, $existingContacts);
+                $result = $this->processRow($row, $rowNumber, $mapping, $existingContacts, $listId);
                 
                 if ($result['skipped']) {
                     $stats['skipped']++;
@@ -506,7 +556,7 @@ class ContactImportController extends Controller
 
             DB::commit();
             session()->put('import_stats', $stats);
-            
+
             // Update existing contacts index with new contacts
             $existingContactsData = session('import_existing_contacts', []);
             foreach ($existingContacts as $normalizedPhone => $contact) {
@@ -514,8 +564,17 @@ class ContactImportController extends Controller
             }
             session()->put('import_existing_contacts', $existingContactsData);
 
+            $completed = $end >= $totalRows;
+            if ($completed) {
+                Storage::disk('imports')->delete($path);
+                session()->forget([
+                    'import_file', 'import_headers', 'import_columns', 'import_stats', 'import_cancelled',
+                    'import_lista_option', 'import_lista_id', 'import_new_list_name', 'import_existing_contacts', 'import_mapping',
+                ]);
+            }
+
             return response()->json([
-                'completed' => $end >= $totalRows,
+                'completed' => $completed,
                 'progress' => round(($end / $totalRows) * 100, 2),
                 'processed' => $end,
                 'total' => $totalRows,
@@ -536,8 +595,10 @@ class ContactImportController extends Controller
 
     /**
      * Process a single row.
+     *
+     * @param  int|null  $listId  If set, attach the contact (created or updated) to this list.
      */
-    private function processRow(array $row, int $rowNumber, array $mapping, &$existingContacts): array
+    private function processRow(array $row, int $rowNumber, array $mapping, &$existingContacts, ?int $listId = null): array
     {
         // Check required fields
         foreach ($mapping as $colIndex => $config) {
@@ -614,6 +675,10 @@ class ContactImportController extends Controller
 
         foreach ($customFieldValues as $fieldId => $value) {
             $contact->setFieldValue($fieldId, $value);
+        }
+
+        if ($listId) {
+            $contact->listas()->syncWithoutDetaching([$listId]);
         }
 
         return ['skipped' => false, 'updated' => $updated];

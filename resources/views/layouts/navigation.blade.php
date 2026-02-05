@@ -26,6 +26,12 @@
                     <x-nav-link :href="route('contacts.index')" :active="request()->routeIs('contacts.*')">
                         {{ __('Contatos') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('listas.index')" :active="request()->routeIs('listas.*')">
+                        {{ __('Listas') }}
+                    </x-nav-link>
+                    <x-nav-link :href="route('tags.index')" :active="request()->routeIs('tags.*')">
+                        {{ __('Tags') }}
+                    </x-nav-link>
                     @if(Route::has('whatsapp.inbox.index'))
                         <x-nav-link :href="route('whatsapp.inbox.index')" :active="request()->is('whatsapp*')">
                             {{ __('WhatsApp') }}
@@ -117,6 +123,12 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('contacts.index')" :active="request()->routeIs('contacts.*')">
                 {{ __('Contatos') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('listas.index')" :active="request()->routeIs('listas.*')">
+                {{ __('Listas') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('tags.index')" :active="request()->routeIs('tags.*')">
+                {{ __('Tags') }}
             </x-responsive-nav-link>
             @if(Route::has('whatsapp.inbox.index'))
                 <x-responsive-nav-link :href="route('whatsapp.inbox.index')" :active="request()->is('whatsapp*')">
