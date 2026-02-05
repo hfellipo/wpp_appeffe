@@ -7,6 +7,7 @@ use App\Models\AutomationRun;
 use App\Models\Contact;
 use App\Services\AutomationRunnerService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 class RunAutomationsCommand extends Command
 {
@@ -21,8 +22,16 @@ class RunAutomationsCommand extends Command
         // Retomar runs pausados no "Aguardar (delay)" — o cron roda a cada minuto e continua o fluxo
         $toResume = AutomationRun::query()
             ->whereNotNull('resume_at')
+            ->whereNotNull('resume_from_position')
             ->where('resume_at', '<=', $now)
             ->get();
+
+        if ($toResume->isNotEmpty()) {
+            Log::info('automations:run resuming runs', [
+                'count' => $toResume->count(),
+                'run_ids' => $toResume->pluck('id')->toArray(),
+            ]);
+        }
 
         foreach ($toResume as $run) {
             $automation = Automation::query()->with('actions')->find($run->automation_id);

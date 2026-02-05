@@ -94,6 +94,20 @@ class AutomationRunnerService
         $actions = $automation->actions->values();
         $details = (array) ($run->metadata['details'] ?? []);
 
+        // Ao retomar (após o delay), "reivindicar" o run para outro cron não processar em paralelo
+        if ($startFromPosition > 0) {
+            Log::info('automation run resuming', [
+                'run_id' => $run->id,
+                'contact_id' => $contact->id,
+                'automation_id' => $automation->id,
+                'from_position' => $startFromPosition,
+            ]);
+            $run->update([
+                'resume_at' => null,
+                'resume_from_position' => null,
+            ]);
+        }
+
         $runStatus = 'success';
 
         for ($i = $startFromPosition; $i < $actions->count(); $i++) {
@@ -117,6 +131,11 @@ class AutomationRunnerService
                 ];
             }
 
+            Log::info('automation executing action', [
+                'run_id' => $run->id,
+                'position' => $i,
+                'action_type' => $action->type,
+            ]);
             $ok = $this->executeAction($action, $accountId, $contact, $run);
             $details[] = [
                 'action' => $action->type,
