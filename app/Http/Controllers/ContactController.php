@@ -76,14 +76,14 @@ class ContactController extends Controller
     }
 
     /**
-     * Display the specified contact.
+     * Display the specified contact (all data, listas, tags).
      */
     public function show(Contact $contact): View
     {
         $this->authorize('view', $contact);
 
-        $contact->load('fieldValues.field');
-        
+        $contact->load('fieldValues.field', 'listas', 'tags');
+
         $customFields = ContactField::forUser(auth()->user()->accountId())
             ->active()
             ->ordered()
