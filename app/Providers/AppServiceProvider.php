@@ -4,7 +4,9 @@ namespace App\Providers;
 
 use App\Models\Contact;
 use App\Models\Lista;
+use App\Models\Automation;
 use App\Models\Tag;
+use App\Policies\AutomationPolicy;
 use App\Policies\ContactPolicy;
 use App\Policies\ListaPolicy;
 use App\Policies\TagPolicy;
@@ -35,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Contact::class, ContactPolicy::class);
         Gate::policy(Lista::class, ListaPolicy::class);
         Gate::policy(Tag::class, TagPolicy::class);
+        Gate::policy(Automation::class, AutomationPolicy::class);
 
         /**
          * Vite safety for production/shared hosting.

@@ -127,6 +127,22 @@ class Contact extends Model
     }
 
     /**
+     * WhatsApp conversations linked to this contact (when opened from app contact).
+     */
+    public function whatsappConversations(): HasMany
+    {
+        return $this->hasMany(WhatsAppConversation::class, 'contact_id');
+    }
+
+    /**
+     * Automation runs that executed for this contact.
+     */
+    public function automationRuns(): HasMany
+    {
+        return $this->hasMany(AutomationRun::class, 'contact_id');
+    }
+
+    /**
      * Get the custom field values for the contact.
      */
     public function fieldValues(): HasMany

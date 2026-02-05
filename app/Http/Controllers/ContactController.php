@@ -3,11 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ContactRequest;
+use App\Models\AutomationRun;
 use App\Models\Contact;
 use App\Models\ContactField;
 use App\Models\Tag;
+use App\Models\WhatsAppConversation;
+use App\Models\WhatsAppMessage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 class ContactController extends Controller
@@ -76,7 +80,7 @@ class ContactController extends Controller
     }
 
     /**
-     * Display the specified contact (all data, listas, tags).
+     * Display the specified contact (all data, listas, tags, event history).
      */
     public function show(Contact $contact): View
     {
@@ -89,7 +93,63 @@ class ContactController extends Controller
             ->ordered()
             ->get();
 
-        return view('contacts.show', compact('contact', 'customFields'));
+        $accountId = auth()->user()->accountId();
+        $events = $this->buildContactEventHistory($contact, $accountId);
+
+        return view('contacts.show', compact('contact', 'customFields', 'events'));
+    }
+
+    /**
+     * Build unified event timeline for contact: WhatsApp messages + automation runs.
+     */
+    private function buildContactEventHistory(Contact $contact, int $accountId): Collection
+    {
+        $phoneNorm = $contact->phone_for_whatsapp;
+        $peerJid = $phoneNorm !== '' ? $phoneNorm . '@s.whatsapp.net' : null;
+
+        $conversationIds = WhatsAppConversation::query()
+            ->where('user_id', $accountId)
+            ->where(function ($q) use ($contact, $peerJid) {
+                $q->where('contact_id', $contact->id);
+                if ($peerJid !== null) {
+                    $q->orWhere('peer_jid', $peerJid);
+                }
+            })
+            ->pluck('id');
+
+        $messages = collect();
+        if ($conversationIds->isNotEmpty()) {
+            $messages = WhatsAppMessage::query()
+                ->whereIn('conversation_id', $conversationIds)
+                ->with(['conversation', 'automationRun.automation'])
+                ->orderByDesc('created_at')
+                ->limit(100)
+                ->get()
+                ->map(fn (WhatsAppMessage $m) => [
+                    'type' => 'message',
+                    'at' => $m->sent_at ?? $m->created_at,
+                    'message' => $m,
+                ]);
+        }
+
+        $runs = AutomationRun::query()
+            ->where('contact_id', $contact->id)
+            ->with('automation')
+            ->orderByDesc('ran_at')
+            ->limit(100)
+            ->get()
+            ->map(fn (AutomationRun $r) => [
+                'type' => 'automation_run',
+                'at' => $r->ran_at,
+                'run' => $r,
+            ]);
+
+        $events = $messages->concat($runs)
+            ->sortByDesc(fn ($e) => $e['at']->getTimestamp())
+            ->values()
+            ->take(50);
+
+        return $events;
     }
 
     /**

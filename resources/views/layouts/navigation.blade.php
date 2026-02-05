@@ -32,6 +32,9 @@
                     <x-nav-link :href="route('tags.index')" :active="request()->routeIs('tags.*')">
                         {{ __('Tags') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('automacao.index')" :active="request()->routeIs('automacao.*')">
+                        {{ __('Automação') }}
+                    </x-nav-link>
                     @if(Route::has('whatsapp.inbox.index'))
                         <x-nav-link :href="route('whatsapp.inbox.index')" :active="request()->is('whatsapp*')">
                             {{ __('WhatsApp') }}
@@ -129,6 +132,9 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('tags.index')" :active="request()->routeIs('tags.*')">
                 {{ __('Tags') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('automacao.index')" :active="request()->routeIs('automacao.*')">
+                {{ __('Automação') }}
             </x-responsive-nav-link>
             @if(Route::has('whatsapp.inbox.index'))
                 <x-responsive-nav-link :href="route('whatsapp.inbox.index')" :active="request()->is('whatsapp*')">

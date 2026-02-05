@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactFieldController;
 use App\Http\Controllers\ContactImportController;
@@ -229,6 +230,16 @@ Route::middleware('auth')->group(function () {
     Route::resource('tags', TagController::class)->except(['show']);
     Route::get('tags/{tag}/contacts', [TagController::class, 'editContacts'])->name('tags.contacts.edit');
     Route::post('tags/{tag}/contacts', [TagController::class, 'updateContacts'])->name('tags.contacts.update');
+
+    // Automação (trigger → condition → action)
+    Route::get('/automacao', [AutomationController::class, 'index'])->name('automacao.index');
+    Route::get('/automacao/create', [AutomationController::class, 'create'])->name('automacao.create');
+    Route::post('/automacao', [AutomationController::class, 'store'])->name('automacao.store');
+    Route::get('/automacao/{automacao}/edit', [AutomationController::class, 'edit'])->name('automacao.edit');
+    Route::put('/automacao/{automacao}', [AutomationController::class, 'update'])->name('automacao.update');
+    Route::delete('/automacao/{automacao}', [AutomationController::class, 'destroy'])->name('automacao.destroy');
+    Route::post('/automacao/{automacao}/toggle', [AutomationController::class, 'toggle'])->name('automacao.toggle');
+    Route::delete('/automacao/{automacao}/actions/{action}', [AutomationController::class, 'destroyAction'])->name('automacao.actions.destroy');
 });
 
 require __DIR__.'/auth.php';

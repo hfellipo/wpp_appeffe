@@ -334,6 +334,10 @@ class WhatsAppInboxController extends Controller
                 $existing->contact_name = $contact->name;
                 $updated = true;
             }
+            if (empty($existing->contact_id) || (int) $existing->contact_id !== (int) $contact->id) {
+                $existing->contact_id = $contact->id;
+                $updated = true;
+            }
             if (empty(trim((string) $existing->peer_jid)) || $existing->peer_jid !== $peerJid) {
                 // Corrige peer_jid vazio ou o formato antigo (55031...)
                 $existing->peer_jid = $peerJid;
@@ -366,6 +370,7 @@ class WhatsAppInboxController extends Controller
                 'peer_jid' => $peerJid,
             ],
             [
+                'contact_id' => $contact->id,
                 'kind' => 'direct',
                 'contact_number' => $waNumber,
                 'contact_name' => $contact->name,

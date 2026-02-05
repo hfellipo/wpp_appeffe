@@ -17,6 +17,7 @@ class WhatsAppMessage extends Model
     protected $fillable = [
         'public_id',
         'conversation_id',
+        'automation_run_id',
         'direction', // in|out
         'participant_jid', // in groups: who sent (e.g. 5511999@s.whatsapp.net)
         'sender_name', // in groups: display name of sender
@@ -55,6 +56,11 @@ class WhatsAppMessage extends Model
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(WhatsAppConversation::class, 'conversation_id');
+    }
+
+    public function automationRun(): BelongsTo
+    {
+        return $this->belongsTo(AutomationRun::class, 'automation_run_id');
     }
 
     public function attachments(): HasMany
