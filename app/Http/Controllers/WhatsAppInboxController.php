@@ -535,7 +535,9 @@ class WhatsAppInboxController extends Controller
 
     private function participantJidToDigits(string $jid): string
     {
-        $jid = preg_replace('/:?\d*@s\.whatsapp\.net$/i', '', $jid);
+        // Remove sufixo :XX@s.whatsapp.net (não usar \d* antes de @ senão consome o número)
+        $jid = preg_replace('/:\d*@s\.whatsapp\.net$/i', '', $jid);
+        $jid = preg_replace('/@s\.whatsapp\.net$/i', '', $jid);
         $jid = preg_replace('/@.*$/', '', $jid);
         $digits = preg_replace('/\D/', '', $jid) ?: '';
         return $this->normalizeParticipantDigitsToPhone($digits);
