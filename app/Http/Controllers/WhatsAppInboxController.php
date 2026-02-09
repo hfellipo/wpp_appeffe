@@ -350,7 +350,9 @@ class WhatsAppInboxController extends Controller
             ]);
         }
 
-        $participants = Arr::get($json, 'participants') ?? Arr::get($json, 'data') ?? null;
+        $participants = Arr::get($json, 'participants')
+            ?? Arr::get($json, 'data.participants')
+            ?? Arr::get($json, 'data');
         if (!is_array($participants) && is_array($json) && array_is_list($json)) {
             $participants = $json;
         }
@@ -419,9 +421,17 @@ class WhatsAppInboxController extends Controller
             }
             $seenDigits[$digits] = true;
 
-            $displayName = is_array($p) ? (trim((string) ($p['name'] ?? '')) ?: null) : null;
+            $displayName = $this->extractNameFromParticipant($p);
 
-            $contact = $this->findOrCreateContactFromDigits($accountId, $digits, $displayName);
+            try {
+                $contact = $this->findOrCreateContactFromDigits($accountId, $digits, $displayName);
+            } catch (\Throwable $e) {
+                Log::channel('single')->warning('Evolution extractGroupMembers: findOrCreateContactFromDigits failed', [
+                    'digits' => $digits,
+                    'message' => $e->getMessage(),
+                ]);
+                continue;
+            }
             if (!$contact) {
                 if (config('services.evolution_api.debug_participants', false)) {
                     Log::channel('single')->info("[Evolution Participants DEBUG] Participante #{$idx} findOrCreateContact retornou null", ['digits' => $digits]);
@@ -438,9 +448,16 @@ class WhatsAppInboxController extends Controller
                 $contactsCreated++;
             }
 
-            if (!$contact->tags()->where('tags.id', $tag->id)->exists()) {
-                $contact->tags()->attach($tag->id);
-                $contactsTagged++;
+            try {
+                if (!$contact->tags()->where('tags.id', $tag->id)->exists()) {
+                    $contact->tags()->attach($tag->id);
+                    $contactsTagged++;
+                }
+            } catch (\Throwable $e) {
+                Log::channel('single')->warning('Evolution extractGroupMembers: tag attach failed', [
+                    'contact_id' => $contact->id,
+                    'message' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -454,9 +471,30 @@ class WhatsAppInboxController extends Controller
         ]);
     }
 
+    private function extractNameFromParticipant(mixed $p): ?string
+    {
+        if (!is_array($p)) {
+            return null;
+        }
+        foreach (['name', 'pushName', 'push_name', 'displayName', 'display_name'] as $key) {
+            if (isset($p[$key]) && is_scalar($p[$key])) {
+                $v = trim((string) $p[$key]);
+                if ($v !== '') {
+                    return $v;
+                }
+            }
+        }
+        foreach ($p as $key => $value) {
+            if (is_scalar($value) && strtolower((string) $key) === 'name' && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+        return null;
+    }
+
     /**
      * Extrai o JID/número do participante. Evolution envia phoneNumber (ex.: 553193395671@s.whatsapp.net).
-     * Ignora id com @lid; aceita várias grafias de chave.
+     * Ignora id com @lid; aceita várias grafias de chave (case-insensitive); fallback: qualquer valor com @s.whatsapp.net.
      */
     private function extractPhoneFromParticipant(mixed $p): string
     {
@@ -464,19 +502,33 @@ class WhatsAppInboxController extends Controller
             $s = trim((string) $p);
             return (str_contains($s, '@lid') || $s === '') ? '' : $s;
         }
-        $candidates = ['phoneNumber', 'phone_number', 'number', 'phone', 'jid', 'participantJid', 'id'];
-        foreach ($candidates as $key) {
-            if (!isset($p[$key])) {
+        $wantKeys = ['phonenumber', 'phone_number', 'number', 'phone', 'jid', 'participantjid', 'id'];
+        foreach ($p as $key => $value) {
+            if (!is_scalar($value)) {
                 continue;
             }
-            $value = trim((string) $p[$key]);
-            if ($value === '') {
+            $value = trim((string) $value);
+            if ($value === '' || str_contains($value, '@lid')) {
                 continue;
             }
-            if (str_contains($value, '@lid')) {
+            $keyLower = strtolower((string) $key);
+            if (in_array($keyLower, $wantKeys, true)) {
+                if ($keyLower === 'id' && str_contains($value, '@lid')) {
+                    continue;
+                }
+                if (str_contains($value, '@s.whatsapp.net') || preg_match('/^\d{10,15}$/', preg_replace('/\D/', '', $value))) {
+                    return $value;
+                }
+            }
+        }
+        foreach ($p as $value) {
+            if (!is_string($value)) {
                 continue;
             }
-            return $value;
+            $value = trim($value);
+            if ($value !== '' && !str_contains($value, '@lid') && str_contains($value, '@s.whatsapp.net')) {
+                return $value;
+            }
         }
         return '';
     }
