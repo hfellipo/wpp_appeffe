@@ -397,16 +397,20 @@ class WhatsAppInboxController extends Controller
         $contactsTagged = 0;
         $seenDigits = [];
 
-        foreach ($participants as $p) {
-            // Evolution envia phoneNumber (ex.: 553193395671@s.whatsapp.net) e name (ex.: Clarissa Menezes)
-            $phoneJid = is_array($p) ? (string) ($p['phoneNumber'] ?? $p['phone_number'] ?? $p['jid'] ?? $p['participantJid'] ?? $p['id'] ?? '') : (string) $p;
-            $phoneJid = trim($phoneJid);
-            if ($phoneJid === '' || str_contains($phoneJid, '@lid')) {
+        foreach ($participants as $idx => $p) {
+            $phoneJid = $this->extractPhoneFromParticipant($p);
+            if ($phoneJid === '') {
+                if (config('services.evolution_api.debug_participants', false)) {
+                    Log::channel('single')->info("[Evolution Participants DEBUG] Participante #{$idx} ignorado: sem phoneNumber/jid", ['keys' => is_array($p) ? array_keys($p) : 'scalar']);
+                }
                 continue;
             }
 
             $digits = $this->participantJidToDigits($phoneJid);
             if ($digits === '' || strlen($digits) < 9) {
+                if (config('services.evolution_api.debug_participants', false)) {
+                    Log::channel('single')->info("[Evolution Participants DEBUG] Participante #{$idx} ignorado: digits inválidos", ['phoneJid' => $phoneJid, 'digits' => $digits]);
+                }
                 continue;
             }
             if (isset($seenDigits[$digits])) {
@@ -418,6 +422,9 @@ class WhatsAppInboxController extends Controller
 
             $contact = $this->findOrCreateContactFromDigits($accountId, $digits, $displayName);
             if (!$contact) {
+                if (config('services.evolution_api.debug_participants', false)) {
+                    Log::channel('single')->info("[Evolution Participants DEBUG] Participante #{$idx} findOrCreateContact retornou null", ['digits' => $digits]);
+                }
                 continue;
             }
 
@@ -438,6 +445,33 @@ class WhatsAppInboxController extends Controller
             'contacts_created' => $contactsCreated,
             'contacts_tagged' => $contactsTagged,
         ]);
+    }
+
+    /**
+     * Extrai o JID/número do participante. Evolution envia phoneNumber (ex.: 553193395671@s.whatsapp.net).
+     * Ignora id com @lid; aceita várias grafias de chave.
+     */
+    private function extractPhoneFromParticipant(mixed $p): string
+    {
+        if (!is_array($p)) {
+            $s = trim((string) $p);
+            return (str_contains($s, '@lid') || $s === '') ? '' : $s;
+        }
+        $candidates = ['phoneNumber', 'phone_number', 'number', 'phone', 'jid', 'participantJid', 'id'];
+        foreach ($candidates as $key) {
+            if (!isset($p[$key])) {
+                continue;
+            }
+            $value = trim((string) $p[$key]);
+            if ($value === '') {
+                continue;
+            }
+            if (str_contains($value, '@lid')) {
+                continue;
+            }
+            return $value;
+        }
+        return '';
     }
 
     private function participantJidToDigits(string $jid): string
