@@ -398,13 +398,14 @@ class WhatsAppInboxController extends Controller
         $seenDigits = [];
 
         foreach ($participants as $p) {
-            $jid = is_array($p) ? (string) ($p['id'] ?? $p['jid'] ?? $p['participantJid'] ?? '') : (string) $p;
-            $jid = trim($jid);
-            if ($jid === '') {
+            // Evolution envia phoneNumber (ex.: 553193395671@s.whatsapp.net) e name (ex.: Clarissa Menezes)
+            $phoneJid = is_array($p) ? (string) ($p['phoneNumber'] ?? $p['phone_number'] ?? $p['jid'] ?? $p['participantJid'] ?? $p['id'] ?? '') : (string) $p;
+            $phoneJid = trim($phoneJid);
+            if ($phoneJid === '' || str_contains($phoneJid, '@lid')) {
                 continue;
             }
 
-            $digits = $this->participantJidToDigits($jid);
+            $digits = $this->participantJidToDigits($phoneJid);
             if ($digits === '' || strlen($digits) < 9) {
                 continue;
             }
@@ -413,7 +414,9 @@ class WhatsAppInboxController extends Controller
             }
             $seenDigits[$digits] = true;
 
-            $contact = $this->findOrCreateContactFromDigits($accountId, $digits);
+            $displayName = is_array($p) ? (trim((string) ($p['name'] ?? '')) ?: null) : null;
+
+            $contact = $this->findOrCreateContactFromDigits($accountId, $digits, $displayName);
             if (!$contact) {
                 continue;
             }
@@ -464,7 +467,7 @@ class WhatsAppInboxController extends Controller
         return substr($digits, 0, 11);
     }
 
-    private function findOrCreateContactFromDigits(int $accountId, string $digits): ?Contact
+    private function findOrCreateContactFromDigits(int $accountId, string $digits, ?string $displayName = null): ?Contact
     {
         $digits = ltrim($digits, '0');
         if ($digits === '' || strlen($digits) < 9) {
@@ -507,9 +510,13 @@ class WhatsAppInboxController extends Controller
             $phoneForStorage = substr($digits, 0, 11);
         }
 
+        $name = $displayName !== null && $displayName !== ''
+            ? $displayName
+            : ('Membro ' . substr($digits, -8));
+
         return Contact::create([
             'user_id' => $accountId,
-            'name' => 'Membro ' . substr($digits, -8),
+            'name' => $name,
             'phone' => $phoneForStorage,
         ]);
     }
