@@ -343,12 +343,41 @@ class WhatsAppInboxController extends Controller
             return response()->json(['success' => false, 'error' => 'Resposta inválida da API.'], 502);
         }
 
+        if (config('services.evolution_api.debug_participants', false)) {
+            Log::channel('single')->info('[Evolution Participants DEBUG] Resposta completa da API (keys no primeiro nível)', [
+                'top_level_keys' => array_keys($json),
+                'raw_json_sample' => json_encode(array_slice($json, 0, 2), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+            ]);
+        }
+
         $participants = Arr::get($json, 'participants') ?? Arr::get($json, 'data') ?? null;
         if (!is_array($participants) && is_array($json) && array_is_list($json)) {
             $participants = $json;
         }
         if (!is_array($participants)) {
             $participants = [];
+        }
+
+        if (config('services.evolution_api.debug_participants', false)) {
+            Log::channel('single')->info('[Evolution Participants DEBUG] Total de itens em participants', [
+                'count' => count($participants),
+                'first_item_keys' => isset($participants[0]) && is_array($participants[0]) ? array_keys($participants[0]) : 'not_array',
+                'first_item_full' => isset($participants[0]) ? $participants[0] : null,
+            ]);
+            foreach (array_slice($participants, 0, 10) as $idx => $p) {
+                Log::channel('single')->info("[Evolution Participants DEBUG] Participante #{$idx}", [
+                    'is_array' => is_array($p),
+                    'raw' => $p,
+                    'id' => is_array($p) ? ($p['id'] ?? 'N/A') : $p,
+                    'jid' => is_array($p) ? ($p['jid'] ?? 'N/A') : 'N/A',
+                    'participantJid' => is_array($p) ? ($p['participantJid'] ?? 'N/A') : 'N/A',
+                    'pushName' => is_array($p) ? ($p['pushName'] ?? 'N/A') : 'N/A',
+                    'name' => is_array($p) ? ($p['name'] ?? 'N/A') : 'N/A',
+                ]);
+            }
+            if (count($participants) > 10) {
+                Log::channel('single')->info('[Evolution Participants DEBUG] ... mais ' . (count($participants) - 10) . ' participante(s). Veja os primeiros 10 acima para a estrutura.');
+            }
         }
 
         $tag = Tag::query()
