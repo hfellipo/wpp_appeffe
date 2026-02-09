@@ -412,7 +412,27 @@ class WhatsAppInboxController extends Controller
     {
         $jid = preg_replace('/:?\d*@s\.whatsapp\.net$/i', '', $jid);
         $jid = preg_replace('/@.*$/', '', $jid);
-        return preg_replace('/\D/', '', $jid) ?: '';
+        $digits = preg_replace('/\D/', '', $jid) ?: '';
+        return $this->normalizeParticipantDigitsToPhone($digits);
+    }
+
+    /**
+     * Evolution às vezes devolve IDs com sufixo (ex.: 229566203351152).
+     * Reduz ao número real: BR 55+DDD+número = máx 13 dígitos; local DDD+número = 11 dígitos.
+     */
+    private function normalizeParticipantDigitsToPhone(string $digits): string
+    {
+        $digits = ltrim($digits, '0');
+        if ($digits === '' || strlen($digits) < 9) {
+            return $digits;
+        }
+        if (strlen($digits) <= 13) {
+            return $digits;
+        }
+        if (str_starts_with($digits, '55') && strlen($digits) > 13) {
+            return substr($digits, 0, 13);
+        }
+        return substr($digits, 0, 11);
     }
 
     private function findOrCreateContactFromDigits(int $accountId, string $digits): ?Contact
@@ -422,20 +442,27 @@ class WhatsAppInboxController extends Controller
             return null;
         }
 
+        $digits = $this->normalizeParticipantDigitsToPhone($digits);
+        if (strlen($digits) < 9) {
+            return null;
+        }
+
         $contacts = Contact::query()->forUser($accountId)->get(['id', 'name', 'phone']);
+        $digitsNorm = $this->normalizeParticipantDigitsToPhone($digits);
         foreach ($contacts as $c) {
             $phoneDigits = preg_replace('/\D/', '', (string) $c->phone) ?: '';
             $phoneDigits = ltrim($phoneDigits, '0');
-            if ($phoneDigits === '') {
+            $phoneDigitsNorm = $this->normalizeParticipantDigitsToPhone($phoneDigits);
+            if ($phoneDigitsNorm === '' || $digitsNorm === '') {
                 continue;
             }
-            if ($phoneDigits === $digits) {
+            if ($phoneDigitsNorm === $digitsNorm) {
                 return $c;
             }
-            if (strlen($phoneDigits) >= 10 && strlen($digits) >= 10 && substr($phoneDigits, -10) === substr($digits, -10)) {
+            if (strlen($phoneDigitsNorm) >= 10 && strlen($digitsNorm) >= 10 && substr($phoneDigitsNorm, -10) === substr($digitsNorm, -10)) {
                 return $c;
             }
-            if (strlen($phoneDigits) >= 11 && strlen($digits) >= 11 && substr($phoneDigits, -11) === substr($digits, -11)) {
+            if (strlen($phoneDigitsNorm) >= 11 && strlen($digitsNorm) >= 11 && substr($phoneDigitsNorm, -11) === substr($digitsNorm, -11)) {
                 return $c;
             }
         }
@@ -447,6 +474,8 @@ class WhatsAppInboxController extends Controller
             if (strlen($local) === 10 || strlen($local) === 11) {
                 $phoneForStorage = $local;
             }
+        } elseif (strlen($digits) > 11) {
+            $phoneForStorage = substr($digits, 0, 11);
         }
 
         return Contact::create([
