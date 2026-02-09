@@ -20,11 +20,14 @@ class WhatsAppGroup extends Model
         'subject',
         'description',
         'metadata',
+        'is_owner',
     ];
 
     protected $casts = [
         'metadata' => 'array',
+        'is_owner' => 'boolean',
     ];
+
 
     public function getRouteKeyName(): string
     {

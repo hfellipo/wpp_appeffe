@@ -82,7 +82,7 @@ class WhatsAppInboxController extends Controller
             return true;
         })->values();
 
-        // Group names from whatsapp_groups (group subject)
+        // Group names and is_owner from whatsapp_groups
         $groupConversations = $items->filter(fn (WhatsAppConversation $c) => ($c->kind ?? '') === 'group');
         $groupsByJid = [];
         if ($groupConversations->isNotEmpty()) {
@@ -91,9 +91,10 @@ class WhatsAppInboxController extends Controller
                 ->where('user_id', $accountId)
                 ->whereIn('instance_name', $items->pluck('instance_name')->unique())
                 ->whereIn('group_jid', $groupJids)
-                ->get(['instance_name', 'group_jid', 'subject']);
+                ->get(['instance_name', 'group_jid', 'subject', 'is_owner']);
             foreach ($groups as $g) {
-                $groupsByJid[$g->instance_name . '|' . $g->group_jid] = $g->subject;
+                $key = $g->instance_name . '|' . $g->group_jid;
+                $groupsByJid[$key] = ['subject' => $g->subject, 'is_owner' => (bool) $g->is_owner];
             }
         }
 
@@ -174,10 +175,13 @@ class WhatsAppInboxController extends Controller
 
                 $isGroup = ($c->kind ?? '') === 'group';
                 $displayName = null;
+                $isOwner = false;
                 if ($isGroup && $c->peer_jid) {
                     $groupKey = $c->instance_name . '|' . $c->peer_jid;
-                    if (isset($groupsByJid[$groupKey]) && $groupsByJid[$groupKey] !== '') {
-                        $displayName = $groupsByJid[$groupKey];
+                    if (isset($groupsByJid[$groupKey])) {
+                        $groupInfo = $groupsByJid[$groupKey];
+                        $displayName = is_array($groupInfo) ? ($groupInfo['subject'] ?? '') : (string) $groupInfo;
+                        $isOwner = is_array($groupInfo) ? (bool) ($groupInfo['is_owner'] ?? false) : false;
                     }
                 }
                 if ($displayName === null && !$isGroup) {
@@ -197,7 +201,7 @@ class WhatsAppInboxController extends Controller
                     $displayName = $c->contact_name;
                 }
 
-                return [
+                $payload = [
                     'id' => $c->public_id,
                     'instance_name' => $c->instance_name,
                     'kind' => $c->kind ?: 'direct',
@@ -210,6 +214,10 @@ class WhatsAppInboxController extends Controller
                     'last_message_sender' => $c->last_message_sender,
                     'unread_count' => (int) $c->unread_count,
                 ];
+                if ($isGroup) {
+                    $payload['is_owner'] = $isOwner;
+                }
+                return $payload;
             })->values(),
         ]);
     }

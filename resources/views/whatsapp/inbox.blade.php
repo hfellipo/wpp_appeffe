@@ -386,6 +386,22 @@
                 background: #fff;
                 color: var(--primary-color);
             }
+            .wa-groups-sections { padding-bottom: 12px; }
+            .wa-groups-section { margin-bottom: 16px; }
+            .wa-groups-section-title {
+                font-size: 0.75rem;
+                font-weight: 600;
+                color: #6b7280;
+                text-transform: uppercase;
+                letter-spacing: 0.02em;
+                margin: 0 12px 8px;
+                padding-bottom: 4px;
+                border-bottom: 1px solid #e5e7eb;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .wa-groups-section-title i { opacity: 0.9; }
         </style>
     @endpush
 
@@ -435,48 +451,139 @@
                         </div>
                         <p class="messenger-title" style="margin-top: 0;"><span x-text="conversationTab === 'direct' ? 'Conversas' : 'Grupos'"></span></p>
 
-                        <div style="width: 100%; height: calc(100% - 160px); position: relative;">
+                        <div style="width: 100%; height: calc(100% - 160px); position: relative; overflow-y: auto;">
                             <template x-if="loadingConversations">
                                 <p class="message-hint center-el"><span>Loading...</span></p>
                             </template>
 
-                            <template x-if="!loadingConversations && filteredConversations.length === 0">
-                                <p class="message-hint center-el"><span x-text="conversationTab === 'group' ? 'Nenhum grupo' : 'Nenhuma conversa'"></span></p>
+                            <template x-if="!loadingConversations && conversationTab === 'direct' && filteredConversations.length === 0">
+                                <p class="message-hint center-el"><span>Nenhuma conversa</span></p>
                             </template>
 
-                            <template x-for="c in filteredConversations" :key="c.id">
-                                <div
-                                    class="wa-conversation-item messenger-list-item"
-                                    :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
-                                    :data-contact="c.id"
-                                    data-action="0"
-                                    @click="openConversation(c)"
-                                >
-                                    <div class="wa-conversation-item__avatar">
-                                        <div
-                                            class="avatar av-m wa-avatar"
-                                            :class="{ 'wa-avatar--fallback': !c.avatar_url }"
-                                            :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
-                                        >
-                                            <template x-if="!c.avatar_url">
-                                                <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
-                                            </template>
-                                        </div>
-                                    </div>
-                                    <div class="wa-conversation-item__body">
-                                        <div class="wa-conversation-item__top">
-                                            <span class="wa-conversation-item__name" x-text="(c.contact_name && String(c.contact_name).trim()) ? c.contact_name : formatNumber(c.contact_number)"></span>
-                                            <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
-                                        </div>
-                                        <div class="wa-conversation-item__bottom">
-                                            <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
-                                            <div class="wa-conversation-item__right">
-                                                <template x-if="(c.unread_count || 0) > 0">
-                                                    <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
+                            <template x-if="!loadingConversations && conversationTab === 'group' && filteredGroupConversationsOwned.length === 0 && filteredGroupConversationsMember.length === 0">
+                                <p class="message-hint center-el"><span>Nenhum grupo</span></p>
+                            </template>
+
+                            <template x-if="!loadingConversations && conversationTab === 'direct'">
+                                <template x-for="c in filteredConversations" :key="c.id">
+                                    <div
+                                        class="wa-conversation-item messenger-list-item"
+                                        :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
+                                        :data-contact="c.id"
+                                        data-action="0"
+                                        @click="openConversation(c)"
+                                    >
+                                        <div class="wa-conversation-item__avatar">
+                                            <div
+                                                class="avatar av-m wa-avatar"
+                                                :class="{ 'wa-avatar--fallback': !c.avatar_url }"
+                                                :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
+                                            >
+                                                <template x-if="!c.avatar_url">
+                                                    <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
                                                 </template>
                                             </div>
                                         </div>
+                                        <div class="wa-conversation-item__body">
+                                            <div class="wa-conversation-item__top">
+                                                <span class="wa-conversation-item__name" x-text="(c.contact_name && String(c.contact_name).trim()) ? c.contact_name : formatNumber(c.contact_number)"></span>
+                                                <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                            </div>
+                                            <div class="wa-conversation-item__bottom">
+                                                <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
+                                                <div class="wa-conversation-item__right">
+                                                    <template x-if="(c.unread_count || 0) > 0">
+                                                        <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
+                                </template>
+                            </template>
+
+                            <template x-if="!loadingConversations && conversationTab === 'group'">
+                                <div class="wa-groups-sections">
+                                    <template x-if="filteredGroupConversationsOwned.length > 0">
+                                        <div class="wa-groups-section">
+                                            <p class="wa-groups-section-title"><i class="fas fa-crown"></i> Grupos que criei</p>
+                                            <template x-for="c in filteredGroupConversationsOwned" :key="c.id">
+                                                <div
+                                                    class="wa-conversation-item messenger-list-item"
+                                                    :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
+                                                    :data-contact="c.id"
+                                                    data-action="0"
+                                                    @click="openConversation(c)"
+                                                >
+                                                    <div class="wa-conversation-item__avatar">
+                                                        <div
+                                                            class="avatar av-m wa-avatar"
+                                                            :class="{ 'wa-avatar--fallback': !c.avatar_url }"
+                                                            :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
+                                                        >
+                                                            <template x-if="!c.avatar_url">
+                                                                <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                    <div class="wa-conversation-item__body">
+                                                        <div class="wa-conversation-item__top">
+                                                            <span class="wa-conversation-item__name" x-text="(c.contact_name && String(c.contact_name).trim()) ? c.contact_name : formatNumber(c.contact_number)"></span>
+                                                            <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                                        </div>
+                                                        <div class="wa-conversation-item__bottom">
+                                                            <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
+                                                            <div class="wa-conversation-item__right">
+                                                                <template x-if="(c.unread_count || 0) > 0">
+                                                                    <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
+                                                                </template>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <template x-if="filteredGroupConversationsMember.length > 0">
+                                        <div class="wa-groups-section">
+                                            <p class="wa-groups-section-title"><i class="fas fa-users"></i> Grupos que participo</p>
+                                            <template x-for="c in filteredGroupConversationsMember" :key="c.id">
+                                                <div
+                                                    class="wa-conversation-item messenger-list-item"
+                                                    :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
+                                                    :data-contact="c.id"
+                                                    data-action="0"
+                                                    @click="openConversation(c)"
+                                                >
+                                                    <div class="wa-conversation-item__avatar">
+                                                        <div
+                                                            class="avatar av-m wa-avatar"
+                                                            :class="{ 'wa-avatar--fallback': !c.avatar_url }"
+                                                            :style="c.avatar_url ? ('background-image: url(' + c.avatar_url + ')') : ''"
+                                                        >
+                                                            <template x-if="!c.avatar_url">
+                                                                <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                    <div class="wa-conversation-item__body">
+                                                        <div class="wa-conversation-item__top">
+                                                            <span class="wa-conversation-item__name" x-text="(c.contact_name && String(c.contact_name).trim()) ? c.contact_name : formatNumber(c.contact_number)"></span>
+                                                            <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                                        </div>
+                                                        <div class="wa-conversation-item__bottom">
+                                                            <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
+                                                            <div class="wa-conversation-item__right">
+                                                                <template x-if="(c.unread_count || 0) > 0">
+                                                                    <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
+                                                                </template>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
                                 </div>
                             </template>
                         </div>

@@ -89,6 +89,30 @@ window.waInboxChatify = function waInboxChatify() {
             });
         },
 
+        get filteredGroupConversationsOwned() {
+            const list = this.groupConversations.filter((c) => c.is_owner === true);
+            const q = String(this.search || '').toLowerCase().trim();
+            if (!q) return list;
+            return list.filter((c) => {
+                const name = String(c.contact_name || '').toLowerCase();
+                const num = String(c.contact_number || '').toLowerCase();
+                const prev = String(c.last_message_preview || '').toLowerCase();
+                return name.includes(q) || num.includes(q) || prev.includes(q);
+            });
+        },
+
+        get filteredGroupConversationsMember() {
+            const list = this.groupConversations.filter((c) => c.is_owner !== true);
+            const q = String(this.search || '').toLowerCase().trim();
+            if (!q) return list;
+            return list.filter((c) => {
+                const name = String(c.contact_name || '').toLowerCase();
+                const num = String(c.contact_number || '').toLowerCase();
+                const prev = String(c.last_message_preview || '').toLowerCase();
+                return name.includes(q) || num.includes(q) || prev.includes(q);
+            });
+        },
+
         setConversationTab(tab) {
             this.conversationTab = tab;
             if (this.activeConversation && (this.activeConversation.kind || 'direct') !== tab) {

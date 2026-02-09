@@ -197,12 +197,17 @@ class EvolutionWebhookProcessor
         $groups = Arr::get($data, 'groups') ?? Arr::get($data, 'data.groups') ?? Arr::get($data, 'data', []);
         if (!is_array($groups)) return;
 
+        $instanceNumberDigits = $this->normalizeJidToDigits((string) ($wa->whatsapp_number ?? ''));
+
         foreach ($groups as $g) {
             if (!is_array($g)) continue;
             $jid = (string) ($g['id'] ?? $g['jid'] ?? $g['remoteJid'] ?? $g['groupJid'] ?? '');
             if ($jid === '') continue;
 
             $subject = (string) ($g['subject'] ?? $g['name'] ?? '');
+            $ownerDigits = $this->groupOwnerDigitsFromPayload($g);
+            $isOwner = $instanceNumberDigits !== '' && $ownerDigits !== '' && $this->digitsMatch($instanceNumberDigits, $ownerDigits);
+
             WhatsAppGroup::query()->updateOrCreate(
                 [
                     'user_id' => $accountId,
@@ -213,6 +218,7 @@ class EvolutionWebhookProcessor
                     'subject' => $subject,
                     'description' => (string) ($g['desc'] ?? $g['description'] ?? ''),
                     'metadata' => $g,
+                    'is_owner' => $isOwner,
                 ]
             );
             if ($subject !== '') {
@@ -224,6 +230,43 @@ class EvolutionWebhookProcessor
                     ->update(['contact_name' => $subject]);
             }
         }
+    }
+
+    /**
+     * Extrai dígitos do JID/número do dono do grupo a partir do payload (Evolution/Baileys).
+     * Campos comuns: owner, ownerJid, createdBy.
+     *
+     * @param  array<string,mixed>  $g
+     */
+    private function groupOwnerDigitsFromPayload(array $g): string
+    {
+        $owner = $g['owner'] ?? $g['ownerJid'] ?? $g['createdBy'] ?? null;
+        if ($owner !== null && $owner !== '') {
+            return $this->normalizeJidToDigits((string) $owner);
+        }
+        return '';
+    }
+
+    private function normalizeJidToDigits(string $jid): string
+    {
+        $jid = trim($jid);
+        if ($jid === '') return '';
+        // Remove sufixo @s.whatsapp.net ou :xx@s.whatsapp.net
+        $jid = preg_replace('/:?\d*@s\.whatsapp\.net$/i', '', $jid);
+        $jid = preg_replace('/@.*$/', '', $jid);
+        return preg_replace('/\D/', '', $jid) ?: '';
+    }
+
+    private function digitsMatch(string $a, string $b): bool
+    {
+        $a = ltrim($a, '0');
+        $b = ltrim($b, '0');
+        if ($a === '' || $b === '') return false;
+        if ($a === $b) return true;
+        // Comparação por últimos 10/11 dígitos (BR)
+        if (strlen($a) >= 10 && strlen($b) >= 10 && substr($a, -10) === substr($b, -10)) return true;
+        if (strlen($a) >= 11 && strlen($b) >= 11 && substr($a, -11) === substr($b, -11)) return true;
+        return false;
     }
 
     private function handleChats(WhatsAppInstance $wa, array $data): void
