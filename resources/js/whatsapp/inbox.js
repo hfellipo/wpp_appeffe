@@ -77,6 +77,9 @@ window.waInboxChatify = function waInboxChatify() {
         // true/undefined = carregando, false = carregou (para mostrar feedback "Carregando...")
         imageLoading: {},
 
+        // dropdown do grupo (opções: alterar nome, marcar criado por mim)
+        openGroupMenuId: null,
+
         get filteredConversations() {
             const list = this.conversationTab === 'group' ? this.groupConversations : this.directConversations;
             const q = String(this.search || '').toLowerCase().trim();
@@ -125,6 +128,54 @@ window.waInboxChatify = function waInboxChatify() {
         syncConversationLists() {
             this.directConversations = this.conversations.filter((c) => String(c.kind || 'direct') === 'direct');
             this.groupConversations = this.conversations.filter((c) => String(c.kind) === 'group');
+        },
+
+        toggleGroupMenu(c) {
+            this.openGroupMenuId = this.openGroupMenuId === c.id ? null : c.id;
+        },
+        closeGroupMenu() {
+            this.openGroupMenuId = null;
+        },
+        isGroupMenuOpen(c) {
+            return this.openGroupMenuId === c.id;
+        },
+        async updateGroupName(c) {
+            this.closeGroupMenu();
+            const current = (c.contact_name && String(c.contact_name).trim()) || '';
+            const name = window.prompt('Nome do grupo', current);
+            if (name === null) return;
+            const trimmed = String(name).trim();
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const resp = await fetch(`/whatsapp/api/conversations/${c.id}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || '',
+                },
+                body: JSON.stringify({ custom_contact_name: trimmed || null }),
+            });
+            if (!resp.ok) return;
+            await this.refreshConversations(true);
+            if (this.activeConversation && this.activeConversation.id === c.id) {
+                this.activeConversation.contact_name = trimmed || this.activeConversation.contact_name;
+            }
+        },
+        async toggleGroupOwner(c) {
+            this.closeGroupMenu();
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const newVal = !(c.is_owner === true);
+            const resp = await fetch(`/whatsapp/api/conversations/${c.id}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || '',
+                },
+                body: JSON.stringify({ user_marked_owner: newVal }),
+            });
+            if (!resp.ok) return;
+            await this.refreshConversations(true);
         },
 
         async init() {

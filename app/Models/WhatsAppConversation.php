@@ -23,17 +23,20 @@ class WhatsAppConversation extends Model
         'peer_jid',
         'contact_number',
         'contact_name',
+        'custom_contact_name',
         'last_message_at',
         'last_message_preview',
         'last_message_sender', // for groups: name of sender of last message
         'unread_count',
         'metadata',
+        'user_marked_owner',
     ];
 
     protected $casts = [
         'last_message_at' => 'datetime',
         'unread_count' => 'integer',
         'metadata' => 'array',
+        'user_marked_owner' => 'boolean',
     ];
 
     public function messages(): HasMany

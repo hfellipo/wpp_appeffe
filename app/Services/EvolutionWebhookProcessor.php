@@ -268,7 +268,7 @@ class EvolutionWebhookProcessor
             ->get(['instance_name', 'group_jid', 'subject']);
 
         foreach ($groups as $g) {
-            WhatsAppConversation::query()->firstOrCreate(
+            $conv = WhatsAppConversation::query()->firstOrCreate(
                 [
                     'user_id' => $accountId,
                     'instance_name' => $g->instance_name,
@@ -284,6 +284,11 @@ class EvolutionWebhookProcessor
                     'unread_count' => 0,
                 ]
             );
+            // Fixar nome do grupo quando estava vazio (ex.: conversa veio de mensagem antes do sync)
+            if ($g->subject !== '' && ($conv->contact_name === null || trim((string) $conv->contact_name) === '')) {
+                $conv->contact_name = $g->subject;
+                $conv->saveQuietly();
+            }
         }
     }
 

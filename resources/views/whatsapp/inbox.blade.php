@@ -402,6 +402,53 @@
                 gap: 6px;
             }
             .wa-groups-section-title i { opacity: 0.9; }
+            .wa-conversation-item__top { position: relative; }
+            .wa-conversation-item__meta {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+            }
+            .wa-group-menu-trigger {
+                padding: 2px 4px;
+                border: none;
+                background: none;
+                color: inherit;
+                opacity: 0.6;
+                cursor: pointer;
+                border-radius: 3px;
+                font-size: 0.7rem;
+            }
+            .wa-group-menu-trigger:hover,
+            .wa-group-menu-trigger.wa-group-menu-trigger--open { opacity: 1; }
+            .wa-conversation-item.m-list-active .wa-group-menu-trigger { color: #fff; }
+            .wa-group-dropdown {
+                position: absolute;
+                top: 100%;
+                right: 0;
+                margin-top: 2px;
+                min-width: 200px;
+                background: #fff;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+                z-index: 50;
+                padding: 4px 0;
+            }
+            .wa-group-dropdown button {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                padding: 8px 12px;
+                border: none;
+                background: none;
+                text-align: left;
+                font-size: 0.85rem;
+                color: #374151;
+                cursor: pointer;
+            }
+            .wa-group-dropdown button:hover { background: #f3f4f6; }
+            .wa-group-dropdown button i { width: 16px; opacity: 0.8; }
         </style>
     @endpush
 
@@ -509,7 +556,7 @@
                                             <p class="wa-groups-section-title"><i class="fas fa-crown"></i> Grupos que criei</p>
                                             <template x-for="c in filteredGroupConversationsOwned" :key="c.id">
                                                 <div
-                                                    class="wa-conversation-item messenger-list-item"
+                                                    class="wa-conversation-item messenger-list-item wa-conversation-item--group"
                                                     :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
                                                     :data-contact="c.id"
                                                     data-action="0"
@@ -529,7 +576,16 @@
                                                     <div class="wa-conversation-item__body">
                                                         <div class="wa-conversation-item__top">
                                                             <span class="wa-conversation-item__name" x-text="(c.contact_name && String(c.contact_name).trim()) ? c.contact_name : formatNumber(c.contact_number)"></span>
-                                                            <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                                            <span class="wa-conversation-item__meta" @click.outside="closeGroupMenu()">
+                                                                <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                                                <button type="button" class="wa-group-menu-trigger" @click.stop="toggleGroupMenu(c)" title="Opções do grupo" :class="{ 'wa-group-menu-trigger--open': isGroupMenuOpen(c) }">
+                                                                    <i class="fas fa-chevron-down"></i>
+                                                                </button>
+                                                                <div class="wa-group-dropdown" x-show="isGroupMenuOpen(c)" @click.stop x-transition>
+                                                                    <button type="button" @click="updateGroupName(c)"><i class="fas fa-pen"></i> Alterar nome do grupo</button>
+                                                                    <button type="button" @click="toggleGroupOwner(c)"><i class="fas fa-user-minus"></i> Desmarcar como criado por mim</button>
+                                                                </div>
+                                                            </span>
                                                         </div>
                                                         <div class="wa-conversation-item__bottom">
                                                             <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
@@ -549,7 +605,7 @@
                                             <p class="wa-groups-section-title"><i class="fas fa-users"></i> Grupos que participo</p>
                                             <template x-for="c in filteredGroupConversationsMember" :key="c.id">
                                                 <div
-                                                    class="wa-conversation-item messenger-list-item"
+                                                    class="wa-conversation-item messenger-list-item wa-conversation-item--group"
                                                     :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
                                                     :data-contact="c.id"
                                                     data-action="0"
@@ -569,7 +625,16 @@
                                                     <div class="wa-conversation-item__body">
                                                         <div class="wa-conversation-item__top">
                                                             <span class="wa-conversation-item__name" x-text="(c.contact_name && String(c.contact_name).trim()) ? c.contact_name : formatNumber(c.contact_number)"></span>
-                                                            <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                                            <span class="wa-conversation-item__meta" @click.outside="closeGroupMenu()">
+                                                                <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
+                                                                <button type="button" class="wa-group-menu-trigger" @click.stop="toggleGroupMenu(c)" title="Opções do grupo" :class="{ 'wa-group-menu-trigger--open': isGroupMenuOpen(c) }">
+                                                                    <i class="fas fa-chevron-down"></i>
+                                                                </button>
+                                                                <div class="wa-group-dropdown" x-show="isGroupMenuOpen(c)" @click.stop x-transition>
+                                                                    <button type="button" @click="updateGroupName(c)"><i class="fas fa-pen"></i> Alterar nome do grupo</button>
+                                                                    <button type="button" @click="toggleGroupOwner(c)"><i class="fas fa-crown"></i> Marcar como criado por mim</button>
+                                                                </div>
+                                                            </span>
                                                         </div>
                                                         <div class="wa-conversation-item__bottom">
                                                             <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>

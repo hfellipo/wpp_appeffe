@@ -82,6 +82,8 @@ class WhatsAppInboxController extends Controller
                 'peer_jid',
                 'contact_number',
                 'contact_name',
+                'custom_contact_name',
+                'user_marked_owner',
                 'last_message_at',
                 'last_message_preview',
                 'last_message_sender',
@@ -197,10 +199,24 @@ class WhatsAppInboxController extends Controller
                 $displayName = null;
                 $isOwner = false;
                 if ($isGroup && $c->peer_jid) {
+                    // Nome: customizado pelo usuário > subject do grupo > contact_name
+                    $customName = trim((string) ($c->custom_contact_name ?? ''));
+                    if ($customName !== '') {
+                        $displayName = $customName;
+                    }
                     $groupKey = $c->instance_name . '|' . $c->peer_jid;
-                    if (isset($groupsByJid[$groupKey])) {
+                    if ($displayName === null && isset($groupsByJid[$groupKey])) {
                         $groupInfo = $groupsByJid[$groupKey];
                         $displayName = is_array($groupInfo) ? ($groupInfo['subject'] ?? '') : (string) $groupInfo;
+                    }
+                    if ($displayName === null) {
+                        $displayName = $c->contact_name;
+                    }
+                    // Criado por mim: preferência do usuário > is_owner da API
+                    if ($c->user_marked_owner !== null) {
+                        $isOwner = (bool) $c->user_marked_owner;
+                    } elseif (isset($groupsByJid[$groupKey])) {
+                        $groupInfo = $groupsByJid[$groupKey];
                         $isOwner = is_array($groupInfo) ? (bool) ($groupInfo['is_owner'] ?? false) : false;
                     }
                 }
@@ -239,6 +255,44 @@ class WhatsAppInboxController extends Controller
                 }
                 return $payload;
             })->values(),
+        ]);
+    }
+
+    /**
+     * PATCH /whatsapp/api/conversations/{conversation}
+     * Atualiza opções do grupo: nome customizado e "marcar como criado por mim". Apenas para kind=group.
+     */
+    public function updateConversation(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        if (($conversation->kind ?? '') !== 'group') {
+            return response()->json(['success' => false, 'error' => 'Apenas grupos podem ser editados aqui.'], 422);
+        }
+
+        $customName = $request->input('custom_contact_name');
+        $userMarkedOwner = $request->input('user_marked_owner');
+
+        if ($customName !== null) {
+            $conversation->custom_contact_name = trim((string) $customName) !== '' ? trim((string) $customName) : null;
+        }
+        if ($userMarkedOwner !== null) {
+            $conversation->user_marked_owner = (bool) $userMarkedOwner;
+        }
+
+        $conversation->save();
+
+        return response()->json([
+            'success' => true,
+            'conversation' => [
+                'id' => $conversation->public_id,
+                'contact_name' => $conversation->custom_contact_name ?: $conversation->contact_name,
+                'custom_contact_name' => $conversation->custom_contact_name,
+                'user_marked_owner' => $conversation->user_marked_owner,
+            ],
         ]);
     }
 

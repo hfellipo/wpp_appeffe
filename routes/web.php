@@ -120,6 +120,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/api/contacts', [WhatsAppInboxController::class, 'contacts'])->name('api.contacts');
         Route::post('/api/conversations/start', [WhatsAppInboxController::class, 'startConversation'])->name('api.conversations.start');
         Route::get('/api/conversations', [WhatsAppInboxController::class, 'conversations'])->name('api.conversations');
+        Route::patch('/api/conversations/{conversation}', [WhatsAppInboxController::class, 'updateConversation'])->name('api.conversations.update');
         Route::get('/api/conversations/{conversation}/avatar', [WhatsAppInboxController::class, 'avatar'])->name('api.conversations.avatar');
         Route::get('/api/conversations/{conversation}/app-contact', [WhatsAppInboxController::class, 'appContact'])->name('api.conversations.app-contact');
         Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');
