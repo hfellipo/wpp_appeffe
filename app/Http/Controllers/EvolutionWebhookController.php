@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessEvolutionWebhookEvent;
+use App\Services\EvolutionWebhookProcessor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -62,7 +63,22 @@ class EvolutionWebhookController extends Controller
             'instance' => $data['instanceName'] ?? $data['instance'] ?? null,
         ]);
 
-        // Dispatch to queue for performance (database queue is already configured)
+        // WEBHOOK_EVOLUTION_SYNC=true: processa na hora (mensagens chegam sem precisar de queue:work)
+        if (config('services.evolution_api.webhook_sync', false)) {
+            try {
+                app(EvolutionWebhookProcessor::class)->handle($event, $data);
+            } catch (\Throwable $e) {
+                Log::channel('single')->error('Evolution webhook sync processing failed', [
+                    'event' => $event,
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                return response()->json(['ok' => false, 'error' => 'Processing failed'], 500);
+            }
+            return response()->json(['ok' => true]);
+        }
+
+        // Dispatch to queue (precisa rodar: php artisan queue:work)
         ProcessEvolutionWebhookEvent::dispatch($event, $data);
 
         return response()->json(['ok' => true]);

@@ -56,16 +56,26 @@ class EvolutionWebhookProcessor
             $first = Arr::first(Arr::get($data, 'data.messages'));
             $instanceRaw = (string) (is_array($first) ? (Arr::get($first, 'instanceName') ?? Arr::get($first, 'instance') ?? '') : '');
         }
-        $instance = $this->normalizeInstance($instanceRaw);
-        if ($instance === '') {
+        $instanceNormalized = $this->normalizeInstance($instanceRaw);
+        $instanceRawTrim = trim($instanceRaw);
+
+        if ($instanceNormalized === '' && $instanceRawTrim === '') {
             Log::channel('single')->warning('Evolution webhook: instance name empty, payload keys: ' . implode(', ', array_keys($data)));
             return;
         }
 
-        $wa = WhatsAppInstance::query()->where('instance_name', $instance)->first();
+        // Buscar por nome normalizado (só dígitos) ou pelo nome bruto (Evolution pode enviar "production" ou "5531999999999")
+        $wa = null;
+        if ($instanceNormalized !== '') {
+            $wa = WhatsAppInstance::query()->where('instance_name', $instanceNormalized)->first();
+        }
+        if (!$wa && $instanceRawTrim !== '') {
+            $wa = WhatsAppInstance::query()->where('instance_name', $instanceRawTrim)->first();
+        }
         if (!$wa) {
             Log::channel('single')->warning('Evolution webhook: WhatsAppInstance not found', [
-                'instance_normalized' => $instance,
+                'instance_raw' => $instanceRawTrim,
+                'instance_normalized' => $instanceNormalized,
                 'event' => $event,
                 'hint' => 'Create/connect this instance in /settings/whatsapp so instance_name matches.',
             ]);

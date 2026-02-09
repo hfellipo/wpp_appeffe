@@ -38,6 +38,8 @@ return [
     'evolution_api' => [
         'url' => env('EVOLUTION_API_URL'),
         'key' => env('EVOLUTION_API_KEY'),
+        // true = processa webhook na hora (mensagens chegam sem rodar queue:work)
+        'webhook_sync' => env('EVOLUTION_WEBHOOK_SYNC', false),
     ],
 
 ];
