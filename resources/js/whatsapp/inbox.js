@@ -197,9 +197,13 @@ window.waInboxChatify = function waInboxChatify() {
                     alert(data.error || 'Não foi possível extrair os membros.');
                     return;
                 }
-                const msg = data.contacts_created > 0 || data.contacts_tagged > 0
+                const list = Array.isArray(data.identified) && data.identified.length > 0
+                    ? data.identified.map((u) => (u.name && u.name !== '' ? `${u.name} (${u.phone || ''})` : (u.phone || '')).trim()).filter(Boolean).join('\n')
+                    : '';
+                const summary = data.contacts_created > 0 || data.contacts_tagged > 0
                     ? `Tag "${data.tag_name}" aplicada. ${data.participants_count} participante(s), ${data.contacts_created} contato(s) criado(s), ${data.contacts_tagged} contato(s) com a tag.`
                     : `Nenhum contato novo para tagar. ${data.participants_count} participante(s) no grupo.`;
+                const msg = list ? summary + '\n\nUsuários identificados:\n' + list : summary + (data.participants_count === 0 ? '\n\nNenhum usuário identificado. Verifique a conexão e o formato dos participantes.' : '');
                 alert(msg);
             } finally {
                 this.extractingMembers = false;

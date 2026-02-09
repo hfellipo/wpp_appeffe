@@ -396,6 +396,7 @@ class WhatsAppInboxController extends Controller
         $contactsCreated = 0;
         $contactsTagged = 0;
         $seenDigits = [];
+        $identified = [];
 
         foreach ($participants as $idx => $p) {
             $phoneJid = $this->extractPhoneFromParticipant($p);
@@ -428,6 +429,11 @@ class WhatsAppInboxController extends Controller
                 continue;
             }
 
+            $identified[] = [
+                'name' => $contact->name,
+                'phone' => $contact->phone,
+            ];
+
             if ($contact->wasRecentlyCreated) {
                 $contactsCreated++;
             }
@@ -444,6 +450,7 @@ class WhatsAppInboxController extends Controller
             'participants_count' => count($seenDigits),
             'contacts_created' => $contactsCreated,
             'contacts_tagged' => $contactsTagged,
+            'identified' => $identified,
         ]);
     }
 
