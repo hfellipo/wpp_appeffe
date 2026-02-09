@@ -133,6 +133,24 @@ class EvolutionApiHttpClient
     }
 
     /**
+     * Fetch all groups from the WhatsApp instance (Evolution API).
+     * GET /group/fetchAllGroups/{instance}?getParticipants=true
+     * Use getParticipants=true to get owner info for "groups I created".
+     *
+     * @return array{status:int, json:array|null, text:string, headers:array}
+     */
+    public function fetchAllGroups(string $instance, bool $getParticipants = true): array
+    {
+        $instance = trim($instance);
+        if ($instance === '') {
+            return ['status' => 0, 'json' => null, 'text' => 'Empty instance', 'headers' => []];
+        }
+        return $this->get("/group/fetchAllGroups/{$instance}", [
+            'getParticipants' => $getParticipants ? 'true' : 'false',
+        ]);
+    }
+
+    /**
      * Get media (image/video/document) as base64 from a received message.
      * POST /chat/getBase64FromMediaMessage/{instance}
      * Body: { "message": { "key": { "id": "MESSAGE_ID" } }, "convertToMp4": false }

@@ -9,10 +9,12 @@ use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppInstance;
 use App\Services\EvolutionApiHttpClient;
+use App\Services\EvolutionWebhookProcessor;
 use App\Services\WhatsAppEventPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
@@ -20,13 +22,17 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class WhatsAppInboxController extends Controller
 {
+    private const GROUPS_SYNC_THROTTLE_SECONDS = 60;
+
     private EvolutionApiHttpClient $client;
     private WhatsAppEventPublisher $events;
+    private EvolutionWebhookProcessor $webhookProcessor;
 
-    public function __construct(EvolutionApiHttpClient $client, WhatsAppEventPublisher $events)
+    public function __construct(EvolutionApiHttpClient $client, WhatsAppEventPublisher $events, EvolutionWebhookProcessor $webhookProcessor)
     {
         $this->client = $client;
         $this->events = $events;
+        $this->webhookProcessor = $webhookProcessor;
     }
 
     public function index(): View
@@ -37,6 +43,20 @@ class WhatsAppInboxController extends Controller
     public function conversations(Request $request): JsonResponse
     {
         $accountId = auth()->user()->accountId();
+
+        // Varredura dos grupos na Evolution (grupos criados no celular aparecem mesmo sem movimento)
+        $cacheKey = 'wa_sync_groups_' . $accountId;
+        if (Cache::get($cacheKey) === null) {
+            try {
+                $this->webhookProcessor->syncGroupsFromEvolutionForUser($accountId);
+                Cache::put($cacheKey, true, self::GROUPS_SYNC_THROTTLE_SECONDS);
+            } catch (\Throwable $e) {
+                Log::channel('single')->warning('WhatsApp groups sync failed', [
+                    'account_id' => $accountId,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
 
         $q = WhatsAppConversation::query()
             ->where('user_id', $accountId);

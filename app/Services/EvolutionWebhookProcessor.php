@@ -15,6 +15,11 @@ use Illuminate\Support\Facades\Log;
 
 class EvolutionWebhookProcessor
 {
+    public function __construct(
+        private readonly EvolutionApiHttpClient $evolutionClient
+    ) {
+    }
+
     /**
      * Best-effort realtime publishing to the /whatsapp UI (SSE).
      *
@@ -186,6 +191,88 @@ class EvolutionWebhookProcessor
                     'contact_number' => $number,
                 ],
                 $attrs
+            );
+        }
+    }
+
+    /**
+     * Varredura dos grupos na Evolution API ao carregar: traz grupos criados no celular
+     * que ainda não tinham movimento no app. Throttle por conta (ex.: 60s) para não
+     * sobrecarregar a API.
+     */
+    public function syncGroupsFromEvolutionForUser(int $accountId): void
+    {
+        if (!$this->evolutionClient->isConfigured()) {
+            return;
+        }
+
+        $connectedStates = ['open', 'connected', 'online', 'ready'];
+        $instances = WhatsAppInstance::query()
+            ->where('user_id', $accountId)
+            ->whereIn('status', $connectedStates)
+            ->orderByDesc('updated_at')
+            ->get(['id', 'instance_name', 'whatsapp_number']);
+
+        if ($instances->isEmpty()) {
+            $instances = WhatsAppInstance::query()
+                ->where('user_id', $accountId)
+                ->orderByDesc('updated_at')
+                ->limit(3)
+                ->get(['id', 'instance_name', 'whatsapp_number']);
+        }
+
+        foreach ($instances as $wa) {
+            $resp = $this->evolutionClient->fetchAllGroups($wa->instance_name, true);
+            if (($resp['status'] ?? 0) < 200 || ($resp['status'] ?? 0) >= 300) {
+                Log::channel('single')->debug('Evolution fetchAllGroups failed', [
+                    'instance' => $wa->instance_name,
+                    'status' => $resp['status'] ?? 0,
+                ]);
+                continue;
+            }
+
+            $json = $resp['json'] ?? null;
+            if (!is_array($json)) {
+                continue;
+            }
+
+            $groups = Arr::get($json, 'groups') ?? Arr::get($json, 'data') ?? Arr::get($json, 'data.groups') ?? [];
+            if (!is_array($groups)) {
+                continue;
+            }
+
+            $this->handleGroups($wa, ['groups' => $groups]);
+        }
+
+        $this->ensureConversationsForSyncedGroups($accountId);
+    }
+
+    /**
+     * Cria registros em whatsapp_conversations para cada grupo em whatsapp_groups
+     * que ainda não tem conversa (ex.: grupo criado no celular, sem mensagens no app).
+     */
+    private function ensureConversationsForSyncedGroups(int $accountId): void
+    {
+        $groups = WhatsAppGroup::query()
+            ->where('user_id', $accountId)
+            ->get(['instance_name', 'group_jid', 'subject']);
+
+        foreach ($groups as $g) {
+            WhatsAppConversation::query()->firstOrCreate(
+                [
+                    'user_id' => $accountId,
+                    'instance_name' => $g->instance_name,
+                    'peer_jid' => $g->group_jid,
+                ],
+                [
+                    'kind' => 'group',
+                    'contact_number' => null,
+                    'contact_name' => $g->subject ?: $g->group_jid,
+                    'last_message_at' => null,
+                    'last_message_preview' => null,
+                    'last_message_sender' => null,
+                    'unread_count' => 0,
+                ]
             );
         }
     }
