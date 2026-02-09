@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Contact;
+use App\Models\Lista;
 use App\Models\Tag;
 use App\Models\WhatsAppAttachment;
 use App\Models\WhatsAppContact;
@@ -299,7 +300,7 @@ class WhatsAppInboxController extends Controller
 
     /**
      * POST /whatsapp/api/conversations/{conversation}/extract-members
-     * Extrai todos os membros do grupo na Evolution, cria/atualiza contatos e aplica tag com o nome do grupo.
+     * Extrai todos os membros do grupo na Evolution e cria/atualiza contatos. Não aplica tag nem lista automaticamente.
      */
     public function extractGroupMembers(WhatsAppConversation $conversation): JsonResponse
     {
@@ -314,16 +315,6 @@ class WhatsAppInboxController extends Controller
 
         if (!$this->client->isConfigured()) {
             return response()->json(['success' => false, 'error' => 'Evolution API não configurada.'], 400);
-        }
-
-        $groupName = trim((string) ($conversation->custom_contact_name ?? $conversation->contact_name ?? ''));
-        if ($groupName === '') {
-            $group = \App\Models\WhatsAppGroup::query()
-                ->where('user_id', $accountId)
-                ->where('instance_name', $conversation->instance_name)
-                ->where('group_jid', $conversation->peer_jid)
-                ->first(['subject']);
-            $groupName = $group && trim((string) ($group->subject ?? '')) !== '' ? trim($group->subject) : 'Grupo';
         }
 
         $resp = $this->client->getGroupParticipants($conversation->instance_name, $conversation->peer_jid);
@@ -382,23 +373,10 @@ class WhatsAppInboxController extends Controller
             }
         }
 
-        $tag = Tag::query()
-            ->forUser($accountId)
-            ->where('name', $groupName)
-            ->first();
-
-        if (!$tag) {
-            $tag = Tag::create([
-                'user_id' => $accountId,
-                'name' => $groupName,
-                'color' => '#25D366',
-            ]);
-        }
-
         $contactsCreated = 0;
-        $contactsTagged = 0;
         $seenDigits = [];
         $identified = [];
+        $contactIds = [];
 
         foreach ($participants as $idx => $p) {
             $phoneJid = $this->extractPhoneFromParticipant($p);
@@ -440,34 +418,104 @@ class WhatsAppInboxController extends Controller
             }
 
             $identified[] = [
+                'id' => $contact->id,
                 'name' => $contact->name,
                 'phone' => $contact->phone,
             ];
+            $contactIds[] = $contact->id;
 
             if ($contact->wasRecentlyCreated) {
                 $contactsCreated++;
-            }
-
-            try {
-                if (!$contact->tags()->where('tags.id', $tag->id)->exists()) {
-                    $contact->tags()->attach($tag->id);
-                    $contactsTagged++;
-                }
-            } catch (\Throwable $e) {
-                Log::channel('single')->warning('Evolution extractGroupMembers: tag attach failed', [
-                    'contact_id' => $contact->id,
-                    'message' => $e->getMessage(),
-                ]);
             }
         }
 
         return response()->json([
             'success' => true,
-            'tag_name' => $tag->name,
             'participants_count' => count($seenDigits),
             'contacts_created' => $contactsCreated,
-            'contacts_tagged' => $contactsTagged,
+            'contact_ids' => $contactIds,
             'identified' => $identified,
+        ]);
+    }
+
+    /**
+     * GET /whatsapp/api/listas - Lista listas do usuário (para dropdown após extrair membros).
+     */
+    public function listListas(): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
+        return response()->json(['listas' => $listas]);
+    }
+
+    /**
+     * GET /whatsapp/api/tags - Lista tags do usuário (para dropdown após extrair membros).
+     */
+    public function listTags(): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+        return response()->json(['tags' => $tags]);
+    }
+
+    /**
+     * POST /whatsapp/api/apply-extracted - Adiciona contatos extraídos a uma lista e/ou tag (criar ou existente).
+     * Body: contact_ids (array), list_id (opcional), list_name (opcional; cria lista se enviado sem list_id),
+     * tag_id (opcional), tag_name (opcional; cria tag se enviado sem tag_id).
+     */
+    public function applyExtractedToListAndTag(Request $request): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+
+        $validated = $request->validate([
+            'contact_ids' => ['required', 'array'],
+            'contact_ids.*' => ['integer'],
+            'list_id' => ['nullable', 'integer', 'exists:listas,id'],
+            'list_name' => ['nullable', 'string', 'max:255'],
+            'tag_id' => ['nullable', 'integer', 'exists:tags,id'],
+            'tag_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $contactIds = $validated['contact_ids'];
+        $validContactIds = Contact::forUser($accountId)->whereIn('id', $contactIds)->pluck('id')->all();
+
+        $listId = $validated['list_id'] ?? null;
+        $listName = isset($validated['list_name']) ? trim($validated['list_name']) : null;
+        $tagId = $validated['tag_id'] ?? null;
+        $tagName = isset($validated['tag_name']) ? trim($validated['tag_name']) : null;
+
+        if ($listId !== null) {
+            $lista = Lista::forUser($accountId)->find($listId);
+            if ($lista) {
+                $lista->contacts()->syncWithoutDetaching($validContactIds);
+            }
+        } elseif ($listName !== '' && $listName !== null) {
+            $lista = Lista::create(['user_id' => $accountId, 'name' => $listName]);
+            $lista->contacts()->syncWithoutDetaching($validContactIds);
+        }
+
+        if ($tagId !== null) {
+            $tag = Tag::forUser($accountId)->find($tagId);
+            if ($tag) {
+                $tag->contacts()->syncWithoutDetaching($validContactIds);
+            }
+        } elseif ($tagName !== '' && $tagName !== null) {
+            $tag = Tag::forUser($accountId)->where('name', $tagName)->first();
+            if (!$tag) {
+                $tag = Tag::create([
+                    'user_id' => $accountId,
+                    'name' => $tagName,
+                    'color' => '#25D366',
+                ]);
+            }
+            $tag->contacts()->syncWithoutDetaching($validContactIds);
+        }
+
+        return response()->json([
+            'success' => true,
+            'contacts_count' => count($validContactIds),
+            'added_to_list' => $listId !== null || ($listName !== '' && $listName !== null),
+            'added_to_tag' => $tagId !== null || ($tagName !== '' && $tagName !== null),
         ]);
     }
 

@@ -122,6 +122,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/api/conversations', [WhatsAppInboxController::class, 'conversations'])->name('api.conversations');
         Route::patch('/api/conversations/{conversation}', [WhatsAppInboxController::class, 'updateConversation'])->name('api.conversations.update');
         Route::post('/api/conversations/{conversation}/extract-members', [WhatsAppInboxController::class, 'extractGroupMembers'])->name('api.conversations.extract-members');
+        Route::get('/api/listas', [WhatsAppInboxController::class, 'listListas'])->name('api.listas');
+        Route::get('/api/tags', [WhatsAppInboxController::class, 'listTags'])->name('api.tags');
+        Route::post('/api/apply-extracted', [WhatsAppInboxController::class, 'applyExtractedToListAndTag'])->name('api.apply-extracted');
         Route::get('/api/conversations/{conversation}/avatar', [WhatsAppInboxController::class, 'avatar'])->name('api.conversations.avatar');
         Route::get('/api/conversations/{conversation}/app-contact', [WhatsAppInboxController::class, 'appContact'])->name('api.conversations.app-contact');
         Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');

@@ -584,7 +584,7 @@
                                                                 </button>
                                                                 <div class="wa-group-dropdown" x-show="isGroupMenuOpen(c)" @click.stop x-transition>
                                                                     <button type="button" @click="updateGroupName(c)"><i class="fas fa-pen"></i> Alterar nome do grupo</button>
-                                                                    <button type="button" @click="extractGroupMembers(c)" :disabled="extractingMembers"><i class="fas fa-users-cog"></i> Extrair membros (tag com nome do grupo)</button>
+                                                                    <button type="button" @click="extractGroupMembers(c)" :disabled="extractingMembers"><i class="fas fa-users-cog"></i> Extrair membros</button>
                                                                     <button type="button" @click="toggleGroupOwner(c)"><i class="fas fa-user-minus"></i> Desmarcar como criado por mim</button>
                                                                 </div>
                                                             </span>
@@ -634,7 +634,7 @@
                                                                 </button>
                                                                 <div class="wa-group-dropdown" x-show="isGroupMenuOpen(c)" @click.stop x-transition>
                                                                     <button type="button" @click="updateGroupName(c)"><i class="fas fa-pen"></i> Alterar nome do grupo</button>
-                                                                    <button type="button" @click="extractGroupMembers(c)" :disabled="extractingMembers"><i class="fas fa-users-cog"></i> Extrair membros (tag com nome do grupo)</button>
+                                                                    <button type="button" @click="extractGroupMembers(c)" :disabled="extractingMembers"><i class="fas fa-users-cog"></i> Extrair membros</button>
                                                                     <button type="button" @click="toggleGroupOwner(c)"><i class="fas fa-crown"></i> Marcar como criado por mim</button>
                                                                 </div>
                                                             </span>
@@ -939,6 +939,95 @@
                 </div>
             </div>
         </div>
+        <!-- Modal: após extrair membros, perguntar se adicionar a lista e/ou tag -->
+        <div
+            x-show="showExtractedModal"
+            x-cloak
+            style="display:none"
+            class="fixed inset-0 z-[9998]"
+            @keydown.escape.window="closeExtractedModal()"
+        >
+            <div class="absolute inset-0 bg-black/40" @click="closeExtractedModal()"></div>
+            <div class="absolute inset-x-0 top-16 mx-auto w-full max-w-md px-4">
+                <div class="bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
+                    <div class="px-4 py-3 flex items-center justify-between border-b border-gray-100">
+                        <div class="font-semibold text-gray-900">Extrair membros</div>
+                        <button type="button" class="text-gray-500 hover:text-gray-900" @click="closeExtractedModal()">✕</button>
+                    </div>
+                    <div class="p-4 space-y-4">
+                        <p class="text-sm text-gray-700" x-text="extractedSummary"></p>
+
+                        <div>
+                            <p class="text-sm font-medium text-gray-800 mb-2">Deseja adicionar os contatos a uma lista?</p>
+                            <div class="flex gap-2 items-center flex-wrap">
+                                <label class="inline-flex items-center gap-1"><input type="radio" x-model="addToList" :value="false"> Não</label>
+                                <label class="inline-flex items-center gap-1"><input type="radio" x-model="addToList" :value="true"> Sim</label>
+                            </div>
+                            <template x-if="addToList">
+                                <div class="mt-2 space-y-2">
+                                    <select
+                                        x-model="selectedListId"
+                                        class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                                    >
+                                        <option value="">— Selecione uma lista —</option>
+                                        <option value="new">— Criar nova lista —</option>
+                                        <template x-for="l in listas" :key="l.id">
+                                            <option :value="l.id" x-text="l.name"></option>
+                                        </template>
+                                    </select>
+                                    <input
+                                        x-show="selectedListId === 'new'"
+                                        type="text"
+                                        class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                                        placeholder="Nome da nova lista"
+                                        x-model="newListName"
+                                    />
+                                </div>
+                            </template>
+                        </div>
+
+                        <div>
+                            <p class="text-sm font-medium text-gray-800 mb-2">Deseja adicionar uma tag?</p>
+                            <div class="flex gap-2 items-center flex-wrap">
+                                <label class="inline-flex items-center gap-1"><input type="radio" x-model="addToTag" :value="false"> Não</label>
+                                <label class="inline-flex items-center gap-1"><input type="radio" x-model="addToTag" :value="true"> Sim</label>
+                            </div>
+                            <template x-if="addToTag">
+                                <div class="mt-2 space-y-2">
+                                    <select
+                                        x-model="selectedTagId"
+                                        class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                                    >
+                                        <option value="">— Selecione uma tag —</option>
+                                        <option value="new">— Criar nova tag —</option>
+                                        <template x-for="t in tags" :key="t.id">
+                                            <option :value="t.id" x-text="t.name"></option>
+                                        </template>
+                                    </select>
+                                    <input
+                                        x-show="selectedTagId === 'new'"
+                                        type="text"
+                                        class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                                        placeholder="Nome da nova tag"
+                                        x-model="newTagName"
+                                    />
+                                </div>
+                            </template>
+                        </div>
+
+                        <template x-if="listasTagsLoading">
+                            <div class="text-sm text-gray-500">Carregando listas e tags...</div>
+                        </template>
+
+                        <div class="flex justify-end gap-2 pt-2">
+                            <button type="button" class="px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm" @click="closeExtractedModal()">Cancelar</button>
+                            <button type="button" class="px-3 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 text-sm disabled:opacity-50" @click="applyExtracted()" :disabled="applyingExtracted" x-text="applyingExtracted ? 'Aplicando...' : 'Aplicar'"></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Contact picker modal (must be inside x-data scope) -->
         <div
             x-show="showContactPicker"

@@ -179,6 +179,21 @@ window.waInboxChatify = function waInboxChatify() {
         },
 
         extractingMembers: false,
+        // Modal após extrair membros: adicionar a lista e/ou tag
+        showExtractedModal: false,
+        extractedContactIds: [],
+        extractedSummary: '',
+        listas: [],
+        tags: [],
+        listasTagsLoading: false,
+        addToList: false,
+        addToTag: false,
+        selectedListId: '',
+        newListName: '',
+        selectedTagId: '',
+        newTagName: '',
+        applyingExtracted: false,
+
         async extractGroupMembers(c) {
             this.closeGroupMenu();
             if (this.extractingMembers) return;
@@ -197,16 +212,88 @@ window.waInboxChatify = function waInboxChatify() {
                     alert(data.error || 'Não foi possível extrair os membros.');
                     return;
                 }
-                const list = Array.isArray(data.identified) && data.identified.length > 0
-                    ? data.identified.map((u) => (u.name && u.name !== '' ? `${u.name} (${u.phone || ''})` : (u.phone || '')).trim()).filter(Boolean).join('\n')
-                    : '';
-                const summary = data.contacts_created > 0 || data.contacts_tagged > 0
-                    ? `Tag "${data.tag_name}" aplicada. ${data.participants_count} participante(s), ${data.contacts_created} contato(s) criado(s), ${data.contacts_tagged} contato(s) com a tag.`
-                    : `Nenhum contato novo para tagar. ${data.participants_count} participante(s) no grupo.`;
-                const msg = list ? summary + '\n\nUsuários identificados:\n' + list : summary + (data.participants_count === 0 ? '\n\nNenhum usuário identificado. Verifique a conexão e o formato dos participantes.' : '');
-                alert(msg);
+                const count = Array.isArray(data.contact_ids) ? data.contact_ids.length : (data.participants_count || 0);
+                const created = data.contacts_created || 0;
+                const summary = `${count} contato(s) extraído(s).${created > 0 ? ' ' + created + ' contato(s) criado(s).' : ''}`;
+                this.extractedContactIds = data.contact_ids || [];
+                this.extractedSummary = summary;
+                this.addToList = false;
+                this.addToTag = false;
+                this.selectedListId = '';
+                this.newListName = '';
+                this.selectedTagId = '';
+                this.newTagName = '';
+                this.showExtractedModal = true;
+                this.loadListasAndTags();
             } finally {
                 this.extractingMembers = false;
+            }
+        },
+
+        closeExtractedModal() {
+            this.showExtractedModal = false;
+            this.extractedContactIds = [];
+        },
+
+        async loadListasAndTags() {
+            this.listasTagsLoading = true;
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const headers = { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' };
+            try {
+                const [listasRes, tagsRes] = await Promise.all([
+                    fetch('/whatsapp/api/listas', { headers }),
+                    fetch('/whatsapp/api/tags', { headers }),
+                ]);
+                const listasData = await listasRes.json().catch(() => ({}));
+                const tagsData = await tagsRes.json().catch(() => ({}));
+                this.listas = listasData.listas || [];
+                this.tags = tagsData.tags || [];
+            } finally {
+                this.listasTagsLoading = false;
+            }
+        },
+
+        async applyExtracted() {
+            if (this.applyingExtracted || this.extractedContactIds.length === 0) return;
+            const listId = this.addToList && this.selectedListId && this.selectedListId !== 'new' ? parseInt(this.selectedListId, 10) : null;
+            const listName = this.addToList && this.selectedListId === 'new' && this.newListName.trim() ? this.newListName.trim() : null;
+            const tagId = this.addToTag && this.selectedTagId && this.selectedTagId !== 'new' ? parseInt(this.selectedTagId, 10) : null;
+            const tagName = this.addToTag && this.selectedTagId === 'new' && this.newTagName.trim() ? this.newTagName.trim() : null;
+            if (!listId && !listName && !tagId && !tagName) {
+                this.closeExtractedModal();
+                return;
+            }
+            this.applyingExtracted = true;
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            try {
+                const body = {
+                    contact_ids: this.extractedContactIds,
+                    list_id: listId || undefined,
+                    list_name: listName || undefined,
+                    tag_id: tagId || undefined,
+                    tag_name: tagName || undefined,
+                };
+                const resp = await fetch('/whatsapp/api/apply-extracted', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token || '',
+                    },
+                    body: JSON.stringify(body),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    alert(data.message || data.error || 'Não foi possível aplicar.');
+                    return;
+                }
+                const parts = [];
+                if (data.added_to_list) parts.push('adicionados à lista');
+                if (data.added_to_tag) parts.push('tag aplicada');
+                if (parts.length) alert(data.contacts_count + ' contato(s): ' + parts.join(' e ') + '.');
+                this.closeExtractedModal();
+            } finally {
+                this.applyingExtracted = false;
             }
         },
 
