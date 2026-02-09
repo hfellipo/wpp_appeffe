@@ -178,6 +178,34 @@ window.waInboxChatify = function waInboxChatify() {
             await this.refreshConversations(true);
         },
 
+        extractingMembers: false,
+        async extractGroupMembers(c) {
+            this.closeGroupMenu();
+            if (this.extractingMembers) return;
+            this.extractingMembers = true;
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            try {
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/extract-members`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': token || '',
+                    },
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    alert(data.error || 'Não foi possível extrair os membros.');
+                    return;
+                }
+                const msg = data.contacts_created > 0 || data.contacts_tagged > 0
+                    ? `Tag "${data.tag_name}" aplicada. ${data.participants_count} participante(s), ${data.contacts_created} contato(s) criado(s), ${data.contacts_tagged} contato(s) com a tag.`
+                    : `Nenhum contato novo para tagar. ${data.participants_count} participante(s) no grupo.`;
+                alert(msg);
+            } finally {
+                this.extractingMembers = false;
+            }
+        },
+
         async init() {
             // Track compact mode (mobile)
             const mq = window.matchMedia('(max-width: 680px)');

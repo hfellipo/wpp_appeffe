@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Contact;
+use App\Models\Tag;
 use App\Models\WhatsAppAttachment;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppConversation;
@@ -293,6 +294,165 @@ class WhatsAppInboxController extends Controller
                 'custom_contact_name' => $conversation->custom_contact_name,
                 'user_marked_owner' => $conversation->user_marked_owner,
             ],
+        ]);
+    }
+
+    /**
+     * POST /whatsapp/api/conversations/{conversation}/extract-members
+     * Extrai todos os membros do grupo na Evolution, cria/atualiza contatos e aplica tag com o nome do grupo.
+     */
+    public function extractGroupMembers(WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        if (($conversation->kind ?? '') !== 'group') {
+            return response()->json(['success' => false, 'error' => 'Apenas grupos podem ter membros extraídos.'], 422);
+        }
+
+        if (!$this->client->isConfigured()) {
+            return response()->json(['success' => false, 'error' => 'Evolution API não configurada.'], 400);
+        }
+
+        $groupName = trim((string) ($conversation->custom_contact_name ?? $conversation->contact_name ?? ''));
+        if ($groupName === '') {
+            $group = \App\Models\WhatsAppGroup::query()
+                ->where('user_id', $accountId)
+                ->where('instance_name', $conversation->instance_name)
+                ->where('group_jid', $conversation->peer_jid)
+                ->first(['subject']);
+            $groupName = $group && trim((string) ($group->subject ?? '')) !== '' ? trim($group->subject) : 'Grupo';
+        }
+
+        $resp = $this->client->getGroupParticipants($conversation->instance_name, $conversation->peer_jid);
+        if (($resp['status'] ?? 0) < 200 || ($resp['status'] ?? 0) >= 300) {
+            Log::channel('single')->warning('Evolution getGroupParticipants failed', [
+                'conversation_id' => $conversation->public_id,
+                'status' => $resp['status'] ?? 0,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Não foi possível obter a lista de participantes do grupo. Verifique a conexão com a Evolution API.',
+            ], 502);
+        }
+
+        $json = $resp['json'] ?? null;
+        if (!is_array($json)) {
+            return response()->json(['success' => false, 'error' => 'Resposta inválida da API.'], 502);
+        }
+
+        $participants = Arr::get($json, 'participants') ?? Arr::get($json, 'data') ?? null;
+        if (!is_array($participants) && is_array($json) && array_is_list($json)) {
+            $participants = $json;
+        }
+        if (!is_array($participants)) {
+            $participants = [];
+        }
+
+        $tag = Tag::query()
+            ->forUser($accountId)
+            ->where('name', $groupName)
+            ->first();
+
+        if (!$tag) {
+            $tag = Tag::create([
+                'user_id' => $accountId,
+                'name' => $groupName,
+                'color' => '#25D366',
+            ]);
+        }
+
+        $contactsCreated = 0;
+        $contactsTagged = 0;
+        $seenDigits = [];
+
+        foreach ($participants as $p) {
+            $jid = is_array($p) ? (string) ($p['id'] ?? $p['jid'] ?? $p['participantJid'] ?? '') : (string) $p;
+            $jid = trim($jid);
+            if ($jid === '') {
+                continue;
+            }
+
+            $digits = $this->participantJidToDigits($jid);
+            if ($digits === '' || strlen($digits) < 9) {
+                continue;
+            }
+            if (isset($seenDigits[$digits])) {
+                continue;
+            }
+            $seenDigits[$digits] = true;
+
+            $contact = $this->findOrCreateContactFromDigits($accountId, $digits);
+            if (!$contact) {
+                continue;
+            }
+
+            if ($contact->wasRecentlyCreated) {
+                $contactsCreated++;
+            }
+
+            if (!$contact->tags()->where('tags.id', $tag->id)->exists()) {
+                $contact->tags()->attach($tag->id);
+                $contactsTagged++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'tag_name' => $tag->name,
+            'participants_count' => count($seenDigits),
+            'contacts_created' => $contactsCreated,
+            'contacts_tagged' => $contactsTagged,
+        ]);
+    }
+
+    private function participantJidToDigits(string $jid): string
+    {
+        $jid = preg_replace('/:?\d*@s\.whatsapp\.net$/i', '', $jid);
+        $jid = preg_replace('/@.*$/', '', $jid);
+        return preg_replace('/\D/', '', $jid) ?: '';
+    }
+
+    private function findOrCreateContactFromDigits(int $accountId, string $digits): ?Contact
+    {
+        $digits = ltrim($digits, '0');
+        if ($digits === '' || strlen($digits) < 9) {
+            return null;
+        }
+
+        $contacts = Contact::query()->forUser($accountId)->get(['id', 'name', 'phone']);
+        foreach ($contacts as $c) {
+            $phoneDigits = preg_replace('/\D/', '', (string) $c->phone) ?: '';
+            $phoneDigits = ltrim($phoneDigits, '0');
+            if ($phoneDigits === '') {
+                continue;
+            }
+            if ($phoneDigits === $digits) {
+                return $c;
+            }
+            if (strlen($phoneDigits) >= 10 && strlen($digits) >= 10 && substr($phoneDigits, -10) === substr($digits, -10)) {
+                return $c;
+            }
+            if (strlen($phoneDigits) >= 11 && strlen($digits) >= 11 && substr($phoneDigits, -11) === substr($digits, -11)) {
+                return $c;
+            }
+        }
+
+        // Contact armazena (XX)XXXXX-XXXX; o setter formata 10 ou 11 dígitos. BR com 55: usar só DDD+número.
+        $phoneForStorage = $digits;
+        if (strlen($digits) >= 12 && str_starts_with($digits, '55')) {
+            $local = substr($digits, 2);
+            if (strlen($local) === 10 || strlen($local) === 11) {
+                $phoneForStorage = $local;
+            }
+        }
+
+        return Contact::create([
+            'user_id' => $accountId,
+            'name' => 'Membro ' . substr($digits, -8),
+            'phone' => $phoneForStorage,
         ]);
     }
 

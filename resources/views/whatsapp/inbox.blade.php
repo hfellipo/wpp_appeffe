@@ -448,6 +448,7 @@
                 cursor: pointer;
             }
             .wa-group-dropdown button:hover { background: #f3f4f6; }
+            .wa-group-dropdown button:disabled { opacity: 0.6; cursor: not-allowed; }
             .wa-group-dropdown button i { width: 16px; opacity: 0.8; }
         </style>
     @endpush
@@ -583,6 +584,7 @@
                                                                 </button>
                                                                 <div class="wa-group-dropdown" x-show="isGroupMenuOpen(c)" @click.stop x-transition>
                                                                     <button type="button" @click="updateGroupName(c)"><i class="fas fa-pen"></i> Alterar nome do grupo</button>
+                                                                    <button type="button" @click="extractGroupMembers(c)" :disabled="extractingMembers"><i class="fas fa-users-cog"></i> Extrair membros (tag com nome do grupo)</button>
                                                                     <button type="button" @click="toggleGroupOwner(c)"><i class="fas fa-user-minus"></i> Desmarcar como criado por mim</button>
                                                                 </div>
                                                             </span>
@@ -632,6 +634,7 @@
                                                                 </button>
                                                                 <div class="wa-group-dropdown" x-show="isGroupMenuOpen(c)" @click.stop x-transition>
                                                                     <button type="button" @click="updateGroupName(c)"><i class="fas fa-pen"></i> Alterar nome do grupo</button>
+                                                                    <button type="button" @click="extractGroupMembers(c)" :disabled="extractingMembers"><i class="fas fa-users-cog"></i> Extrair membros (tag com nome do grupo)</button>
                                                                     <button type="button" @click="toggleGroupOwner(c)"><i class="fas fa-crown"></i> Marcar como criado por mim</button>
                                                                 </div>
                                                             </span>

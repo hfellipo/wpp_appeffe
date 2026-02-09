@@ -151,6 +151,24 @@ class EvolutionApiHttpClient
     }
 
     /**
+     * Get group participants (Evolution API).
+     * GET /group/participants/{instance}?groupJid=xxx@g.us
+     *
+     * @return array{status:int, json:array|null, text:string, headers:array}
+     */
+    public function getGroupParticipants(string $instance, string $groupJid): array
+    {
+        $instance = trim($instance);
+        $groupJid = trim($groupJid);
+        if ($instance === '' || $groupJid === '') {
+            return ['status' => 0, 'json' => null, 'text' => 'Empty instance or groupJid', 'headers' => []];
+        }
+        return $this->get("/group/participants/{$instance}", [
+            'groupJid' => $groupJid,
+        ]);
+    }
+
+    /**
      * Get media (image/video/document) as base64 from a received message.
      * POST /chat/getBase64FromMediaMessage/{instance}
      * Body: { "message": { "key": { "id": "MESSAGE_ID" } }, "convertToMp4": false }
