@@ -240,7 +240,6 @@
                                             @foreach($contactListas as $lista)
                                                 <span class="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-gray-100 text-gray-400">{{ $lista->name }}</span>
                                             @endforeach
-                                            <span class="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-brand-50 text-brand-600">{{ $stage->name }}</span>
                                         </div>
                                         <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-100" x-data="{ open: false }">
                                             <span class="text-[10px] text-amber-600 flex items-center gap-1 shrink-0" title="{{ __('Tempo nesta etapa') }}">
