@@ -8,10 +8,15 @@ use App\Models\Funnel;
 use App\Models\FunnelLead;
 use App\Models\FunnelStage;
 use App\Models\Lista;
+use App\Models\ScheduledPost;
 use App\Models\Tag;
 use App\Services\AutomationRunnerService;
+use App\Services\WhatsAppSendService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class FunnelController extends Controller
@@ -379,5 +384,107 @@ class FunnelController extends Controller
         }
 
         return back()->with('error', __('Nenhum contato executou a automação.') . ' ' . implode(' ', array_slice($errors, 0, 2)));
+    }
+
+    public function stageContacts(Funnel $funnel, FunnelStage $stage): JsonResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id) {
+            abort(404);
+        }
+
+        $contactIds = $stage->leads()->whereNotNull('contact_id')->pluck('contact_id')->unique()->filter()->values();
+        $contacts = Contact::forUser(auth()->user()->accountId())
+            ->whereIn('id', $contactIds)
+            ->get(['id', 'name', 'phone'])
+            ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name, 'phone' => $c->phone ?? '']);
+
+        return response()->json(['contacts' => $contacts]);
+    }
+
+    public function sendStageMessage(Request $request, Funnel $funnel, FunnelStage $stage, WhatsAppSendService $sendService): RedirectResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id) {
+            abort(404);
+        }
+
+        $sendNow = $request->boolean('send_now');
+        if ($sendNow) {
+            $validated = $request->validate([
+                'message' => ['nullable', 'string', 'max:65535'],
+                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            ]);
+        } else {
+            $validated = $request->validate([
+                'scheduled_date' => ['required', 'date', 'after_or_equal:today'],
+                'scheduled_time' => ['required', 'string', 'regex:/^\d{1,2}:\d{2}$/'],
+                'message' => ['nullable', 'string', 'max:65535'],
+                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            ]);
+        }
+
+        $message = trim((string) ($validated['message'] ?? ''));
+        $imagePath = null;
+        $imageMime = null;
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $dir = 'scheduled_posts/' . now()->format('Y/m');
+            $name = Str::ulid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName() ?: 'image.jpg');
+            $imagePath = $file->storeAs($dir, $name, ['disk' => 'local']);
+            $imageMime = $file->getMimeType() ?: 'image/jpeg';
+        }
+
+        if ($message === '' && ! $imagePath) {
+            return back()->withInput()->withErrors(['message' => __('Informe a mensagem (legenda) ou envie uma imagem.')]);
+        }
+
+        $contactIds = $stage->leads()->whereNotNull('contact_id')->pluck('contact_id')->unique()->filter();
+        $contacts = Contact::forUser(auth()->user()->accountId())->whereIn('id', $contactIds)->get();
+
+        if ($contacts->isEmpty()) {
+            return back()->with('error', __('Nenhum lead desta coluna tem contato vinculado.'));
+        }
+
+        $accountId = auth()->user()->accountId();
+
+        if ($sendNow) {
+            $sent = 0;
+            foreach ($contacts as $contact) {
+                try {
+                    if ($imagePath && Storage::disk('local')->exists($imagePath)) {
+                        $sendService->sendMediaToContact($accountId, $contact, $imagePath, $imageMime ?: 'image/jpeg', $message, null);
+                    } else {
+                        $sendService->sendTextToContact($accountId, $contact, $message, null);
+                    }
+                    $sent++;
+                } catch (\Throwable $e) {
+                    // continue
+                }
+            }
+            return back()->with('success', __('Mensagem enviada para :n de :total contato(s).', ['n' => $sent, 'total' => $contacts->count()]));
+        }
+
+        $tz = config('app.timezone', 'America/Sao_Paulo');
+        $scheduledAt = \Carbon\Carbon::parse($validated['scheduled_date'] . ' ' . $validated['scheduled_time'] . ':00', $tz);
+        if ($scheduledAt->isPast()) {
+            return back()->withInput()->withErrors(['scheduled_time' => __('A data e hora devem ser no futuro.')]);
+        }
+
+        ScheduledPost::create([
+            'user_id' => $accountId,
+            'scheduled_at' => $scheduledAt,
+            'target_type' => 'funnel_stage',
+            'target_id' => $stage->id,
+            'message' => $message,
+            'image_path' => $imagePath,
+            'image_mime' => $imageMime,
+        ]);
+
+        return back()->with('success', __('Mensagem agendada para :date às :time. Será enviada para :n contato(s) desta coluna.', [
+            'date' => $scheduledAt->format('d/m/Y'),
+            'time' => $scheduledAt->format('H:i'),
+            'n' => $contacts->count(),
+        ]));
     }
 }

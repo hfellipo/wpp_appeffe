@@ -78,6 +78,9 @@
                                         @elseif($post->target_type === 'list')
                                             @php $lista = \App\Models\Lista::find($post->target_id); @endphp
                                             — {{ $lista ? $lista->name : '#' . $post->target_id }}
+                                        @elseif($post->target_type === 'funnel_stage')
+                                            @php $stage = \App\Models\FunnelStage::with('funnel')->find($post->target_id); @endphp
+                                            — {{ $stage ? ($stage->funnel ? $stage->funnel->name . ' › ' : '') . $stage->name : '#' . $post->target_id }}
                                         @else
                                             @php $tag = \App\Models\Tag::find($post->target_id); @endphp
                                             — {{ $tag ? $tag->name : '#' . $post->target_id }}

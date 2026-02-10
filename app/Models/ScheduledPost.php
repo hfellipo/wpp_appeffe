@@ -47,6 +47,12 @@ class ScheduledPost extends Model
             'group' => __('Grupo (WhatsApp)'),
             'list' => __('Lista de contatos'),
             'tag' => __('Quem tem a tag'),
+            'funnel_stage' => __('Coluna do funil'),
         ];
+    }
+
+    public function funnelStage(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\FunnelStage::class, 'target_id');
     }
 }

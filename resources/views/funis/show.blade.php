@@ -203,7 +203,7 @@
                             <div class="px-3 py-2 border-b border-gray-200/80">
                                 <div class="flex items-center justify-between gap-1 mb-1.5">
                                     <div class="h-0.5 w-8 rounded-full {{ $sc['bar'] }}"></div>
-                                    <button type="button" class="stage-automation-btn p-1 rounded {{ $stage->automation_id ? 'text-blue-600 hover:bg-blue-50' : 'text-red-500 hover:bg-red-50' }}" title="{{ $stage->automation_id ? __('Automação configurada') : __('Sem automação') }}" data-stage-id="{{ $stage->id }}" data-stage-name="{{ e($stage->name) }}" data-automation-id="{{ $stage->automation_id ?? '' }}" data-update-url="{{ route('funis.stages.automation.update', [$funnel, $stage]) }}" data-run-url="{{ route('funis.stages.automation.run', [$funnel, $stage]) }}" data-automation-name="{{ $stage->automation ? e($stage->automation->name) : '' }}" data-automation-actions-count="{{ $stage->automation ? $stage->automation->actions->count() : 0 }}" data-automation-trigger-label="{{ $stage->automation && $stage->automation->trigger ? (\App\Models\Automation::triggerTypes()[$stage->automation->trigger->type] ?? $stage->automation->trigger->type) : '' }}" data-automation-edit-url="{{ $stage->automation ? route('automacao.edit', $stage->automation) : '' }}">
+                                    <button type="button" class="stage-automation-btn p-1 rounded {{ $stage->automation_id ? 'text-blue-600 hover:bg-blue-50' : 'text-red-500 hover:bg-red-50' }}" title="{{ $stage->automation_id ? __('Automação configurada') : __('Sem automação') }}" data-stage-id="{{ $stage->id }}" data-stage-name="{{ e($stage->name) }}" data-automation-id="{{ $stage->automation_id ?? '' }}" data-update-url="{{ route('funis.stages.automation.update', [$funnel, $stage]) }}" data-run-url="{{ route('funis.stages.automation.run', [$funnel, $stage]) }}" data-contacts-url="{{ route('funis.stages.contacts', [$funnel, $stage]) }}" data-send-message-url="{{ route('funis.stages.send-message', [$funnel, $stage]) }}" data-automation-name="{{ $stage->automation ? e($stage->automation->name) : '' }}" data-automation-actions-count="{{ $stage->automation ? $stage->automation->actions->count() : 0 }}" data-automation-trigger-label="{{ $stage->automation && $stage->automation->trigger ? (\App\Models\Automation::triggerTypes()[$stage->automation->trigger->type] ?? $stage->automation->trigger->type) : '' }}" data-automation-edit-url="{{ $stage->automation ? route('automacao.edit', $stage->automation) : '' }}">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                     </button>
                                 </div>
@@ -299,10 +299,59 @@
     <x-modal name="stage-automation-modal" :show="false" maxWidth="5xl">
         <div class="flex flex-col max-h-[85vh]">
             <input type="hidden" id="stage-automation-edit-url" value="">
-            {{-- Painel resumo: vincular + configurado + ações --}}
-            <div id="stage-automation-resumo" class="p-6">
+            <input type="hidden" id="stage-contacts-url" value="">
+            <input type="hidden" id="stage-send-message-url" value="">
+            {{-- Painel resumo: mensagem para coluna + vincular automação + configurado --}}
+            <div id="stage-automation-resumo" class="p-6 overflow-y-auto">
                 <h3 class="text-sm font-semibold text-gray-800 mb-1" id="stage-automation-modal-title">{{ __('Automação da coluna') }}</h3>
                 <p class="text-xs text-gray-500 mb-4" id="stage-automation-modal-subtitle"></p>
+
+                {{-- Mensagem para a coluna (imagem + texto + agendar) --}}
+                <div class="mb-6 pb-4 border-b border-gray-200">
+                    <p class="text-xs font-medium text-gray-700 mb-3">{{ __('Mensagem para a coluna') }}</p>
+                    <p class="text-xs text-gray-500 mb-3">{{ __('Só os contatos desta coluna receberão. Ao disparar ou agendar, você verá a lista de destinatários.') }}</p>
+                    <form id="form-stage-send-message" method="POST" action="" enctype="multipart/form-data">
+                        @csrf
+                        <input type="hidden" name="send_now" id="stage-send-now-value" value="0">
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-0.5">{{ __('Data (para agendar)') }}</label>
+                                <input type="date" name="scheduled_date" id="stage-scheduled-date" min="{{ date('Y-m-d') }}" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-0.5">{{ __('Horário') }}</label>
+                                <input type="time" name="scheduled_time" id="stage-scheduled-time" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="block text-xs text-gray-500 mb-0.5">{{ __('Imagem (opcional)') }}</label>
+                            <input type="file" name="image" id="stage-message-image" accept="image/jpeg,image/png,image/gif,image/webp" class="block w-full text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-brand-50 file:text-brand-700 file:text-xs">
+                        </div>
+                        <div class="mb-3">
+                            <label class="block text-xs text-gray-500 mb-0.5">{{ __('Texto da mensagem') }}</label>
+                            <textarea name="message" id="stage-message-text" rows="4" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30" placeholder="{{ __('Digite o texto. Com imagem, vira legenda.') }}"></textarea>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" id="stage-btn-disparar" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">{{ __('Disparar agora') }}</button>
+                            <button type="button" id="stage-btn-agendar" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Agendar') }}</button>
+                        </div>
+                    </form>
+                </div>
+
+                {{-- Preview: contatos que receberão (mostrado antes de confirmar) --}}
+                <div id="stage-automation-preview" class="hidden mb-6 pb-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs font-medium text-gray-700">{{ __('Estes contatos receberão a mensagem') }}<span id="stage-preview-when" class="text-gray-500 font-normal"></span></p>
+                        <button type="button" id="stage-preview-back" class="text-xs text-gray-500 hover:text-gray-700">{{ __('← Voltar') }}</button>
+                    </div>
+                    <ul id="stage-preview-contacts" class="max-h-40 overflow-y-auto rounded border border-gray-100 bg-gray-50/50 p-2 space-y-1 text-xs text-gray-700"></ul>
+                    <p class="text-xs text-gray-500 mt-1" id="stage-preview-count"></p>
+                    <div class="mt-2">
+                        <button type="button" id="stage-preview-confirm-btn" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded"></button>
+                    </div>
+                </div>
+
+                {{-- Vincular automação existente --}}
                 <form id="form-stage-automation-assign" method="POST" action="">
                     @csrf
                     @method('PUT')
@@ -422,6 +471,10 @@
         formAssign.action = el.dataset.updateUrl;
         formRun.action = el.dataset.runUrl;
         if (editUrlInput) editUrlInput.value = el.dataset.automationEditUrl || '';
+        var contactsUrlEl = document.getElementById('stage-contacts-url');
+        var sendMessageUrlEl = document.getElementById('stage-send-message-url');
+        if (contactsUrlEl) contactsUrlEl.value = el.dataset.contactsUrl || '';
+        if (sendMessageUrlEl) sendMessageUrlEl.value = el.dataset.sendMessageUrl || '';
         if (titleEl) titleEl.textContent = '{{ __("Automação") }}: ' + (el.dataset.stageName || '');
         if (subtitleEl) subtitleEl.textContent = '{{ __("Só os contatos desta coluna serão considerados ao disparar.") }}';
         if (selectEl) selectEl.value = el.dataset.automationId || '';
@@ -435,6 +488,8 @@
         if (resumoEl) resumoEl.classList.remove('hidden');
         if (configurarEl) configurarEl.classList.add('hidden');
         if (iframeEl) iframeEl.src = '';
+        var previewEl = document.getElementById('stage-automation-preview');
+        if (previewEl) previewEl.classList.add('hidden');
         window.dispatchEvent(new CustomEvent('open-modal', { detail: 'stage-automation-modal' }));
     }
     function showStageAutomationConfigurar() {
@@ -467,6 +522,96 @@
         if (configBtn) configBtn.addEventListener('click', showStageAutomationConfigurar);
         var backResumoBtn = document.getElementById('stage-automation-back-resumo');
         if (backResumoBtn) backResumoBtn.addEventListener('click', showStageAutomationResumo);
+
+        (function() {
+            var formSend = document.getElementById('form-stage-send-message');
+            var contactsUrlInput = document.getElementById('stage-contacts-url');
+            var sendMessageUrlInput = document.getElementById('stage-send-message-url');
+            var sendNowInput = document.getElementById('stage-send-now-value');
+            var previewPanel = document.getElementById('stage-automation-preview');
+            var previewContacts = document.getElementById('stage-preview-contacts');
+            var previewWhen = document.getElementById('stage-preview-when');
+            var previewCount = document.getElementById('stage-preview-count');
+            var previewBack = document.getElementById('stage-preview-back');
+            var previewConfirmBtn = document.getElementById('stage-preview-confirm-btn');
+            var msgSection = formSend && formSend.closest('.border-b');
+            var isDispararMode = false;
+
+            function showPreview(contacts, whenText, confirmLabel) {
+                if (!previewPanel || !previewContacts) return;
+                previewContacts.innerHTML = '';
+                contacts.forEach(function(c) {
+                    var li = document.createElement('li');
+                    li.className = 'flex items-center gap-2';
+                    li.textContent = (c.name || c.phone || __('Contato')) + (c.phone ? ' — ' + c.phone : '');
+                    previewContacts.appendChild(li);
+                });
+                if (previewWhen) previewWhen.textContent = whenText;
+                if (previewCount) previewCount.textContent = contacts.length === 1 ? '1 {{ __("contato") }}' : contacts.length + ' {{ __("contatos") }}';
+                if (previewConfirmBtn) previewConfirmBtn.textContent = confirmLabel;
+                if (msgSection) msgSection.classList.add('hidden');
+                previewPanel.classList.remove('hidden');
+            }
+            function hidePreview() {
+                if (previewPanel) previewPanel.classList.add('hidden');
+                if (msgSection) msgSection.classList.remove('hidden');
+            }
+            function validateMessage() {
+                var text = (document.getElementById('stage-message-text') && document.getElementById('stage-message-text').value || '').trim();
+                var file = document.getElementById('stage-message-image');
+                var hasFile = file && file.files && file.files.length > 0;
+                return text !== '' || hasFile;
+            }
+            function validateSchedule() {
+                var d = document.getElementById('stage-scheduled-date') && document.getElementById('stage-scheduled-date').value;
+                var t = document.getElementById('stage-scheduled-time') && document.getElementById('stage-scheduled-time').value;
+                return d && t;
+            }
+
+            document.getElementById('stage-btn-disparar') && document.getElementById('stage-btn-disparar').addEventListener('click', function() {
+                if (!validateMessage()) { alert('{{ __("Informe o texto da mensagem ou envie uma imagem.") }}'); return; }
+                var url = contactsUrlInput && contactsUrlInput.value;
+                if (!url) return;
+                isDispararMode = true;
+                fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var contacts = data.contacts || [];
+                        if (contacts.length === 0) { alert('{{ __("Nenhum lead desta coluna tem contato vinculado.") }}'); return; }
+                        showPreview(contacts, '', '{{ __("Confirmar e disparar") }}');
+                    })
+                    .catch(function() { alert('{{ __("Erro ao carregar contatos.") }}'); });
+            });
+
+            document.getElementById('stage-btn-agendar') && document.getElementById('stage-btn-agendar').addEventListener('click', function() {
+                if (!validateMessage()) { alert('{{ __("Informe o texto da mensagem ou envie uma imagem.") }}'); return; }
+                if (!validateSchedule()) { alert('{{ __("Informe data e horário para agendar.") }}'); return; }
+                var url = contactsUrlInput && contactsUrlInput.value;
+                if (!url) return;
+                isDispararMode = false;
+                var d = document.getElementById('stage-scheduled-date').value;
+                var t = document.getElementById('stage-scheduled-time').value;
+                var whenStr = ' {{ __("em") }} ' + d + ' ' + t;
+                fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var contacts = data.contacts || [];
+                        if (contacts.length === 0) { alert('{{ __("Nenhum lead desta coluna tem contato vinculado.") }}'); return; }
+                        showPreview(contacts, whenStr, '{{ __("Confirmar agendamento") }}');
+                    })
+                    .catch(function() { alert('{{ __("Erro ao carregar contatos.") }}'); });
+            });
+
+            previewBack && previewBack.addEventListener('click', hidePreview);
+
+            previewConfirmBtn && previewConfirmBtn.addEventListener('click', function() {
+                if (!formSend || !sendMessageUrlInput) return;
+                formSend.action = sendMessageUrlInput.value;
+                sendNowInput.value = isDispararMode ? '1' : '0';
+                formSend.submit();
+            });
+        })();
+
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
         if (!csrf) return;
 

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Contact;
+use App\Models\FunnelStage;
 use App\Models\Lista;
 use App\Models\ScheduledPost;
 use App\Models\Tag;
@@ -90,6 +91,20 @@ class ProcessScheduledPostJob implements ShouldQueue
                     throw new \RuntimeException(__('Tag não encontrada.'));
                 }
                 $contacts = $tag->contacts()->get();
+                foreach ($contacts as $contact) {
+                    if ($sendMedia) {
+                        $sendService->sendMediaToContact($accountId, $contact, $post->image_path, $mimeType, $message, null);
+                    } else {
+                        $sendService->sendTextToContact($accountId, $contact, $message, null);
+                    }
+                }
+            } elseif ($post->target_type === 'funnel_stage') {
+                $stage = FunnelStage::query()->find($post->target_id);
+                if (! $stage) {
+                    throw new \RuntimeException(__('Coluna do funil não encontrada.'));
+                }
+                $contactIds = $stage->leads()->whereNotNull('contact_id')->pluck('contact_id')->unique()->filter();
+                $contacts = Contact::forUser($accountId)->whereIn('id', $contactIds)->get();
                 foreach ($contacts as $contact) {
                     if ($sendMedia) {
                         $sendService->sendMediaToContact($accountId, $contact, $post->image_path, $mimeType, $message, null);
