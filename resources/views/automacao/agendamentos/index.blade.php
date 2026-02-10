@@ -35,6 +35,12 @@
                         {{ __('Ao abrir esta página, os posts com data/hora já passada são enviados. Para envio exato no horário, configure no servidor:') }}
                         <code class="bg-gray-100 px-1 rounded">* * * * * php artisan schedule:run</code>.
                     </p>
+                    <p class="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-100">
+                        <strong>{{ __('Horário do servidor (usado para agendamentos):') }}</strong>
+                        <span class="font-mono">{{ now()->format('d/m/Y H:i:s') }}</span>
+                        <span class="text-gray-500">({{ config('app.timezone') }})</span>
+                        — {{ __('Se estiver errado, defina') }} <code class="bg-gray-100 px-1 rounded">APP_TIMEZONE</code> {{ __('no .env (ex.: America/Sao_Paulo).') }}
+                    </p>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -31,9 +32,11 @@ class ScheduledPost extends Model
         return $query->where('user_id', $userId);
     }
 
+    /** Posts ainda não enviados e cuja data/hora já passou (usa o fuso do app). */
     public function scopePending($query)
     {
-        return $query->whereNull('sent_at')->where('scheduled_at', '<=', now());
+        $now = Carbon::now(config('app.timezone'));
+        return $query->whereNull('sent_at')->where('scheduled_at', '<=', $now);
     }
 
     public static function targetTypes(): array

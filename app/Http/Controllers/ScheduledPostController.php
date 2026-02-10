@@ -9,20 +9,31 @@ use App\Models\Tag;
 use App\Models\WhatsAppConversation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class ScheduledPostController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        // Processa posts agendados vencidos (fallback quando o cron do servidor não está rodando)
-        try {
-            Artisan::call('scheduled_posts:process');
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::channel('single')->warning('ScheduledPostController index: falha ao processar vencidos', [
-                'message' => $e->getMessage(),
-            ]);
+        // Processa posts agendados vencidos (sem depender de cron ou fila)
+        $processed = 0;
+        $due = ScheduledPost::query()->pending()->get();
+        foreach ($due as $post) {
+            try {
+                ProcessScheduledPostJob::dispatchSync($post->id);
+                $processed++;
+            } catch (\Throwable $e) {
+                Log::channel('single')->error('ScheduledPostController: falha ao processar post agendado', [
+                    'scheduled_post_id' => $post->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+        if ($processed > 0) {
+            $request->session()->flash('success', $processed === 1
+                ? __('1 post agendado enviado.')
+                : __(':count posts agendados enviados.', ['count' => $processed]));
         }
 
         $posts = ScheduledPost::forUser(auth()->user()->accountId())
@@ -75,7 +86,8 @@ class ScheduledPostController extends Controller
             return back()->withInput()->withErrors(['target_id' => __('Selecione o destino.')]);
         }
 
-        $scheduledAt = \Carbon\Carbon::parse($validated['scheduled_date'] . ' ' . $validated['scheduled_time'] . ':00');
+        $tz = config('app.timezone', 'America/Sao_Paulo');
+        $scheduledAt = \Carbon\Carbon::parse($validated['scheduled_date'] . ' ' . $validated['scheduled_time'] . ':00', $tz);
         if ($scheduledAt->isPast()) {
             return back()->withInput()->withErrors(['scheduled_time' => __('A data e hora devem ser no futuro.')]);
         }
