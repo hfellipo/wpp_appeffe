@@ -44,7 +44,6 @@ return [
         'debug_participants' => env('EVOLUTION_DEBUG_PARTICIPANTS', false),
     ],
 
-    // Token para a URL de cron dos posts agendados (processar sem abrir a página)
+    // Token para a URL de cron dos posts agendados e da automação jornada (processar sem abrir a página)
     'scheduled_posts_cron_token' => env('SCHEDULED_POSTS_CRON_TOKEN'),
-
 ];

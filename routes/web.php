@@ -29,6 +29,9 @@ Route::get('/dashboard', function () {
 // Cron por URL: processa posts agendados vencidos (sem auth; exige token no .env)
 Route::get('/automacao/agendamentos/cron', [ScheduledPostController::class, 'cron'])->name('automacao.agendamentos.cron');
 
+// Cron por URL: automação jornada (sem auth; exige token no .env)
+Route::get('/automacao/jornada/cron', [AutomationController::class, 'cronJornada'])->name('automacao.jornada.cron');
+
 
 // Rota de debug para testar se o Laravel está recebendo requisições
 Route::match(['get', 'post'], '/debug/test', function (Request $request) {
@@ -245,6 +248,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/automacao', [AutomationController::class, 'index'])->name('automacao.index');
     Route::get('/automacao/create', [AutomationController::class, 'create'])->name('automacao.create');
     Route::post('/automacao', [AutomationController::class, 'store'])->name('automacao.store');
+    Route::get('/automacao/{automacao}/jornada', [AutomationController::class, 'jornada'])->name('automacao.jornada');
     Route::get('/automacao/{automacao}/edit', [AutomationController::class, 'edit'])->name('automacao.edit');
     Route::put('/automacao/{automacao}', [AutomationController::class, 'update'])->name('automacao.update');
     Route::delete('/automacao/{automacao}', [AutomationController::class, 'destroy'])->name('automacao.destroy');

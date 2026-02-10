@@ -54,7 +54,7 @@
                             @forelse($automations as $a)
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <a href="{{ route('automacao.edit', $a) }}" class="text-sm font-medium text-brand-600 hover:text-brand-800">{{ $a->name }}</a>
+                                        <a href="{{ route('automacao.jornada', $a) }}" class="text-sm font-medium text-brand-600 hover:text-brand-800">{{ $a->name }}</a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                         @if($a->trigger)
@@ -81,6 +81,7 @@
                                         @endif
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <a href="{{ route('automacao.jornada', $a) }}" class="text-indigo-600 hover:text-indigo-900 mr-3">{{ __('Ver jornada') }}</a>
                                         <a href="{{ route('automacao.edit', $a) }}" class="text-brand-600 hover:text-brand-900 mr-3">{{ __('Editar') }}</a>
                                         <form action="{{ route('automacao.toggle', $a) }}" method="POST" class="inline">
                                             @csrf

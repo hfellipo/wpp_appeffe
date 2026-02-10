@@ -13,6 +13,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('automations:run')->everyMinute();
+        $schedule->command('automations:run-jornada')->everyMinute();
         $schedule->command('scheduled_posts:process')->everyMinute();
     }
 

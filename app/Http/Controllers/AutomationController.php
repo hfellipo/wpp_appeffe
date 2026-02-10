@@ -10,8 +10,10 @@ use App\Models\Contact;
 use App\Models\Lista;
 use App\Models\Tag;
 use App\Services\AutomationRunnerService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\View\View;
 
 class AutomationController extends Controller
@@ -46,6 +48,27 @@ class AutomationController extends Controller
         return redirect()
             ->route('automacao.edit', ['automacao' => $automation, 'step' => 'trigger'])
             ->with('success', __('Automação criada. Configure o gatilho.'));
+    }
+
+    /**
+     * Visão visual da jornada: gatilho → condições → ações (fluxo intuitivo).
+     */
+    public function jornada(Automation $automacao): View
+    {
+        $this->authorize('update', $automacao);
+
+        $automacao->load(['trigger', 'conditions.contactField', 'actions']);
+
+        $accountId = auth()->user()->accountId();
+        $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
+        $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+
+        return view('automacao.jornada', [
+            'automation' => $automacao,
+            'listas' => $listas,
+            'tags' => $tags,
+            'actionTypes' => Automation::actionTypes(),
+        ]);
     }
 
     public function edit(Request $request, Automation $automacao): View
@@ -252,6 +275,30 @@ class AutomationController extends Controller
         return redirect()
             ->route('automacao.index')
             ->with('success', $automacao->is_active ? __('Automação ativada.') : __('Automação pausada.'));
+    }
+
+    /**
+     * Cron por URL para automação jornada (sem auth; exige SCHEDULED_POSTS_CRON_TOKEN no .env).
+     */
+    public function cronJornada(Request $request): JsonResponse
+    {
+        $token = config('services.scheduled_posts_cron_token');
+        if (empty($token)) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'SCHEDULED_POSTS_CRON_TOKEN não configurado no .env',
+            ], 503);
+        }
+        if ($request->query('token') !== $token) {
+            return response()->json(['ok' => false, 'error' => 'Token inválido'], 403);
+        }
+
+        Artisan::call('automations:run-jornada');
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Cron automação jornada executado.',
+        ]);
     }
 
     /**
