@@ -242,30 +242,40 @@
                                             @endforeach
                                             <span class="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-brand-50 text-brand-600">{{ $stage->name }}</span>
                                         </div>
-                                        <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-100">
-                                            <form action="{{ route('funis.leads.move', [$funnel, $lead]) }}" method="POST" class="min-w-0 flex-1 max-w-[55%]">
-                                                @csrf
-                                                <select name="funnel_stage_id" class="block w-full text-[10px] rounded-md border-gray-200 bg-gray-50/80 text-gray-600 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30 py-1 pr-6" onchange="this.form.submit()">
-                                                    @foreach($funnel->stages as $s)
-                                                        <option value="{{ $s->id }}" {{ $s->id == $stage->id ? 'selected' : '' }}>{{ $s->name }}</option>
-                                                    @endforeach
-                                                </select>
-                                            </form>
+                                        <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-100" x-data="{ open: false }">
                                             <span class="text-[10px] text-amber-600 flex items-center gap-1 shrink-0" title="{{ __('Tempo nesta etapa') }}">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                                                 {{ $tempoParadoText }}
                                             </span>
-                                            <div class="flex items-center opacity-70 group-hover:opacity-100 transition-opacity">
-                                                <button type="button" class="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 edit-lead-btn" title="{{ __('Editar') }}" data-lead-id="{{ $lead->id }}" data-name="{{ e($lead->name) }}" data-title="{{ e($lead->title ?? '') }}" data-value="{{ $lead->value }}" data-contact-id="{{ $lead->contact_id ?? '' }}" data-update-url="{{ route('funis.leads.update', [$funnel, $lead]) }}">
-                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                            <div class="relative shrink-0">
+                                                <button type="button" @click="open = !open" class="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100" title="{{ __('Ações') }}">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                                 </button>
-                                                <form id="form-destroy-lead-{{ $lead->id }}" action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="inline" data-confirm-message="{{ __('Remover lead?') }}">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-lead-{{ $lead->id }}' } }))" class="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" title="{{ __('Remover') }}">
-                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                <div x-show="open" x-cloak x-transition @click.outside="open = false" class="absolute right-0 top-full mt-1 py-1 bg-white rounded-lg shadow-lg border border-gray-200 z-20 min-w-[160px]">
+                                                    <p class="px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase tracking-wide">{{ __('Mover para') }}</p>
+                                                    @foreach($funnel->stages as $s)
+                                                        <form action="{{ route('funis.leads.move', [$funnel, $lead]) }}" method="POST" class="block">
+                                                            @csrf
+                                                            <input type="hidden" name="funnel_stage_id" value="{{ $s->id }}">
+                                                            <button type="submit" class="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 {{ $s->id == $stage->id ? 'font-medium text-brand-600' : '' }}">
+                                                                {{ $s->name }}
+                                                            </button>
+                                                        </form>
+                                                    @endforeach
+                                                    <div class="border-t border-gray-100 my-1"></div>
+                                                    <button type="button" class="edit-lead-btn w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2" data-lead-id="{{ $lead->id }}" data-name="{{ e($lead->name) }}" data-title="{{ e($lead->title ?? '') }}" data-value="{{ $lead->value }}" data-contact-id="{{ $lead->contact_id ?? '' }}" data-update-url="{{ route('funis.leads.update', [$funnel, $lead]) }}" @click="open = false">
+                                                        <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        {{ __('Editar') }}
                                                     </button>
-                                                </form>
+                                                    <form id="form-destroy-lead-{{ $lead->id }}" action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="block" data-confirm-message="{{ __('Remover lead?') }}">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="button" @click="open = false; window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-lead-{{ $lead->id }}' } }))" class="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                            {{ __('Remover') }}
+                                                        </button>
+                                                    </form>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
