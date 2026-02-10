@@ -25,6 +25,9 @@ Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
+// Cron por URL: processa posts agendados vencidos (sem auth; exige token no .env)
+Route::get('/automacao/agendamentos/cron', [ScheduledPostController::class, 'cron'])->name('automacao.agendamentos.cron');
+
 
 // Rota de debug para testar se o Laravel está recebendo requisições
 Route::match(['get', 'post'], '/debug/test', function (Request $request) {

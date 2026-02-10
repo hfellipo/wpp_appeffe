@@ -7,8 +7,10 @@ use App\Models\Lista;
 use App\Models\ScheduledPost;
 use App\Models\Tag;
 use App\Models\WhatsAppConversation;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -191,5 +193,27 @@ class ScheduledPostController extends Controller
         return redirect()
             ->route('automacao.agendamentos.index')
             ->with('success', __('Mensagem enviada com sucesso.'));
+    }
+
+    /**
+     * Rota de cron por URL: processa posts agendados vencidos.
+     * Chamada por um cron externo (ex.: cron-job.org) a cada minuto, quando o servidor não tem cron.
+     * GET /automacao/agendamentos/cron?token=SEU_TOKEN_DO_ENV
+     */
+    public function cron(Request $request): JsonResponse
+    {
+        $token = config('services.scheduled_posts_cron_token');
+        if (empty($token) || $request->query('token') !== $token) {
+            return response()->json(['ok' => false, 'error' => 'Unauthorized'], 403);
+        }
+
+        try {
+            Artisan::call('scheduled_posts:process');
+            $output = trim(Artisan::output());
+            return response()->json(['ok' => true, 'message' => $output ?: 'Nenhum post vencido.']);
+        } catch (\Throwable $e) {
+            Log::channel('single')->error('ScheduledPostController cron: falha', ['message' => $e->getMessage()]);
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
     }
 }
