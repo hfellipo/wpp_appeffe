@@ -95,19 +95,27 @@
                                         @endif
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                        @if(!$post->sent_at)
-                                            <form action="{{ route('automacao.agendamentos.send-now', $post) }}" method="POST" class="inline">
+                                        <div class="flex items-center justify-end gap-2 flex-wrap">
+                                            @if(!$post->sent_at)
+                                                <form action="{{ route('automacao.agendamentos.send-now', $post) }}" method="POST" class="inline">
+                                                    @csrf
+                                                    <button type="submit" class="text-brand-600 hover:text-brand-900">{{ __('Enviar agora') }}</button>
+                                                </form>
+                                                <span class="text-gray-300">|</span>
+                                                <a href="{{ route('automacao.agendamentos.edit', $post) }}" class="text-gray-600 hover:text-gray-900">{{ __('Reconfigurar') }}</a>
+                                                <span class="text-gray-300">|</span>
+                                            @endif
+                                            <form action="{{ route('automacao.agendamentos.duplicate', $post) }}" method="POST" class="inline">
                                                 @csrf
-                                                <button type="submit" class="text-brand-600 hover:text-brand-900 mr-3">{{ __('Enviar agora') }}</button>
+                                                <button type="submit" class="text-gray-600 hover:text-gray-900">{{ __('Duplicar') }}</button>
                                             </form>
-                                            <form action="{{ route('automacao.agendamentos.destroy', $post) }}" method="POST" class="inline" onsubmit="return confirm('{{ __('Cancelar este agendamento?') }}')">
+                                            <span class="text-gray-300">|</span>
+                                            <form action="{{ route('automacao.agendamentos.destroy', $post) }}" method="POST" class="inline" onsubmit="return confirm('{{ $post->sent_at ? __('Remover este post da lista?') : __('Cancelar e excluir este agendamento?') }}')">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="text-red-600 hover:text-red-900">{{ __('Cancelar') }}</button>
+                                                <button type="submit" class="text-red-600 hover:text-red-900">{{ __('Excluir') }}</button>
                                             </form>
-                                        @else
-                                            —
-                                        @endif
+                                        </div>
                                     </td>
                                 </tr>
                             @empty

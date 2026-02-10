@@ -12,6 +12,16 @@ class ScheduledPostPolicy
         return true;
     }
 
+    public function view(User $user, ScheduledPost $scheduledPost): bool
+    {
+        return (int) $user->accountId() === (int) $scheduledPost->user_id;
+    }
+
+    public function update(User $user, ScheduledPost $scheduledPost): bool
+    {
+        return (int) $user->accountId() === (int) $scheduledPost->user_id;
+    }
+
     public function delete(User $user, ScheduledPost $scheduledPost): bool
     {
         return (int) $user->accountId() === (int) $scheduledPost->user_id;

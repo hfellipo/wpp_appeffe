@@ -256,6 +256,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/automacao/agendamentos', [ScheduledPostController::class, 'index'])->name('automacao.agendamentos.index');
     Route::get('/automacao/agendamentos/create', [ScheduledPostController::class, 'create'])->name('automacao.agendamentos.create');
     Route::post('/automacao/agendamentos', [ScheduledPostController::class, 'store'])->name('automacao.agendamentos.store');
+    Route::get('/automacao/agendamentos/{scheduled_post}/edit', [ScheduledPostController::class, 'edit'])->name('automacao.agendamentos.edit');
+    Route::put('/automacao/agendamentos/{scheduled_post}', [ScheduledPostController::class, 'update'])->name('automacao.agendamentos.update');
+    Route::post('/automacao/agendamentos/{scheduled_post}/duplicate', [ScheduledPostController::class, 'duplicate'])->name('automacao.agendamentos.duplicate');
     Route::delete('/automacao/agendamentos/{scheduled_post}', [ScheduledPostController::class, 'destroy'])->name('automacao.agendamentos.destroy');
     Route::post('/automacao/agendamentos/{scheduled_post}/send-now', [ScheduledPostController::class, 'sendNow'])->name('automacao.agendamentos.send-now');
 });

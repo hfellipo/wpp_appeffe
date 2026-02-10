@@ -148,21 +148,162 @@ class ScheduledPostController extends Controller
             ->with('success', __('Post agendado com sucesso.'));
     }
 
-    public function destroy(ScheduledPost $scheduled_post): RedirectResponse
+    public function edit(ScheduledPost $scheduled_post): View|RedirectResponse
     {
-        $this->authorize('delete', $scheduled_post);
-
+        $this->authorize('update', $scheduled_post);
         if ($scheduled_post->sent_at !== null) {
             return redirect()
                 ->route('automacao.agendamentos.index')
-                ->with('error', __('Não é possível excluir um post já enviado.'));
+                ->with('error', __('Só é possível reconfigurar posts ainda não enviados. Use Duplicar para aproveitar as configurações.'));
         }
+
+        $accountId = auth()->user()->accountId();
+        $groups = WhatsAppConversation::query()
+            ->where('user_id', $accountId)
+            ->where('kind', 'group')
+            ->orderByRaw('COALESCE(custom_contact_name, contact_name) ASC')
+            ->get(['id', 'contact_name', 'custom_contact_name', 'peer_jid']);
+        $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
+        $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+
+        return view('automacao.agendamentos.edit', [
+            'post' => $scheduled_post,
+            'groups' => $groups,
+            'listas' => $listas,
+            'tags' => $tags,
+            'targetTypes' => ScheduledPost::targetTypes(),
+        ]);
+    }
+
+    public function update(Request $request, ScheduledPost $scheduled_post): RedirectResponse
+    {
+        $this->authorize('update', $scheduled_post);
+        if ($scheduled_post->sent_at !== null) {
+            return redirect()->route('automacao.agendamentos.index')->with('error', __('Post já enviado.'));
+        }
+
+        $accountId = auth()->user()->accountId();
+        $validated = $request->validate([
+            'scheduled_date' => ['required', 'date'],
+            'scheduled_time' => ['required', 'string', 'regex:/^\d{1,2}:\d{2}$/'],
+            'target_type' => ['required', 'string', 'in:group,list,tag'],
+            'target_group_id' => ['nullable', 'required_if:target_type,group', 'integer', 'min:1'],
+            'target_list_id' => ['nullable', 'required_if:target_type,list', 'integer', 'min:1'],
+            'target_tag_id' => ['nullable', 'required_if:target_type,tag', 'integer', 'min:1'],
+            'message' => ['nullable', 'string', 'max:65535'],
+            'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+        ]);
+
+        $targetId = match ($validated['target_type']) {
+            'group' => (int) ($validated['target_group_id'] ?? 0),
+            'list' => (int) ($validated['target_list_id'] ?? 0),
+            'tag' => (int) ($validated['target_tag_id'] ?? 0),
+            default => 0,
+        };
+        if ($targetId < 1) {
+            return back()->withInput()->withErrors(['target_id' => __('Selecione o destino.')]);
+        }
+
+        $tz = config('app.timezone', 'America/Sao_Paulo');
+        $scheduledAt = \Carbon\Carbon::parse($validated['scheduled_date'] . ' ' . $validated['scheduled_time'] . ':00', $tz);
+        if ($scheduledAt->isPast()) {
+            return back()->withInput()->withErrors(['scheduled_time' => __('A data e hora devem ser no futuro.')]);
+        }
+
+        if ($validated['target_type'] === 'group') {
+            if (! WhatsAppConversation::query()->where('user_id', $accountId)->where('kind', 'group')->where('id', $targetId)->exists()) {
+                return back()->withInput()->withErrors(['target_id' => __('Grupo inválido.')]);
+            }
+        }
+        if ($validated['target_type'] === 'list') {
+            if (! Lista::forUser($accountId)->where('id', $targetId)->exists()) {
+                return back()->withInput()->withErrors(['target_id' => __('Lista inválida.')]);
+            }
+        }
+        if ($validated['target_type'] === 'tag') {
+            if (! Tag::forUser($accountId)->where('id', $targetId)->exists()) {
+                return back()->withInput()->withErrors(['target_id' => __('Tag inválida.')]);
+            }
+        }
+
+        $message = trim((string) ($validated['message'] ?? ''));
+        $imagePath = $scheduled_post->image_path;
+        $imageMime = $scheduled_post->image_mime;
+        if ($message === '' && ! $request->hasFile('image') && ! $imagePath) {
+            return back()->withInput()->withErrors(['message' => __('Informe a mensagem ou envie uma imagem.')]);
+        }
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $dir = 'scheduled_posts/' . now()->format('Y/m');
+            $name = Str::ulid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName() ?: 'image.jpg');
+            $imagePath = $file->storeAs($dir, $name, ['disk' => 'local']);
+            $imageMime = $file->getMimeType() ?: 'image/jpeg';
+        }
+
+        $scheduled_post->update([
+            'scheduled_at' => $scheduledAt,
+            'target_type' => $validated['target_type'],
+            'target_id' => $targetId,
+            'message' => $message,
+            'image_path' => $imagePath,
+            'image_mime' => $imageMime,
+        ]);
+
+        return redirect()
+            ->route('automacao.agendamentos.index')
+            ->with('success', __('Post reconfigurado com sucesso.'));
+    }
+
+    public function duplicate(ScheduledPost $scheduled_post): RedirectResponse
+    {
+        $this->authorize('view', $scheduled_post);
+        $accountId = auth()->user()->accountId();
+        if ((int) $scheduled_post->user_id !== (int) $accountId) {
+            abort(403);
+        }
+
+        $scheduledAt = now(config('app.timezone'))->addDay();
+        if ($scheduled_post->scheduled_at) {
+            $scheduledAt = $scheduled_post->scheduled_at->copy()->addDay();
+            if ($scheduledAt->isPast()) {
+                $scheduledAt = now(config('app.timezone'))->addHour();
+            }
+        }
+
+        $imagePath = null;
+        $imageMime = $scheduled_post->image_mime;
+        if ($scheduled_post->image_path && Storage::disk('local')->exists($scheduled_post->image_path)) {
+            $dir = 'scheduled_posts/' . now()->format('Y/m');
+            $name = Str::ulid() . '_' . basename($scheduled_post->image_path);
+            $newPath = $dir . '/' . $name;
+            Storage::disk('local')->copy($scheduled_post->image_path, $newPath);
+            $imagePath = $newPath;
+        }
+
+        $newPost = ScheduledPost::create([
+            'user_id' => $accountId,
+            'scheduled_at' => $scheduledAt,
+            'target_type' => $scheduled_post->target_type,
+            'target_id' => $scheduled_post->target_id,
+            'message' => $scheduled_post->message,
+            'image_path' => $imagePath,
+            'image_mime' => $imageMime,
+        ]);
+
+        return redirect()
+            ->route('automacao.agendamentos.edit', $newPost)
+            ->with('success', __('Post duplicado. Ajuste a data/hora e salve.'));
+    }
+
+    public function destroy(ScheduledPost $scheduled_post): RedirectResponse
+    {
+        $this->authorize('delete', $scheduled_post);
 
         $scheduled_post->delete();
 
         return redirect()
             ->route('automacao.agendamentos.index')
-            ->with('success', __('Agendamento cancelado.'));
+            ->with('success', $scheduled_post->sent_at ? __('Post removido da lista.') : __('Agendamento cancelado.'));
     }
 
     /**
