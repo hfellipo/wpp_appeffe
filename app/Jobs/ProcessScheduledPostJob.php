@@ -107,9 +107,9 @@ class ProcessScheduledPostJob implements ShouldQueue
                 $contacts = Contact::forUser($accountId)->whereIn('id', $contactIds)->get();
                 foreach ($contacts as $contact) {
                     if ($sendMedia) {
-                        $sendService->sendMediaToContact($accountId, $contact, $post->image_path, $mimeType, $message, null);
+                        $sendService->sendMediaToContact($accountId, $contact, $post->image_path, $mimeType, $message, null, 'funnel_stage', $stage->id);
                     } else {
-                        $sendService->sendTextToContact($accountId, $contact, $message, null);
+                        $sendService->sendTextToContact($accountId, $contact, $message, null, 'funnel_stage', $stage->id);
                     }
                 }
             }

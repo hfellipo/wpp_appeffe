@@ -122,11 +122,14 @@ class WhatsAppSendService
     /**
      * Envia texto pela conversa (Evolution API + grava WhatsAppMessage).
      * Idêntico ao envio do chat. automationRunId opcional para histórico do contato.
+     * source_type/source_id: ex. funnel_stage + stage_id para identificar no funil.
      */
     public function sendTextToConversation(
         WhatsAppConversation $conversation,
         string $text,
-        ?int $automationRunId = null
+        ?int $automationRunId = null,
+        ?string $sourceType = null,
+        ?int $sourceId = null
     ): ?WhatsAppMessage {
         if (! $this->client->isConfigured()) {
             Log::channel('single')->warning('WhatsAppSendService: Evolution API não configurada.');
@@ -188,9 +191,13 @@ class WhatsAppSendService
         }
 
         $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+        $resolvedSourceType = $sourceType ?? ($automationRunId ? 'automation_run' : null);
+        $resolvedSourceId = $sourceId ?? ($automationRunId ? $automationRunId : null);
         $msg = WhatsAppMessage::create([
             'conversation_id' => $conversation->id,
             'automation_run_id' => $automationRunId,
+            'source_type' => $resolvedSourceType,
+            'source_id' => $resolvedSourceId,
             'direction' => 'out',
             'message_type' => 'text',
             'body' => $text,
@@ -208,19 +215,21 @@ class WhatsAppSendService
     }
 
     /**
-     * Envia mensagem para um contato (resolve conversa + envia). Para automações.
+     * Envia mensagem para um contato (resolve conversa + envia). Para automações/funil.
      */
     public function sendTextToContact(
         int $accountId,
         Contact $contact,
         string $text,
-        ?int $automationRunId = null
+        ?int $automationRunId = null,
+        ?string $sourceType = null,
+        ?int $sourceId = null
     ): ?WhatsAppMessage {
         $conversation = $this->findOrCreateConversationForContact($accountId, $contact);
         if (! $conversation) {
             return null;
         }
-        return $this->sendTextToConversation($conversation, $text, $automationRunId);
+        return $this->sendTextToConversation($conversation, $text, $automationRunId, $sourceType, $sourceId);
     }
 
     /**
@@ -231,7 +240,9 @@ class WhatsAppSendService
         string $storagePath,
         string $mimeType,
         string $caption,
-        ?int $automationRunId = null
+        ?int $automationRunId = null,
+        ?string $sourceType = null,
+        ?int $sourceId = null
     ): ?WhatsAppMessage {
         if (! $this->client->isConfigured()) {
             Log::channel('single')->warning('WhatsAppSendService: Evolution API não configurada.');
@@ -311,9 +322,13 @@ class WhatsAppSendService
         }
 
         $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+        $resolvedSourceType = $sourceType ?? ($automationRunId ? 'automation_run' : null);
+        $resolvedSourceId = $sourceId ?? ($automationRunId ? $automationRunId : null);
         $msg = WhatsAppMessage::create([
             'conversation_id' => $conversation->id,
             'automation_run_id' => $automationRunId,
+            'source_type' => $resolvedSourceType,
+            'source_id' => $resolvedSourceId,
             'direction' => 'out',
             'message_type' => $mediatype,
             'body' => $caption,
@@ -339,13 +354,15 @@ class WhatsAppSendService
         string $storagePath,
         string $mimeType,
         string $caption,
-        ?int $automationRunId = null
+        ?int $automationRunId = null,
+        ?string $sourceType = null,
+        ?int $sourceId = null
     ): ?WhatsAppMessage {
         $conversation = $this->findOrCreateConversationForContact($accountId, $contact);
         if (! $conversation) {
             return null;
         }
-        return $this->sendMediaToConversation($conversation, $storagePath, $mimeType, $caption, $automationRunId);
+        return $this->sendMediaToConversation($conversation, $storagePath, $mimeType, $caption, $automationRunId, $sourceType, $sourceId);
     }
 
     private function ensureWhatsAppContactFromAppContact(

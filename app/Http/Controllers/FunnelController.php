@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Automation;
+use App\Models\AutomationRun;
 use App\Models\Contact;
 use App\Models\Funnel;
 use App\Models\FunnelLead;
@@ -10,6 +11,7 @@ use App\Models\FunnelStage;
 use App\Models\Lista;
 use App\Models\ScheduledPost;
 use App\Models\Tag;
+use App\Models\WhatsAppMessage;
 use App\Services\AutomationRunnerService;
 use App\Services\WhatsAppSendService;
 use Illuminate\Http\JsonResponse;
@@ -74,7 +76,49 @@ class FunnelController extends Controller
         $tags = Tag::forUser($userId)->orderBy('name')->get(['id', 'name']);
         $automations = Automation::forUser($userId)->orderBy('name')->get(['id', 'name', 'is_active']);
 
-        return view('funis.show', compact('funnel', 'contacts', 'listas', 'tags', 'automations'));
+        $stageMessageStatus = [];
+        foreach ($funnel->stages as $stage) {
+            $stageMessageStatus[$stage->id] = $this->getStageMessageStatusMap($stage);
+        }
+
+        return view('funis.show', compact('funnel', 'contacts', 'listas', 'tags', 'automations', 'stageMessageStatus'));
+    }
+
+    /**
+     * Map contact_id => message status (responded|read|delivered|sent|failed) for the last automation/funnel message per contact in this stage.
+     */
+    private function getStageMessageStatusMap(FunnelStage $stage): array
+    {
+        $runIds = AutomationRun::where('automation_id', $stage->automation_id)->pluck('id')->toArray();
+
+        $messages = WhatsAppMessage::query()
+            ->where('direction', 'out')
+            ->where(function ($q) use ($stage, $runIds) {
+                $q->where(function ($q2) use ($stage) {
+                    $q2->where('source_type', 'funnel_stage')->where('source_id', $stage->id);
+                });
+                if (! empty($runIds)) {
+                    $q->orWhereIn('automation_run_id', $runIds);
+                }
+            })
+            ->whereHas('conversation', fn ($q) => $q->whereNotNull('contact_id'))
+            ->with(['conversation:id,contact_id', 'replies:id,in_reply_to_message_id'])
+            ->orderByDesc('id')
+            ->get();
+
+        $byContact = [];
+        foreach ($messages as $msg) {
+            $cid = $msg->conversation->contact_id ?? null;
+            if ($cid === null) {
+                continue;
+            }
+            if (isset($byContact[$cid])) {
+                continue;
+            }
+            $byContact[$cid] = $msg->funnelDisplayStatus();
+        }
+
+        return $byContact;
     }
 
     public function edit(Funnel $funnel): View
@@ -453,9 +497,9 @@ class FunnelController extends Controller
             foreach ($contacts as $contact) {
                 try {
                     if ($imagePath && Storage::disk('local')->exists($imagePath)) {
-                        $sendService->sendMediaToContact($accountId, $contact, $imagePath, $imageMime ?: 'image/jpeg', $message, null);
+                        $sendService->sendMediaToContact($accountId, $contact, $imagePath, $imageMime ?: 'image/jpeg', $message, null, 'funnel_stage', $stage->id);
                     } else {
-                        $sendService->sendTextToContact($accountId, $contact, $message, null);
+                        $sendService->sendTextToContact($accountId, $contact, $message, null, 'funnel_stage', $stage->id);
                     }
                     $sent++;
                 } catch (\Throwable $e) {

@@ -222,6 +222,7 @@
                                     $tempoParadoText = $tempoParado === 0 ? __('Hoje') : ($tempoParado === 1 ? '1d' : $tempoParado . 'd');
                                     $contactTags = $lead->contact ? $lead->contact->tags : collect();
                                     $contactListas = $lead->contact ? $lead->contact->listas : collect();
+                                    $msgStatus = ($lead->contact_id && isset($stageMessageStatus[$stage->id][$lead->contact_id])) ? $stageMessageStatus[$stage->id][$lead->contact_id] : null;
                                 @endphp
                                 <div class="funnel-lead-card group bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow hover:border-gray-200/80 cursor-grab active:cursor-grabbing select-none transition-shadow" draggable="true" data-move-url="{{ route('funis.leads.move', [$funnel, $lead]) }}" data-stage-id="{{ $stage->id }}">
                                     <div class="p-2.5">
@@ -246,6 +247,36 @@
                                                 <span class="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-gray-100 text-gray-400">{{ $lista->name }}</span>
                                             @endforeach
                                         </div>
+                                        @if($msgStatus)
+                                            <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                                @if($msgStatus === 'responded')
+                                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800" title="{{ __('Contato respondeu à mensagem da automação') }}">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+                                                        {{ __('Respondido') }}
+                                                    </span>
+                                                @elseif($msgStatus === 'read')
+                                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800" title="{{ __('Mensagem lida') }}">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                                        {{ __('Lido') }}
+                                                    </span>
+                                                @elseif($msgStatus === 'delivered')
+                                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700" title="{{ __('Entregue (recebida, não aberta)') }}">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                                        {{ __('Entregue') }}
+                                                    </span>
+                                                @elseif($msgStatus === 'sent')
+                                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title="{{ __('Enviado, aguardando entrega') }}">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                                        {{ __('Enviado') }}
+                                                    </span>
+                                                @else
+                                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800" title="{{ __('Não chegou ao destinatário') }}">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                                        {{ __('Não chegou') }}
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        @endif
                                         <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-100" x-data="{ open: false }">
                                             <span class="text-[10px] text-amber-600 flex items-center gap-1 shrink-0" title="{{ __('Tempo nesta etapa') }}">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>

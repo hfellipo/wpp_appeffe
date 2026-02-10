@@ -496,6 +496,22 @@ class EvolutionWebhookProcessor
             $participantJidStored = $kind === 'group' && $participantJid !== '' ? $participantJid : null;
             $senderNameStored = $kind === 'group' ? ($fromMe ? null : ($pushName !== '' ? $pushName : null)) : null;
 
+            $inReplyToMessageId = null;
+            if (! $fromMe) {
+                $quotedRemoteId = $this->extractQuotedRemoteId($m);
+                if ($quotedRemoteId !== '') {
+                    $quotedMsg = WhatsAppMessage::query()
+                        ->where('conversation_id', $conversation->id)
+                        ->where('remote_id', $quotedRemoteId)
+                        ->where('direction', 'out')
+                        ->orderByDesc('id')
+                        ->first(['id']);
+                    if ($quotedMsg) {
+                        $inReplyToMessageId = $quotedMsg->id;
+                    }
+                }
+            }
+
             $msg = WhatsAppMessage::create([
                 'conversation_id' => $conversation->id,
                 'direction' => $fromMe ? 'out' : 'in',
@@ -504,6 +520,7 @@ class EvolutionWebhookProcessor
                 'message_type' => $mappedType,
                 'body' => $body,
                 'remote_id' => $remoteId !== '' ? $remoteId : null,
+                'in_reply_to_message_id' => $inReplyToMessageId,
                 'status' => null,
                 'sent_at' => now(),
                 'raw_payload' => $m,
@@ -737,6 +754,19 @@ class EvolutionWebhookProcessor
                 'id' => $msg->public_id,
             ],
         ]);
+    }
+
+    /**
+     * Extract quoted message remote id (stanzaId) so we can link reply to our outbound message.
+     */
+    private function extractQuotedRemoteId(array $payload): string
+    {
+        $msgNode = is_array($payload['message'] ?? null) ? $payload['message'] : [];
+        $context = $msgNode['extendedTextMessage']['contextInfo'] ?? $msgNode['contextInfo'] ?? null;
+        if (! is_array($context)) {
+            return '';
+        }
+        return (string) (Arr::get($context, 'stanzaId') ?? Arr::get($context, 'quotedStanzaID') ?? Arr::get($context, 'id') ?? '');
     }
 
     /**
