@@ -8,6 +8,7 @@ use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppInstance;
 use App\Models\WhatsAppMessage;
+use App\Services\FunnelStageRuleService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
@@ -526,6 +527,16 @@ class EvolutionWebhookProcessor
                 'raw_payload' => $m,
             ]);
 
+            if (! $fromMe && $inReplyToMessageId) {
+                try {
+                    FunnelStageRuleService::applyReplyRules($msg);
+                } catch (\Throwable $e) {
+                    Log::channel('single')->warning('EvolutionWebhookProcessor: FunnelStageRuleService::applyReplyRules failed', [
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             // Attachment (best-effort)
             if ($attachment) {
                 WhatsAppAttachment::create([
@@ -718,6 +729,9 @@ class EvolutionWebhookProcessor
             if (!$msg->read_at) $msg->read_at = $now;
         }
         $msg->save();
+
+        // Apply funnel stage rules that move lead when message status changes (sent, delivered, read)
+        FunnelStageRuleService::applyMessageStatusRules($msg, $status);
 
         $convPublicId = $conv?->public_id;
         if (!$convPublicId) {

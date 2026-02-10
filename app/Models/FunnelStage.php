@@ -29,4 +29,9 @@ class FunnelStage extends Model
     {
         return $this->hasMany(FunnelLead::class, 'funnel_stage_id')->orderBy('position');
     }
+
+    public function stageRules(): HasMany
+    {
+        return $this->hasMany(FunnelStageRule::class, 'funnel_stage_id');
+    }
 }

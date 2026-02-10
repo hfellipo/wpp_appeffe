@@ -8,6 +8,7 @@ use App\Models\Contact;
 use App\Models\Funnel;
 use App\Models\FunnelLead;
 use App\Models\FunnelStage;
+use App\Models\FunnelStageRule;
 use App\Models\Lista;
 use App\Models\ScheduledPost;
 use App\Models\Tag;
@@ -69,7 +70,7 @@ class FunnelController extends Controller
     {
         $this->authorize('view', $funnel);
 
-        $funnel->load(['stages.leads' => fn ($q) => $q->with(['contact.listas', 'contact.tags'])->orderBy('position'), 'stages.automation' => fn ($q) => $q->with(['trigger', 'actions'])]);
+        $funnel->load(['stages.leads' => fn ($q) => $q->with(['contact.listas', 'contact.tags'])->orderBy('position'), 'stages.automation' => fn ($q) => $q->with(['trigger', 'actions']), 'stages.stageRules' => fn ($q) => $q->with('targetStage')]);
         $funnel->loadCount('leads')->loadSum('leads', 'value');
         $userId = auth()->user()->accountId();
         $contacts = Contact::forUser($userId)->orderBy('name')->get(['id', 'name', 'phone']);
@@ -543,5 +544,61 @@ class FunnelController extends Controller
             'time' => $scheduledAt->format('H:i'),
             'n' => $contacts->count(),
         ]));
+    }
+
+    public function storeStageRule(Request $request, Funnel $funnel, FunnelStage $stage): RedirectResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'trigger_type' => ['required', 'string', 'in:message_status,whatsapp_replied,tag_added,list_added'],
+            'target_stage_id' => ['required', 'integer', 'exists:funnel_stages,id'],
+            'tag_id' => ['nullable', 'required_if:trigger_type,tag_added', 'integer', 'exists:tags,id'],
+            'lista_id' => ['nullable', 'required_if:trigger_type,list_added', 'integer', 'exists:listas,id'],
+            'status' => ['nullable', 'required_if:trigger_type,message_status', 'string', 'in:sent,delivered,read,failed,responded'],
+        ]);
+
+        $targetStage = FunnelStage::where('funnel_id', $funnel->id)->find($validated['target_stage_id']);
+        if (! $targetStage) {
+            return back()->with('error', __('Estágio de destino inválido.'));
+        }
+        if ((int) $targetStage->id === (int) $stage->id) {
+            return back()->with('error', __('Escolha uma etapa diferente da atual.'));
+        }
+
+        $config = [];
+        if ($validated['trigger_type'] === 'tag_added' && ! empty($validated['tag_id'])) {
+            $config['tag_id'] = (int) $validated['tag_id'];
+        }
+        if ($validated['trigger_type'] === 'list_added' && ! empty($validated['lista_id'])) {
+            $config['lista_id'] = (int) $validated['lista_id'];
+        }
+        if ($validated['trigger_type'] === 'message_status' && ! empty($validated['status'])) {
+            $config['status'] = $validated['status'];
+        }
+
+        FunnelStageRule::create([
+            'funnel_stage_id' => $stage->id,
+            'trigger_type' => $validated['trigger_type'],
+            'trigger_config' => $config ?: null,
+            'target_stage_id' => $targetStage->id,
+        ]);
+
+        return back()->with('success', __('Regra adicionada: ao atender a condição, o lead será movido automaticamente.'));
+    }
+
+    public function destroyStageRule(Funnel $funnel, FunnelStage $stage, FunnelStageRule $rule): RedirectResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id || (int) $rule->funnel_stage_id !== (int) $stage->id) {
+            abort(404);
+        }
+
+        $rule->delete();
+
+        return back()->with('success', __('Regra removida.'));
     }
 }

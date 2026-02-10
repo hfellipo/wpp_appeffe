@@ -282,6 +282,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/funis/{funnel}/stages/{stage}/automation/run', [FunnelController::class, 'runStageAutomation'])->name('funis.stages.automation.run');
     Route::get('/funis/{funnel}/stages/{stage}/contacts', [FunnelController::class, 'stageContacts'])->name('funis.stages.contacts');
     Route::post('/funis/{funnel}/stages/{stage}/send-message', [FunnelController::class, 'sendStageMessage'])->name('funis.stages.send-message');
+    Route::post('/funis/{funnel}/stages/{stage}/rules', [FunnelController::class, 'storeStageRule'])->name('funis.stages.rules.store');
+    Route::delete('/funis/{funnel}/stages/{stage}/rules/{rule}', [FunnelController::class, 'destroyStageRule'])->name('funis.stages.rules.destroy');
     Route::delete('/funis/{funnel}/stages/{stage}', [FunnelController::class, 'destroyStage'])->name('funis.stages.destroy');
 });
 
