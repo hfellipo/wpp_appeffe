@@ -230,6 +230,9 @@
                                             <div class="shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-medium text-xs" title="{{ $displayName }}">{{ $initial }}</div>
                                             <div class="min-w-0 flex-1">
                                                 <p class="font-medium text-gray-900 truncate text-xs leading-tight">{{ $displayName }}</p>
+                                                @if($lead->contact && $lead->contact->phone)
+                                                    <p class="text-[10px] text-gray-500 truncate leading-tight mt-0.5">{{ $lead->contact->phone }}</p>
+                                                @endif
                                                 @if($lead->title)
                                                     <p class="text-gray-500 truncate text-xs leading-tight mt-0.5">{{ $lead->title }}</p>
                                                 @endif
