@@ -19,11 +19,19 @@ class ProcessScheduledPostsCommand extends Command
             ->get();
 
         foreach ($due as $post) {
-            ProcessScheduledPostJob::dispatch($post->id);
+            try {
+                ProcessScheduledPostJob::dispatchSync($post->id);
+            } catch (\Throwable $e) {
+                $this->error("Post #{$post->id}: " . $e->getMessage());
+                \Illuminate\Support\Facades\Log::channel('single')->error('scheduled_posts:process falha', [
+                    'scheduled_post_id' => $post->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
 
         if ($due->isNotEmpty()) {
-            $this->info('Despachados ' . $due->count() . ' post(s) agendado(s).');
+            $this->info('Processados ' . $due->count() . ' post(s) agendado(s).');
         }
 
         return self::SUCCESS;

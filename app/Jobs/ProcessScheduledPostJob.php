@@ -52,39 +52,34 @@ class ProcessScheduledPostJob implements ShouldQueue
                     ->where('kind', 'group')
                     ->where('id', $post->target_id)
                     ->first();
-                if ($conversation) {
-                    $sendService->sendTextToConversation($conversation, $message, null);
-                } else {
+                if (! $conversation) {
                     Log::channel('single')->warning('ProcessScheduledPostJob: conversa de grupo não encontrada', [
                         'scheduled_post_id' => $post->id,
                         'target_id' => $post->target_id,
                     ]);
+                    throw new \RuntimeException(__('Grupo não encontrado. Verifique se a conversa ainda existe no WhatsApp.'));
+                }
+                $sent = $sendService->sendTextToConversation($conversation, $message, null);
+                if (! $sent) {
+                    throw new \RuntimeException(__('Evolution API não enviou a mensagem. Verifique a instância e os logs.'));
                 }
             } elseif ($post->target_type === 'list') {
                 $lista = Lista::forUser($accountId)->find($post->target_id);
-                if ($lista) {
-                    $contacts = $lista->contacts()->get();
-                    foreach ($contacts as $contact) {
-                        $sendService->sendTextToContact($accountId, $contact, $message, null);
-                    }
-                } else {
-                    Log::channel('single')->warning('ProcessScheduledPostJob: lista não encontrada', [
-                        'scheduled_post_id' => $post->id,
-                        'target_id' => $post->target_id,
-                    ]);
+                if (! $lista) {
+                    throw new \RuntimeException(__('Lista não encontrada.'));
+                }
+                $contacts = $lista->contacts()->get();
+                foreach ($contacts as $contact) {
+                    $sendService->sendTextToContact($accountId, $contact, $message, null);
                 }
             } elseif ($post->target_type === 'tag') {
                 $tag = Tag::forUser($accountId)->find($post->target_id);
-                if ($tag) {
-                    $contacts = $tag->contacts()->get();
-                    foreach ($contacts as $contact) {
-                        $sendService->sendTextToContact($accountId, $contact, $message, null);
-                    }
-                } else {
-                    Log::channel('single')->warning('ProcessScheduledPostJob: tag não encontrada', [
-                        'scheduled_post_id' => $post->id,
-                        'target_id' => $post->target_id,
-                    ]);
+                if (! $tag) {
+                    throw new \RuntimeException(__('Tag não encontrada.'));
+                }
+                $contacts = $tag->contacts()->get();
+                foreach ($contacts as $contact) {
+                    $sendService->sendTextToContact($accountId, $contact, $message, null);
                 }
             }
 

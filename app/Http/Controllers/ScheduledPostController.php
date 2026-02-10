@@ -134,10 +134,20 @@ class ScheduledPostController extends Controller
                 ->with('error', __('Este post já foi enviado.'));
         }
 
-        ProcessScheduledPostJob::dispatch($scheduled_post->id, true);
+        try {
+            ProcessScheduledPostJob::dispatchSync($scheduled_post->id, true);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::channel('single')->error('ScheduledPost sendNow: falha', [
+                'scheduled_post_id' => $scheduled_post->id,
+                'message' => $e->getMessage(),
+            ]);
+            return redirect()
+                ->route('automacao.agendamentos.index')
+                ->with('error', __('Falha ao enviar: :msg. Verifique a Evolution API e os logs.', ['msg' => $e->getMessage()]));
+        }
 
         return redirect()
             ->route('automacao.agendamentos.index')
-            ->with('success', __('Envio iniciado. A mensagem será enviada em instantes.'));
+            ->with('success', __('Mensagem enviada com sucesso.'));
     }
 }
