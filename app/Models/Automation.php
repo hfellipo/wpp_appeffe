@@ -53,6 +53,11 @@ class Automation extends Model
         return $this->hasMany(AutomationRun::class, 'automation_id');
     }
 
+    public function funnelStages(): HasMany
+    {
+        return $this->hasMany(FunnelStage::class, 'automation_id');
+    }
+
     public function scopeForUser($query, int $userId): mixed
     {
         return $query->where('user_id', $userId);

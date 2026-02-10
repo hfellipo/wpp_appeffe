@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Automation;
 use App\Models\Contact;
 use App\Models\Funnel;
 use App\Models\FunnelLead;
 use App\Models\FunnelStage;
 use App\Models\Lista;
 use App\Models\Tag;
+use App\Services\AutomationRunnerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -59,14 +61,15 @@ class FunnelController extends Controller
     {
         $this->authorize('view', $funnel);
 
-        $funnel->load(['stages.leads' => fn ($q) => $q->with(['contact.listas', 'contact.tags'])->orderBy('position')]);
+        $funnel->load(['stages.leads' => fn ($q) => $q->with(['contact.listas', 'contact.tags'])->orderBy('position'), 'stages.automation' => fn ($q) => $q->with(['trigger', 'actions'])]);
         $funnel->loadCount('leads')->loadSum('leads', 'value');
         $userId = auth()->user()->accountId();
         $contacts = Contact::forUser($userId)->orderBy('name')->get(['id', 'name', 'phone']);
         $listas = Lista::forUser($userId)->orderBy('name')->get(['id', 'name']);
         $tags = Tag::forUser($userId)->orderBy('name')->get(['id', 'name']);
+        $automations = Automation::forUser($userId)->orderBy('name')->get(['id', 'name', 'is_active']);
 
-        return view('funis.show', compact('funnel', 'contacts', 'listas', 'tags'));
+        return view('funis.show', compact('funnel', 'contacts', 'listas', 'tags', 'automations'));
     }
 
     public function edit(Funnel $funnel): View
@@ -312,5 +315,69 @@ class FunnelController extends Controller
         $stage->delete();
 
         return back()->with('success', __('Coluna removida. Os leads foram movidos para a primeira coluna.'));
+    }
+
+    public function updateStageAutomation(Request $request, Funnel $funnel, FunnelStage $stage): RedirectResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id) {
+            abort(404);
+        }
+
+        $automationId = filter_var($request->input('automation_id'), FILTER_VALIDATE_INT);
+        if ($automationId === false || $automationId === null) {
+            $automationId = null;
+        } else {
+            $automation = Automation::forUser(auth()->user()->accountId())->find($automationId);
+            if (! $automation) {
+                return back()->with('error', __('Automação não encontrada.'));
+            }
+        }
+
+        $stage->update(['automation_id' => $automationId]);
+
+        return back()->with('success', $automationId ? __('Automação vinculada à coluna.') : __('Automação desvinculada.'));
+    }
+
+    public function runStageAutomation(Funnel $funnel, FunnelStage $stage, AutomationRunnerService $runner): RedirectResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id) {
+            abort(404);
+        }
+
+        $automation = $stage->automation;
+        if (! $automation) {
+            return back()->with('error', __('Esta coluna não tem automação configurada.'));
+        }
+
+        $this->authorize('update', $automation);
+
+        $contactIds = $stage->leads()->whereNotNull('contact_id')->pluck('contact_id')->unique()->filter();
+        $contacts = Contact::forUser(auth()->user()->accountId())->whereIn('id', $contactIds)->get();
+
+        if ($contacts->isEmpty()) {
+            return back()->with('error', __('Nenhum lead desta coluna tem contato vinculado.'));
+        }
+
+        $run = 0;
+        $errors = [];
+        foreach ($contacts as $contact) {
+            $result = $runner->runForContact($automation, $contact);
+            if ($result['success']) {
+                $run++;
+            } else {
+                $errors[] = $contact->name . ': ' . ($result['message'] ?? '');
+            }
+        }
+
+        if ($run > 0) {
+            $msg = $run === $contacts->count()
+                ? __('Automação disparada para :n contato(s).', ['n' => $run])
+                : __('Automação disparada para :n de :total contato(s).', ['n' => $run, 'total' => $contacts->count()]);
+            return back()->with('success', $msg);
+        }
+
+        return back()->with('error', __('Nenhum contato executou a automação.') . ' ' . implode(' ', array_slice($errors, 0, 2)));
     }
 }

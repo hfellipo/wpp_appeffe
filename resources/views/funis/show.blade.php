@@ -201,7 +201,12 @@
                         @endphp
                         <div class="funnel-drop-zone flex flex-col rounded-lg border border-gray-200 {{ $sc['bg'] }} transition-colors flex-shrink-0" style="min-height: 320px; width: {{ $colWidth }}px;" data-stage-id="{{ $stage->id }}">
                             <div class="px-3 py-2 border-b border-gray-200/80">
-                                <div class="h-0.5 w-8 rounded-full {{ $sc['bar'] }} mb-1.5"></div>
+                                <div class="flex items-center justify-between gap-1 mb-1.5">
+                                    <div class="h-0.5 w-8 rounded-full {{ $sc['bar'] }}"></div>
+                                    <button type="button" class="stage-automation-btn p-1 rounded {{ $stage->automation_id ? 'text-blue-600 hover:bg-blue-50' : 'text-red-500 hover:bg-red-50' }}" title="{{ $stage->automation_id ? __('Automação configurada') : __('Sem automação') }}" data-stage-id="{{ $stage->id }}" data-stage-name="{{ e($stage->name) }}" data-automation-id="{{ $stage->automation_id ?? '' }}" data-update-url="{{ route('funis.stages.automation.update', [$funnel, $stage]) }}" data-run-url="{{ route('funis.stages.automation.run', [$funnel, $stage]) }}" data-automation-name="{{ $stage->automation ? e($stage->automation->name) : '' }}" data-automation-actions-count="{{ $stage->automation ? $stage->automation->actions->count() : 0 }}" data-automation-trigger-label="{{ $stage->automation && $stage->automation->trigger ? (\App\Models\Automation::triggerTypes()[$stage->automation->trigger->type] ?? $stage->automation->trigger->type) : '' }}" data-automation-edit-url="{{ $stage->automation ? route('automacao.edit', $stage->automation) : '' }}">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                    </button>
+                                </div>
                                 <p class="text-xs font-medium text-gray-600 truncate">{{ $stage->name }}</p>
                                 <p class="text-xs text-gray-500 mt-0.5 funnel-stage-count" data-stage-id="{{ $stage->id }}" data-lead-label="{{ __('lead') }}" data-leads-label="{{ __('leads') }}">{{ $stageLeadCount }} {{ $stageLeadCount === 1 ? __('lead') : __('leads') }}</p>
                             </div>
@@ -223,7 +228,7 @@
                                         <div class="flex gap-2 items-center">
                                             <div class="shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-medium text-xs" title="{{ $displayName }}">{{ $initial }}</div>
                                             <div class="min-w-0 flex-1">
-                                                <p class="font-medium text-gray-900 truncate text-sm leading-tight">{{ $displayName }}</p>
+                                                <p class="font-medium text-gray-900 truncate text-xs leading-tight">{{ $displayName }}</p>
                                                 @if($lead->title)
                                                     <p class="text-gray-500 truncate text-xs leading-tight mt-0.5">{{ $lead->title }}</p>
                                                 @endif
@@ -290,6 +295,42 @@
 
     <x-confirm-modal name="confirm-modal" />
 
+    {{-- Modal Automação da coluna --}}
+    <x-modal name="stage-automation-modal" :show="false" maxWidth="sm">
+        <div class="p-6">
+            <h3 class="text-sm font-semibold text-gray-800 mb-1" id="stage-automation-modal-title">{{ __('Automação da coluna') }}</h3>
+            <p class="text-xs text-gray-500 mb-4" id="stage-automation-modal-subtitle"></p>
+            <form id="form-stage-automation-assign" method="POST" action="">
+                @csrf
+                @method('PUT')
+                <div class="flex gap-2 items-end mb-4">
+                    <div class="flex-1">
+                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Vincular automação') }}</label>
+                        <select name="automation_id" id="stage-automation-select" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                            <option value="">{{ __('— Nenhuma —') }}</option>
+                            @foreach($automations as $a)
+                                <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (' . __('pausada') . ')' }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <button type="submit" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Salvar') }}</button>
+                </div>
+            </form>
+            <div id="stage-automation-configured" class="hidden border-t border-gray-100 pt-4">
+                <p class="text-xs font-medium text-gray-700 mb-1">{{ __('Configurado') }}</p>
+                <p class="text-xs text-gray-600 mb-2" id="stage-automation-config-summary"></p>
+                <div class="flex flex-wrap gap-2">
+                    <a id="stage-automation-edit-link" href="#" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 rounded">{{ __('Editar automação') }}</a>
+                    <form id="form-stage-automation-run" method="POST" action="" class="inline">
+                        @csrf
+                        <button type="submit" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">{{ __('Disparar agora') }}</button>
+                    </form>
+                    <a href="{{ route('automacao.agendamentos.index') }}" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded">{{ __('Agendar') }}</a>
+                </div>
+            </div>
+        </div>
+    </x-modal>
+
     {{-- Modal Editar lead --}}
     <x-modal name="edit-lead-modal" :show="false" maxWidth="sm">
         <div class="p-6">
@@ -345,10 +386,39 @@
         }
         window.dispatchEvent(new CustomEvent('open-modal', { detail: 'edit-lead-modal' }));
     }
+    function openStageAutomationModal(btn) {
+        var el = btn.target && btn.target.closest ? btn.target.closest('.stage-automation-btn') : btn;
+        if (!el || !el.dataset.updateUrl) return;
+        var formAssign = document.getElementById('form-stage-automation-assign');
+        var formRun = document.getElementById('form-stage-automation-run');
+        var titleEl = document.getElementById('stage-automation-modal-title');
+        var subtitleEl = document.getElementById('stage-automation-modal-subtitle');
+        var selectEl = document.getElementById('stage-automation-select');
+        var configuredEl = document.getElementById('stage-automation-configured');
+        var summaryEl = document.getElementById('stage-automation-config-summary');
+        var editLink = document.getElementById('stage-automation-edit-link');
+        if (!formAssign || !formRun) return;
+        formAssign.action = el.dataset.updateUrl;
+        formRun.action = el.dataset.runUrl;
+        if (titleEl) titleEl.textContent = '{{ __("Automação") }}: ' + (el.dataset.stageName || '');
+        if (subtitleEl) subtitleEl.textContent = '{{ __("Só os contatos desta coluna serão considerados ao disparar.") }}';
+        if (selectEl) selectEl.value = el.dataset.automationId || '';
+        if (el.dataset.automationId && el.dataset.automationName) {
+            configuredEl.classList.remove('hidden');
+            if (summaryEl) summaryEl.textContent = (el.dataset.automationName || '') + (el.dataset.automationTriggerLabel ? ' · ' + el.dataset.automationTriggerLabel : '') + (el.dataset.automationActionsCount ? ' · ' + el.dataset.automationActionsCount + ' {{ __("ação(ões)") }}' : '');
+            if (editLink) editLink.href = el.dataset.automationEditUrl || ('/automacao/' + (el.dataset.automationId || '') + '/edit');
+        } else {
+            configuredEl.classList.add('hidden');
+        }
+        window.dispatchEvent(new CustomEvent('open-modal', { detail: 'stage-automation-modal' }));
+    }
     document.addEventListener('DOMContentLoaded', function() {
         var draggedCard = null;
         document.querySelectorAll('.edit-lead-btn').forEach(function(btn) {
             btn.addEventListener('click', openEditLeadModal);
+        });
+        document.querySelectorAll('.stage-automation-btn').forEach(function(btn) {
+            btn.addEventListener('click', openStageAutomationModal);
         });
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
         if (!csrf) return;
