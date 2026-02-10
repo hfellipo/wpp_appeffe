@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class ProcessScheduledPostsCommand extends Command
 {
     protected $signature = 'scheduled_posts:process';
+
     protected $description = 'Processa posts agendados cuja data/hora já passou e envia a mensagem (grupo, lista ou tag).';
 
     public function handle(): int
@@ -18,6 +19,7 @@ class ProcessScheduledPostsCommand extends Command
             ->get();
 
         foreach ($due as $post) {
+            ProcessScheduledPostJob::dispatch($post->id);
         }
 
         if ($due->isNotEmpty()) {
