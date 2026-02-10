@@ -185,17 +185,26 @@
                 </div>
             </x-modal>
 
-            {{-- Kanban: só colunas de estágios, mesmo tamanho --}}
-            <div class="grid gap-3 pb-4 min-h-[360px] overflow-x-auto" style="grid-template-columns: repeat({{ $funnel->stages->count() }}, minmax(200px, 1fr));">
-                @foreach($funnel->stages as $stage)
-                    @php
-                        $sc = $stageColors[$stage->color ?? 'gray'] ?? $stageColors['gray'];
-                    @endphp
-                    <div class="funnel-drop-zone min-w-0 flex flex-col rounded-lg border border-gray-200 {{ $sc['bg'] }} transition-colors" style="min-height: 320px;" data-stage-id="{{ $stage->id }}">
-                        <div class="px-3 py-2 border-b border-gray-200/80">
-                            <div class="h-0.5 w-8 rounded-full {{ $sc['bar'] }} mb-1.5"></div>
-                            <p class="text-xs font-medium text-gray-600 truncate">{{ $stage->name }}</p>
-                        </div>
+            {{-- Kanban: máx 5 colunas + metade da 6ª, scroll lateral --}}
+            @php
+                $colWidth = 220;
+                $colGap = 12;
+                $visibleColumns = 5.5;
+                $boardMaxWidth = (int) ($visibleColumns * $colWidth + ($visibleColumns - 1) * $colGap);
+            @endphp
+            <div class="overflow-x-auto pb-4 -mx-1 px-1 mx-auto w-full" style="max-width: {{ $boardMaxWidth }}px;">
+                <div class="grid gap-3 min-h-[360px] shrink-0" style="grid-template-columns: repeat({{ $funnel->stages->count() }}, {{ $colWidth }}px); min-width: min-content;">
+                    @foreach($funnel->stages as $stage)
+                        @php
+                            $sc = $stageColors[$stage->color ?? 'gray'] ?? $stageColors['gray'];
+                            $stageLeadCount = $stage->leads->count();
+                        @endphp
+                        <div class="funnel-drop-zone flex flex-col rounded-lg border border-gray-200 {{ $sc['bg'] }} transition-colors flex-shrink-0" style="min-height: 320px; width: {{ $colWidth }}px;" data-stage-id="{{ $stage->id }}">
+                            <div class="px-3 py-2 border-b border-gray-200/80">
+                                <div class="h-0.5 w-8 rounded-full {{ $sc['bar'] }} mb-1.5"></div>
+                                <p class="text-xs font-medium text-gray-600 truncate">{{ $stage->name }}</p>
+                                <p class="text-xs text-gray-500 mt-0.5 funnel-stage-count" data-stage-id="{{ $stage->id }}" data-lead-label="{{ __('lead') }}" data-leads-label="{{ __('leads') }}">{{ $stageLeadCount }} {{ $stageLeadCount === 1 ? __('lead') : __('leads') }}</p>
+                            </div>
                         <div class="funnel-stage-cards p-2 flex-1 overflow-y-auto space-y-2 min-h-0">
                             @foreach($stage->leads as $lead)
                                 <div class="funnel-lead-card bg-white rounded-md border border-gray-100 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing select-none" draggable="true" data-move-url="{{ route('funis.leads.move', [$funnel, $lead]) }}" data-stage-id="{{ $stage->id }}">
@@ -233,6 +242,7 @@
                         </div>
                     </div>
                 @endforeach
+                </div>
             </div>
         </div>
     </div>
@@ -299,6 +309,16 @@
                 targetContainer.appendChild(card);
                 var sel = card.querySelector('select[name="funnel_stage_id"]');
                 if (sel) sel.value = targetStageId;
+                function updateStageCount(stageId, delta) {
+                    var el = document.querySelector('.funnel-stage-count[data-stage-id="' + stageId + '"]');
+                    if (!el) return;
+                    var m = el.textContent.match(/^(\d+)/);
+                    var n = (m ? parseInt(m[1], 10) : 0) + delta;
+                    var label = n === 1 ? (el.dataset.leadLabel || 'lead') : (el.dataset.leadsLabel || 'leads');
+                    el.textContent = n + ' ' + label;
+                }
+                updateStageCount(originalStageId, -1);
+                updateStageCount(targetStageId, 1);
                 fetch(data.moveUrl, {
                     method: 'POST',
                     headers: {
@@ -316,6 +336,8 @@
                         card.dataset.stageId = originalStageId;
                         originalContainer.appendChild(card);
                         if (sel) sel.value = originalStageId;
+                        updateStageCount(originalStageId, 1);
+                        updateStageCount(targetStageId, -1);
                     }
                 });
             });
