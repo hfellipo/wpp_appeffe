@@ -13,7 +13,7 @@
 
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6">
-                    <form action="{{ route('automacao.agendamentos.store') }}" method="POST" id="form-agendar">
+                    <form action="{{ route('automacao.agendamentos.store') }}" method="POST" id="form-agendar" enctype="multipart/form-data">
                         @csrf
                         <div class="space-y-4">
                             <div class="grid grid-cols-2 gap-4">
@@ -91,13 +91,26 @@
                             </div>
 
                             <div>
-                                <x-input-label for="message" :value="__('Mensagem')" />
+                                <x-input-label for="image" :value="__('Imagem (opcional)')" />
+                                <input
+                                    id="image"
+                                    name="image"
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/gif,image/webp"
+                                    class="mt-1 block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
+                                />
+                                <p class="mt-1 text-xs text-gray-500">{{ __('Se enviar imagem, o texto abaixo será a legenda (aparece abaixo da imagem no WhatsApp). Máx. 5 MB.') }}</p>
+                                <x-input-error :messages="$errors->get('image')" class="mt-2" />
+                            </div>
+
+                            <div>
+                                <x-input-label for="message" :value="__('Mensagem / Legenda')" />
                                 <textarea
                                     id="message"
                                     name="message"
-                                    rows="5"
+                                    rows="6"
                                     class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                                    required
+                                    placeholder="{{ __('Digite o texto. Com imagem, vira legenda. Pode incluir link.') }}"
                                 >{{ old('message') }}</textarea>
                                 <x-input-error :messages="$errors->get('message')" class="mt-2" />
                             </div>

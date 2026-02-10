@@ -39,11 +39,15 @@ class ProcessScheduledPostJob implements ShouldQueue
 
         $accountId = (int) $post->user_id;
         $message = trim((string) $post->message);
-        if ($message === '') {
-            Log::channel('single')->warning('ProcessScheduledPostJob: mensagem vazia', ['scheduled_post_id' => $post->id]);
+        $hasImage = ! empty($post->image_path);
+        if (! $hasImage && $message === '') {
+            Log::channel('single')->warning('ProcessScheduledPostJob: mensagem e imagem vazios', ['scheduled_post_id' => $post->id]);
             $post->update(['sent_at' => now()]);
             return;
         }
+
+        $sendMedia = $hasImage && \Illuminate\Support\Facades\Storage::disk('local')->exists($post->image_path);
+        $mimeType = $sendMedia ? ($post->image_mime ?: 'image/jpeg') : null;
 
         try {
             if ($post->target_type === 'group') {
@@ -59,7 +63,11 @@ class ProcessScheduledPostJob implements ShouldQueue
                     ]);
                     throw new \RuntimeException(__('Grupo não encontrado. Verifique se a conversa ainda existe no WhatsApp.'));
                 }
-                $sent = $sendService->sendTextToConversation($conversation, $message, null);
+                if ($sendMedia) {
+                    $sent = $sendService->sendMediaToConversation($conversation, $post->image_path, $mimeType, $message, null);
+                } else {
+                    $sent = $sendService->sendTextToConversation($conversation, $message, null);
+                }
                 if (! $sent) {
                     throw new \RuntimeException(__('Evolution API não enviou a mensagem. Verifique a instância e os logs.'));
                 }
@@ -70,7 +78,11 @@ class ProcessScheduledPostJob implements ShouldQueue
                 }
                 $contacts = $lista->contacts()->get();
                 foreach ($contacts as $contact) {
-                    $sendService->sendTextToContact($accountId, $contact, $message, null);
+                    if ($sendMedia) {
+                        $sendService->sendMediaToContact($accountId, $contact, $post->image_path, $mimeType, $message, null);
+                    } else {
+                        $sendService->sendTextToContact($accountId, $contact, $message, null);
+                    }
                 }
             } elseif ($post->target_type === 'tag') {
                 $tag = Tag::forUser($accountId)->find($post->target_id);
@@ -79,7 +91,11 @@ class ProcessScheduledPostJob implements ShouldQueue
                 }
                 $contacts = $tag->contacts()->get();
                 foreach ($contacts as $contact) {
-                    $sendService->sendTextToContact($accountId, $contact, $message, null);
+                    if ($sendMedia) {
+                        $sendService->sendMediaToContact($accountId, $contact, $post->image_path, $mimeType, $message, null);
+                    } else {
+                        $sendService->sendTextToContact($accountId, $contact, $message, null);
+                    }
                 }
             }
 

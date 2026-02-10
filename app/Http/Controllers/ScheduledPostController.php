@@ -10,6 +10,8 @@ use App\Models\WhatsAppConversation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class ScheduledPostController extends Controller
@@ -73,7 +75,8 @@ class ScheduledPostController extends Controller
             'target_group_id' => ['nullable', 'required_if:target_type,group', 'integer', 'min:1'],
             'target_list_id' => ['nullable', 'required_if:target_type,list', 'integer', 'min:1'],
             'target_tag_id' => ['nullable', 'required_if:target_type,tag', 'integer', 'min:1'],
-            'message' => ['required', 'string', 'max:65535'],
+            'message' => ['nullable', 'string', 'max:65535'],
+            'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
         ]);
 
         $targetId = match ($validated['target_type']) {
@@ -113,12 +116,29 @@ class ScheduledPostController extends Controller
             }
         }
 
+        $message = trim((string) ($validated['message'] ?? ''));
+        if ($message === '' && ! $request->hasFile('image')) {
+            return back()->withInput()->withErrors(['message' => __('Informe a mensagem (legenda) ou envie uma imagem.')]);
+        }
+
+        $imagePath = null;
+        $imageMime = null;
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $dir = 'scheduled_posts/' . now()->format('Y/m');
+            $name = Str::ulid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName() ?: 'image.jpg');
+            $imagePath = $file->storeAs($dir, $name, ['disk' => 'local']);
+            $imageMime = $file->getMimeType() ?: 'image/jpeg';
+        }
+
         ScheduledPost::create([
             'user_id' => $accountId,
             'scheduled_at' => $scheduledAt,
             'target_type' => $validated['target_type'],
             'target_id' => $targetId,
-            'message' => $validated['message'],
+            'message' => $message,
+            'image_path' => $imagePath,
+            'image_mime' => $imageMime,
         ]);
 
         return redirect()

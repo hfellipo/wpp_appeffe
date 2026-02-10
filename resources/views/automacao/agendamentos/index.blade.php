@@ -75,8 +75,11 @@
                                             — {{ $tag ? $tag->name : '#' . $post->target_id }}
                                         @endif
                                     </td>
-                                    <td class="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title="{{ $post->message }}">
-                                        {{ Str::limit($post->message, 50) }}
+                                    <td class="px-6 py-4 text-sm text-gray-600 max-w-xs">
+                                        @if($post->image_path)
+                                            <span class="inline-flex items-center gap-1 text-gray-500" title="{{ __('Com imagem') }}">📷</span>
+                                        @endif
+                                        <span class="truncate block" title="{{ $post->message }}">{{ Str::limit($post->message, 45) }}</span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         @if($post->sent_at)

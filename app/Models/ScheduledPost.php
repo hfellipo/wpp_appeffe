@@ -14,6 +14,8 @@ class ScheduledPost extends Model
         'target_type',
         'target_id',
         'message',
+        'image_path',
+        'image_mime',
         'sent_at',
     ];
 

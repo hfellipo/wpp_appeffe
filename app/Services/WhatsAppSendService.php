@@ -9,6 +9,7 @@ use App\Models\WhatsAppInstance;
 use App\Models\WhatsAppMessage;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Envio de mensagem WhatsApp para contato/conversa (igual ao chat).
@@ -220,6 +221,131 @@ class WhatsAppSendService
             return null;
         }
         return $this->sendTextToConversation($conversation, $text, $automationRunId);
+    }
+
+    /**
+     * Envia imagem (ou mídia) com legenda pela conversa. Path = caminho no disk 'local' (ex: scheduled_posts/xxx.jpg).
+     */
+    public function sendMediaToConversation(
+        WhatsAppConversation $conversation,
+        string $storagePath,
+        string $mimeType,
+        string $caption,
+        ?int $automationRunId = null
+    ): ?WhatsAppMessage {
+        if (! $this->client->isConfigured()) {
+            Log::channel('single')->warning('WhatsAppSendService: Evolution API não configurada.');
+            return null;
+        }
+
+        $disk = Storage::disk('local');
+        if (! $disk->exists($storagePath)) {
+            Log::channel('single')->warning('WhatsAppSendService: arquivo de mídia não encontrado', ['path' => $storagePath]);
+            return null;
+        }
+
+        $accountId = (int) $conversation->user_id;
+        $instanceNormalized = preg_replace('/\D/', '', (string) $conversation->instance_name);
+        $waInstance = WhatsAppInstance::query()
+            ->where('user_id', $accountId)
+            ->where(function ($q) use ($instanceNormalized, $conversation) {
+                $q->where('instance_name', $instanceNormalized)
+                    ->orWhere('instance_name', $conversation->instance_name);
+            })
+            ->first();
+        if (! $waInstance) {
+            $candidates = WhatsAppInstance::query()->where('user_id', $accountId)->get(['instance_name']);
+            foreach ($candidates as $c) {
+                if (preg_replace('/\D/', '', (string) $c->instance_name) === $instanceNormalized) {
+                    $waInstance = $c;
+                    break;
+                }
+            }
+        }
+        if (! $waInstance) {
+            Log::channel('single')->warning('WhatsAppSendService: instância não encontrada', ['conversation_id' => $conversation->id]);
+            return null;
+        }
+
+        $instanceForApi = trim((string) $waInstance->instance_name) ?: $instanceNormalized;
+        $recipient = $this->recipientForEvolution($conversation);
+        if ($recipient === '') {
+            $recipient = $this->buildRecipientFromConversation($conversation);
+        }
+        if ($recipient === '') {
+            Log::channel('single')->warning('WhatsAppSendService: destinatário vazio', ['conversation_id' => $conversation->id]);
+            return null;
+        }
+
+        $numberForPayload = $this->numberForEvolutionPayload($recipient);
+        $mediatype = 'document';
+        if (str_starts_with($mimeType, 'image/')) {
+            $mediatype = 'image';
+        } elseif (str_starts_with($mimeType, 'video/')) {
+            $mediatype = 'video';
+        }
+
+        $contents = $disk->get($storagePath);
+        $mediaValue = base64_encode($contents);
+        $fileName = basename($storagePath);
+
+        $payload = [
+            'number' => $numberForPayload,
+            'mediatype' => $mediatype,
+            'mimetype' => $mimeType,
+            'media' => $mediaValue,
+            'fileName' => $fileName,
+        ];
+        if ($caption !== '') {
+            $payload['caption'] = mb_substr($caption, 0, 1024);
+        }
+
+        $resp = $this->client->sendMedia($instanceForApi, $payload);
+        if ($resp['status'] < 200 || $resp['status'] >= 300) {
+            Log::channel('single')->warning('WhatsAppSendService: Evolution sendMedia falhou', [
+                'conversation_id' => $conversation->id,
+                'http_status' => $resp['status'],
+                'response' => $resp['json'] ?? $resp['text'],
+            ]);
+            return null;
+        }
+
+        $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+        $msg = WhatsAppMessage::create([
+            'conversation_id' => $conversation->id,
+            'automation_run_id' => $automationRunId,
+            'direction' => 'out',
+            'message_type' => $mediatype,
+            'body' => $caption,
+            'remote_id' => $remoteId ?: null,
+            'status' => 'sent',
+            'sent_at' => now(),
+            'raw_payload' => is_array($resp['json']) ? $resp['json'] : null,
+        ]);
+
+        $conversation->last_message_at = $msg->sent_at ?? $msg->created_at;
+        $conversation->last_message_preview = $caption !== '' ? mb_substr($caption, 0, 500) : ($mediatype === 'image' ? 'Foto' : 'Mídia');
+        $conversation->save();
+
+        return $msg;
+    }
+
+    /**
+     * Envia mídia com legenda para um contato (resolve conversa + envia).
+     */
+    public function sendMediaToContact(
+        int $accountId,
+        Contact $contact,
+        string $storagePath,
+        string $mimeType,
+        string $caption,
+        ?int $automationRunId = null
+    ): ?WhatsAppMessage {
+        $conversation = $this->findOrCreateConversationForContact($accountId, $contact);
+        if (! $conversation) {
+            return null;
+        }
+        return $this->sendMediaToConversation($conversation, $storagePath, $mimeType, $caption, $automationRunId);
     }
 
     private function ensureWhatsAppContactFromAppContact(
