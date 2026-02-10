@@ -9,12 +9,22 @@ use App\Models\Tag;
 use App\Models\WhatsAppConversation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\View\View;
 
 class ScheduledPostController extends Controller
 {
     public function index(): View
     {
+        // Processa posts agendados vencidos (fallback quando o cron do servidor não está rodando)
+        try {
+            Artisan::call('scheduled_posts:process');
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::channel('single')->warning('ScheduledPostController index: falha ao processar vencidos', [
+                'message' => $e->getMessage(),
+            ]);
+        }
+
         $posts = ScheduledPost::forUser(auth()->user()->accountId())
             ->orderByDesc('scheduled_at')
             ->paginate(15);

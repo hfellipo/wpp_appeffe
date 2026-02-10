@@ -32,7 +32,8 @@
                         {{ __('Envie uma mensagem WhatsApp em data e hora definidas para um grupo, uma lista de contatos ou para quem tem uma tag.') }}
                     </p>
                     <p class="text-xs text-gray-500 mt-1">
-                        {{ __('O cron') }} <code class="bg-gray-100 px-1 rounded">scheduled_posts:process</code> {{ __('roda a cada minuto; agendamentos com data/hora já passada são enviados automaticamente.') }}
+                        {{ __('Ao abrir esta página, os posts com data/hora já passada são enviados. Para envio exato no horário, configure no servidor:') }}
+                        <code class="bg-gray-100 px-1 rounded">* * * * * php artisan schedule:run</code>.
                     </p>
                 </div>
                 <div class="overflow-x-auto">
