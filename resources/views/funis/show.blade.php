@@ -290,8 +290,15 @@
                 var card = draggedCard;
                 draggedCard = null;
                 if (!card) return;
-                var cardsContainer = zone.querySelector('.funnel-stage-cards');
-                if (!cardsContainer) return;
+                var targetContainer = zone.querySelector('.funnel-stage-cards');
+                if (!targetContainer) return;
+                var originalContainer = card.parentNode;
+                var originalStageId = data.stageId;
+                card.dataset.stageId = targetStageId;
+                card.classList.remove('opacity-50', 'invisible');
+                targetContainer.appendChild(card);
+                var sel = card.querySelector('select[name="funnel_stage_id"]');
+                if (sel) sel.value = targetStageId;
                 fetch(data.moveUrl, {
                     method: 'POST',
                     headers: {
@@ -305,12 +312,10 @@
                         _token: csrf
                     })
                 }).then(function(r) {
-                    if (r.ok && card.parentNode) {
-                        card.dataset.stageId = targetStageId;
-                        card.classList.remove('opacity-50', 'invisible');
-                        cardsContainer.appendChild(card);
-                        var sel = card.querySelector('select[name="funnel_stage_id"]');
-                        if (sel) sel.value = targetStageId;
+                    if (!r.ok && originalContainer) {
+                        card.dataset.stageId = originalStageId;
+                        originalContainer.appendChild(card);
+                        if (sel) sel.value = originalStageId;
                     }
                 });
             });
