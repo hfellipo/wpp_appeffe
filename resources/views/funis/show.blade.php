@@ -218,51 +218,54 @@
                                     $contactTags = $lead->contact ? $lead->contact->tags : collect();
                                     $contactListas = $lead->contact ? $lead->contact->listas : collect();
                                 @endphp
-                                <div class="funnel-lead-card bg-white rounded-lg border border-gray-100 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing select-none" draggable="true" data-move-url="{{ route('funis.leads.move', [$funnel, $lead]) }}" data-stage-id="{{ $stage->id }}">
-                                    <div class="flex gap-2">
-                                        <div class="shrink-0 w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-semibold text-sm" title="{{ $displayName }}">{{ $initial }}</div>
-                                        <div class="min-w-0 flex-1">
-                                            <div class="flex items-start justify-between gap-1">
-                                                <p class="font-medium text-gray-800 truncate text-sm">{{ $displayName }}</p>
-                                                <span class="text-gray-400 text-[10px] shrink-0">{{ $lead->updated_at->format('d/m/Y') }}</span>
+                                <div class="funnel-lead-card group bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow hover:border-gray-200/80 cursor-grab active:cursor-grabbing select-none transition-shadow" draggable="true" data-move-url="{{ route('funis.leads.move', [$funnel, $lead]) }}" data-stage-id="{{ $stage->id }}">
+                                    <div class="p-2.5">
+                                        <div class="flex gap-2 items-center">
+                                            <div class="shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-medium text-xs" title="{{ $displayName }}">{{ $initial }}</div>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="font-medium text-gray-900 truncate text-sm leading-tight">{{ $displayName }}</p>
+                                                @if($lead->title)
+                                                    <p class="text-gray-500 truncate text-xs leading-tight mt-0.5">{{ $lead->title }}</p>
+                                                @endif
                                             </div>
-                                            @if($lead->title)
-                                                <p class="text-brand-600 font-medium truncate text-xs mt-0.5">{{ $lead->title }}</p>
-                                            @endif
+                                            <span class="text-[10px] text-gray-400 shrink-0">{{ $lead->updated_at->format('d/m/Y') }}</span>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-1.5 mt-2">
                                             @if($lead->value > 0)
-                                                <p class="text-gray-600 text-xs mt-0.5">R$ {{ number_format((float) $lead->value, 2, ',', '.') }}</p>
+                                                <span class="text-xs font-medium text-gray-700">R$ {{ number_format((float) $lead->value, 2, ',', '.') }}</span>
                                             @endif
-                                            <div class="flex flex-wrap gap-1 mt-1.5">
-                                                @foreach($contactTags as $tag)
-                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">{{ $tag->name }}</span>
-                                                @endforeach
-                                                @foreach($contactListas as $lista)
-                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">{{ $lista->name }}</span>
-                                                @endforeach
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-100 text-brand-700">{{ $stage->name }}</span>
-                                            </div>
-                                            <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                                                <form action="{{ route('funis.leads.move', [$funnel, $lead]) }}" method="POST" class="min-w-0 flex-1">
+                                            @foreach($contactTags as $tag)
+                                                <span class="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-gray-100 text-gray-500">{{ $tag->name }}</span>
+                                            @endforeach
+                                            @foreach($contactListas as $lista)
+                                                <span class="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-gray-100 text-gray-400">{{ $lista->name }}</span>
+                                            @endforeach
+                                            <span class="inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-brand-50 text-brand-600">{{ $stage->name }}</span>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-100">
+                                            <form action="{{ route('funis.leads.move', [$funnel, $lead]) }}" method="POST" class="min-w-0 flex-1 max-w-[55%]">
+                                                @csrf
+                                                <select name="funnel_stage_id" class="block w-full text-[10px] rounded-md border-gray-200 bg-gray-50/80 text-gray-600 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30 py-1 pr-6" onchange="this.form.submit()">
+                                                    @foreach($funnel->stages as $s)
+                                                        <option value="{{ $s->id }}" {{ $s->id == $stage->id ? 'selected' : '' }}>{{ $s->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </form>
+                                            <span class="text-[10px] text-amber-600 flex items-center gap-1 shrink-0" title="{{ __('Tempo nesta etapa') }}">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                                {{ $tempoParadoText }}
+                                            </span>
+                                            <div class="flex items-center opacity-70 group-hover:opacity-100 transition-opacity">
+                                                <button type="button" class="p-1 rounded text-gray-400 hover:text-brand-600 hover:bg-brand-50 edit-lead-btn" title="{{ __('Editar') }}" data-lead-id="{{ $lead->id }}" data-name="{{ e($lead->name) }}" data-title="{{ e($lead->title ?? '') }}" data-value="{{ $lead->value }}" data-contact-id="{{ $lead->contact_id ?? '' }}" data-update-url="{{ route('funis.leads.update', [$funnel, $lead]) }}">
+                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                </button>
+                                                <form id="form-destroy-lead-{{ $lead->id }}" action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="inline" data-confirm-message="{{ __('Remover lead?') }}">
                                                     @csrf
-                                                    <select name="funnel_stage_id" class="block w-full text-[10px] rounded border-gray-100 focus:border-gray-200 focus:ring-0 py-0.5" onchange="this.form.submit()">
-                                                        @foreach($funnel->stages as $s)
-                                                            <option value="{{ $s->id }}" {{ $s->id == $stage->id ? 'selected' : '' }}>{{ $s->name }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                </form>
-                                                <span class="text-[10px] text-rose-500 shrink-0 ml-1 flex items-center gap-0.5" title="{{ __('Tempo nesta etapa') }}">{{ $tempoParadoText }}<span class="w-1 h-1 rounded-full bg-rose-400"></span></span>
-                                                <div class="flex items-center gap-0.5 shrink-0 ml-1">
-                                                        <button type="button" class="p-0.5 text-gray-400 hover:text-brand-600 edit-lead-btn" title="{{ __('Editar') }}" data-lead-id="{{ $lead->id }}" data-name="{{ e($lead->name) }}" data-title="{{ e($lead->title ?? '') }}" data-value="{{ $lead->value }}" data-contact-id="{{ $lead->contact_id ?? '' }}" data-update-url="{{ route('funis.leads.update', [$funnel, $lead]) }}">
-                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                    @method('DELETE')
+                                                    <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-lead-{{ $lead->id }}' } }))" class="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" title="{{ __('Remover') }}">
+                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                                     </button>
-                                                    <form id="form-destroy-lead-{{ $lead->id }}" action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="inline" data-confirm-message="{{ __('Remover lead?') }}">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-lead-{{ $lead->id }}' } }))" class="p-0.5 text-gray-400 hover:text-red-500" title="{{ __('Remover') }}">
-                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                                        </button>
-                                                    </form>
-                                                </div>
+                                                </form>
                                             </div>
                                         </div>
                                     </div>
