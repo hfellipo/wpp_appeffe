@@ -5,10 +5,12 @@ namespace App\Providers;
 use App\Models\Contact;
 use App\Models\Lista;
 use App\Models\Automation;
+use App\Models\ScheduledPost;
 use App\Models\Tag;
 use App\Policies\AutomationPolicy;
 use App\Policies\ContactPolicy;
 use App\Policies\ListaPolicy;
+use App\Policies\ScheduledPostPolicy;
 use App\Policies\TagPolicy;
 use App\Services\EvolutionApiHttpClient;
 use Illuminate\Support\Facades\Vite;
@@ -38,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Lista::class, ListaPolicy::class);
         Gate::policy(Tag::class, TagPolicy::class);
         Gate::policy(Automation::class, AutomationPolicy::class);
+        Gate::policy(ScheduledPost::class, ScheduledPostPolicy::class);
 
         /**
          * Vite safety for production/shared hosting.

@@ -1,0 +1,114 @@
+<x-app-layout>
+    <x-slot name="header">
+        <div class="flex justify-between items-center">
+            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                {{ __('Posts agendados') }}
+            </h2>
+            <a href="{{ route('automacao.agendamentos.create') }}" class="btn-primary">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                </svg>
+                {{ __('Agendar post') }}
+            </a>
+        </div>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <p class="mb-4">
+                <a href="{{ route('automacao.index') }}" class="text-brand-600 hover:text-brand-800 text-sm">← {{ __('Voltar para Automação') }}</a>
+            </p>
+
+            @if(session('success'))
+                <div class="alert-success mb-6">{{ session('success') }}</div>
+            @endif
+            @if(session('error'))
+                <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">{{ session('error') }}</div>
+            @endif
+
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <p class="text-sm text-gray-600">
+                        {{ __('Envie uma mensagem WhatsApp em data e hora definidas para um grupo, uma lista de contatos ou para quem tem uma tag.') }}
+                    </p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        {{ __('O cron') }} <code class="bg-gray-100 px-1 rounded">scheduled_posts:process</code> {{ __('roda a cada minuto; agendamentos com data/hora já passada são enviados automaticamente.') }}
+                    </p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ __('Data/hora') }}</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ __('Destino') }}</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ __('Mensagem') }}</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{{ __('Status') }}</th>
+                                <th class="relative px-6 py-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @forelse($posts as $post)
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                        {{ $post->scheduled_at->format('d/m/Y H:i') }}
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-600">
+                                        <span class="font-medium">{{ \App\Models\ScheduledPost::targetTypes()[$post->target_type] ?? $post->target_type }}</span>
+                                        @if($post->target_type === 'group')
+                                            @php
+                                                $conv = \App\Models\WhatsAppConversation::find($post->target_id);
+                                                $label = $conv ? (trim($conv->custom_contact_name ?? '') ?: trim($conv->contact_name ?? '') ?: $conv->peer_jid) : '#' . $post->target_id;
+                                            @endphp
+                                            — {{ $label }}
+                                        @elseif($post->target_type === 'list')
+                                            @php $lista = \App\Models\Lista::find($post->target_id); @endphp
+                                            — {{ $lista ? $lista->name : '#' . $post->target_id }}
+                                        @else
+                                            @php $tag = \App\Models\Tag::find($post->target_id); @endphp
+                                            — {{ $tag ? $tag->name : '#' . $post->target_id }}
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title="{{ $post->message }}">
+                                        {{ Str::limit($post->message, 50) }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        @if($post->sent_at)
+                                            <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-800">{{ __('Enviado') }} {{ $post->sent_at->format('d/m H:i') }}</span>
+                                        @else
+                                            <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">{{ __('Agendado') }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                        @if(!$post->sent_at)
+                                            <form action="{{ route('automacao.agendamentos.send-now', $post) }}" method="POST" class="inline">
+                                                @csrf
+                                                <button type="submit" class="text-brand-600 hover:text-brand-900 mr-3">{{ __('Enviar agora') }}</button>
+                                            </form>
+                                            <form action="{{ route('automacao.agendamentos.destroy', $post) }}" method="POST" class="inline" onsubmit="return confirm('{{ __('Cancelar este agendamento?') }}')">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="text-red-600 hover:text-red-900">{{ __('Cancelar') }}</button>
+                                            </form>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5" class="px-6 py-12 text-center text-gray-500">
+                                        <p>{{ __('Nenhum post agendado.') }}</p>
+                                        <a href="{{ route('automacao.agendamentos.create') }}" class="mt-2 inline-block text-brand-600 hover:underline">{{ __('Agendar primeiro post') }}</a>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                @if($posts->hasPages())
+                    <div class="px-6 py-4 border-t border-gray-200">{{ $posts->links() }}</div>
+                @endif
+            </div>
+        </div>
+    </div>
+</x-app-layout>

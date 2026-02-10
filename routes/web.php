@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ScheduledPostController;
 use App\Http\Controllers\ContactFieldController;
 use App\Http\Controllers\ContactImportController;
 use App\Http\Controllers\ListaController;
@@ -247,6 +248,13 @@ Route::middleware('auth')->group(function () {
     Route::delete('/automacao/{automacao}/actions/{action}', [AutomationController::class, 'destroyAction'])->name('automacao.actions.destroy');
     Route::get('/automacao/{automacao}/test', [AutomationController::class, 'test'])->name('automacao.test');
     Route::post('/automacao/{automacao}/test', [AutomationController::class, 'runTest'])->name('automacao.runTest');
+
+    // Posts agendados (grupo, lista ou tag) — envio de mensagem WhatsApp em data/hora
+    Route::get('/automacao/agendamentos', [ScheduledPostController::class, 'index'])->name('automacao.agendamentos.index');
+    Route::get('/automacao/agendamentos/create', [ScheduledPostController::class, 'create'])->name('automacao.agendamentos.create');
+    Route::post('/automacao/agendamentos', [ScheduledPostController::class, 'store'])->name('automacao.agendamentos.store');
+    Route::delete('/automacao/agendamentos/{scheduled_post}', [ScheduledPostController::class, 'destroy'])->name('automacao.agendamentos.destroy');
+    Route::post('/automacao/agendamentos/{scheduled_post}/send-now', [ScheduledPostController::class, 'sendNow'])->name('automacao.agendamentos.send-now');
 });
 
 require __DIR__.'/auth.php';
