@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Models\Contact;
 use App\Models\Lista;
 use App\Models\Automation;
+use App\Models\Funnel;
 use App\Models\ScheduledPost;
 use App\Models\Tag;
 use App\Policies\AutomationPolicy;
+use App\Policies\FunnelPolicy;
 use App\Policies\ContactPolicy;
 use App\Policies\ListaPolicy;
 use App\Policies\ScheduledPostPolicy;
@@ -41,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Tag::class, TagPolicy::class);
         Gate::policy(Automation::class, AutomationPolicy::class);
         Gate::policy(ScheduledPost::class, ScheduledPostPolicy::class);
+        Gate::policy(Funnel::class, FunnelPolicy::class);
 
         /**
          * Vite safety for production/shared hosting.

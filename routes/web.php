@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\FunnelController;
 use App\Http\Controllers\ScheduledPostController;
 use App\Http\Controllers\ContactFieldController;
 use App\Http\Controllers\ContactImportController;
@@ -261,6 +262,22 @@ Route::middleware('auth')->group(function () {
     Route::post('/automacao/agendamentos/{scheduled_post}/duplicate', [ScheduledPostController::class, 'duplicate'])->name('automacao.agendamentos.duplicate');
     Route::delete('/automacao/agendamentos/{scheduled_post}', [ScheduledPostController::class, 'destroy'])->name('automacao.agendamentos.destroy');
     Route::post('/automacao/agendamentos/{scheduled_post}/send-now', [ScheduledPostController::class, 'sendNow'])->name('automacao.agendamentos.send-now');
+
+    // Funil de vendas (vários funis, quadro Kanban por funil)
+    Route::get('/funis', [FunnelController::class, 'index'])->name('funis.index');
+    Route::get('/funis/create', [FunnelController::class, 'create'])->name('funis.create');
+    Route::post('/funis', [FunnelController::class, 'store'])->name('funis.store');
+    Route::get('/funis/{funnel}', [FunnelController::class, 'show'])->name('funis.show');
+    Route::get('/funis/{funnel}/edit', [FunnelController::class, 'edit'])->name('funis.edit');
+    Route::put('/funis/{funnel}', [FunnelController::class, 'update'])->name('funis.update');
+    Route::delete('/funis/{funnel}', [FunnelController::class, 'destroy'])->name('funis.destroy');
+    Route::post('/funis/{funnel}/leads', [FunnelController::class, 'storeLead'])->name('funis.leads.store');
+    Route::post('/funis/{funnel}/leads/bulk', [FunnelController::class, 'storeLeadsBulk'])->name('funis.leads.bulk');
+    Route::post('/funis/{funnel}/leads/{lead}/move', [FunnelController::class, 'moveLead'])->name('funis.leads.move');
+    Route::delete('/funis/{funnel}/leads/{lead}', [FunnelController::class, 'destroyLead'])->name('funis.leads.destroy');
+    Route::post('/funis/{funnel}/stages', [FunnelController::class, 'storeStage'])->name('funis.stages.store');
+    Route::put('/funis/{funnel}/stages/{stage}', [FunnelController::class, 'updateStage'])->name('funis.stages.update');
+    Route::delete('/funis/{funnel}/stages/{stage}', [FunnelController::class, 'destroyStage'])->name('funis.stages.destroy');
 });
 
 require __DIR__.'/auth.php';
