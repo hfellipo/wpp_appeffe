@@ -338,23 +338,74 @@ class ScheduledPostController extends Controller
 
     /**
      * Rota de cron por URL: processa posts agendados vencidos.
-     * Chamada por um cron externo (ex.: cron-job.org) a cada minuto, quando o servidor não tem cron.
+     * Configure o cron externo para chamar esta URL a cada 1 minuto.
      * GET /automacao/agendamentos/cron?token=SEU_TOKEN_DO_ENV
+     *
+     * Regra: qualquer post com scheduled_at <= agora (no fuso do app) e sent_at = null é enviado.
      */
     public function cron(Request $request): JsonResponse
     {
         $token = config('services.scheduled_posts_cron_token');
-        if (empty($token) || $request->query('token') !== $token) {
-            return response()->json(['ok' => false, 'error' => 'Unauthorized'], 403);
+        if (empty($token)) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'SCHEDULED_POSTS_CRON_TOKEN não configurado no .env',
+            ], 503);
+        }
+        if ($request->query('token') !== $token) {
+            return response()->json(['ok' => false, 'error' => 'Token inválido'], 403);
         }
 
+        $tz = config('app.timezone', 'America/Sao_Paulo');
+        $now = \Carbon\Carbon::now($tz);
+        $processed = 0;
+        $errors = [];
+
         try {
-            Artisan::call('scheduled_posts:process');
-            $output = trim(Artisan::output());
-            return response()->json(['ok' => true, 'message' => $output ?: 'Nenhum post vencido.']);
+            $due = ScheduledPost::query()
+                ->whereNull('sent_at')
+                ->where('scheduled_at', '<=', $now)
+                ->orderBy('scheduled_at')
+                ->get();
+
+            foreach ($due as $post) {
+                try {
+                    ProcessScheduledPostJob::dispatchSync($post->id);
+                    $processed++;
+                } catch (\Throwable $e) {
+                    Log::channel('single')->error('ScheduledPostController cron: falha em post', [
+                        'scheduled_post_id' => $post->id,
+                        'message' => $e->getMessage(),
+                    ]);
+                    $errors[] = 'Post #' . $post->id . ': ' . $e->getMessage();
+                }
+            }
+
+            $nextPending = ScheduledPost::query()
+                ->whereNull('sent_at')
+                ->where('scheduled_at', '>', $now)
+                ->orderBy('scheduled_at')
+                ->first(['scheduled_at']);
+
+            return response()->json([
+                'ok' => true,
+                'processed' => $processed,
+                'server_time' => $now->format('Y-m-d H:i:s'),
+                'timezone' => $tz,
+                'next_scheduled_at' => $nextPending?->scheduled_at?->format('Y-m-d H:i:s'),
+                'message' => $processed > 0
+                    ? $processed . ' post(s) enviado(s).'
+                    : ($nextPending ? 'Nenhum vencido. Próximo: ' . $nextPending->scheduled_at->format('d/m/Y H:i') : 'Nenhum post agendado.'),
+                'errors' => $errors ?: null,
+            ]);
         } catch (\Throwable $e) {
             Log::channel('single')->error('ScheduledPostController cron: falha', ['message' => $e->getMessage()]);
-            return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'server_time' => $now->format('Y-m-d H:i:s'),
+                'timezone' => $tz,
+            ], 500);
         }
     }
 }

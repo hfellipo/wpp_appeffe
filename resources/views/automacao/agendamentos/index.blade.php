@@ -32,14 +32,16 @@
                         {{ __('Envie uma mensagem WhatsApp em data e hora definidas para um grupo, uma lista de contatos ou para quem tem uma tag.') }}
                     </p>
                     <p class="text-xs text-gray-500 mt-1">
-                        {{ __('Para envio automático no horário (sem precisar abrir a página), use uma das opções abaixo.') }}
+                        {{ __('Envio automático: a cada 1 minuto o sistema verifica se existe post com data/hora já vencida; se existir, dispara o envio.') }}
                     </p>
-                    <ul class="text-xs text-gray-600 mt-1 list-disc list-inside space-y-0.5">
-                        <li><strong>{{ __('Servidor com cron:') }}</strong> <code class="bg-gray-100 px-1 rounded">* * * * * cd /caminho/do/app && php artisan schedule:run</code></li>
-                        <li><strong>{{ __('Sem cron no servidor:') }}</strong> {{ __('Adicione no .env') }} <code class="bg-gray-100 px-1 rounded">SCHEDULED_POSTS_CRON_TOKEN=um_token_secreto</code> {{ __('e agende em') }} <a href="https://cron-job.org" target="_blank" rel="noopener" class="text-brand-600 hover:underline">cron-job.org</a> {{ __('uma chamada a cada minuto para:') }} <code class="bg-gray-100 px-1 rounded break-all">{{ url()->route('automacao.agendamentos.cron') }}?token=um_token_secreto</code></li>
-                    </ul>
+                    <p class="text-xs text-gray-600 mt-1 font-medium">{{ __('Cron externo (recomendado):') }}</p>
+                    <ol class="text-xs text-gray-600 mt-0.5 list-decimal list-inside space-y-1">
+                        <li>{{ __('No .env, defina') }} <code class="bg-gray-100 px-1 rounded">SCHEDULED_POSTS_CRON_TOKEN=seu_token_secreto</code></li>
+                        <li>{{ __('No') }} <a href="https://cron-job.org" target="_blank" rel="noopener" class="text-brand-600 hover:underline">cron-job.org</a> {{ __('(ou similar), crie um job que chame a URL abaixo') }} <strong>{{ __('a cada 1 minuto') }}</strong></li>
+                        <li>{{ __('URL:') }} <code class="bg-gray-100 px-1 rounded break-all text-xs">{{ url()->route('automacao.agendamentos.cron') }}?token=SEU_TOKEN</code></li>
+                    </ol>
                     <p class="text-xs text-gray-500 mt-1">
-                        {{ __('Ao abrir esta página, os vencidos também são processados.') }}
+                        {{ __('Resposta da URL: ok, processed, server_time e next_scheduled_at (para validar). Ao abrir esta página, os vencidos também são processados.') }}
                     </p>
                     <p class="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-100">
                         <strong>{{ __('Horário do servidor (usado para agendamentos):') }}</strong>
