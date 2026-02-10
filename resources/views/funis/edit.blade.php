@@ -39,10 +39,10 @@
                         </div>
 
                         <div class="flex items-center justify-between gap-3 mt-6">
-                            <form action="{{ route('funis.destroy', $funnel) }}" method="POST" class="inline" onsubmit="return confirm('{{ __('Excluir este funil e todos os leads?') }}')">
+                            <form id="form-destroy-funnel-edit" action="{{ route('funis.destroy', $funnel) }}" method="POST" class="inline" data-confirm-message="{{ __('Excluir este funil e todos os leads?') }}">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="text-red-600 hover:text-red-900 text-sm">
+                                <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-funnel-edit' } }))" class="text-red-600 hover:text-red-900 text-sm">
                                     {{ __('Excluir funil') }}
                                 </button>
                             </form>
@@ -60,4 +60,6 @@
             </div>
         </div>
     </div>
+
+    <x-confirm-modal name="confirm-modal" />
 </x-app-layout>

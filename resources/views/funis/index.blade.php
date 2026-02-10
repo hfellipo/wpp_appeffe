@@ -67,10 +67,10 @@
                                             <a href="{{ route('funis.edit', $funnel) }}" class="text-gray-600 hover:text-gray-900">
                                                 {{ __('Editar') }}
                                             </a>
-                                            <form action="{{ route('funis.destroy', $funnel) }}" method="POST" class="inline" onsubmit="return confirm('{{ __('Excluir este funil e todos os leads?') }}')">
+                                            <form id="form-destroy-funnel-{{ $funnel->id }}" action="{{ route('funis.destroy', $funnel) }}" method="POST" class="inline" data-confirm-message="{{ __('Excluir este funil e todos os leads?') }}">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="text-red-600 hover:text-red-900">
+                                                <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-funnel-{{ $funnel->id }}' } }))" class="text-red-600 hover:text-red-900">
                                                     {{ __('Excluir') }}
                                                 </button>
                                             </form>
@@ -107,4 +107,6 @@
             </div>
         </div>
     </div>
+
+    <x-confirm-modal name="confirm-modal" />
 </x-app-layout>

@@ -63,10 +63,10 @@
                                 <button type="submit" class="text-xs text-gray-500 hover:text-gray-700">{{ __('Salvar') }}</button>
                             </form>
                             @if($funnel->stages->count() > 1)
-                                <form action="{{ route('funis.stages.destroy', [$funnel, $stage]) }}" method="POST" class="inline" onsubmit="return confirm('{{ __('Remover esta coluna? Os leads vão para a primeira.') }}')">
+                                <form id="form-destroy-stage-{{ $stage->id }}" action="{{ route('funis.stages.destroy', [$funnel, $stage]) }}" method="POST" class="inline" data-confirm-message="{{ __('Remover esta coluna? Os leads vão para a primeira.') }}">
                                     @csrf
                                     @method('DELETE')
-                                    <button type="submit" class="text-gray-400 hover:text-red-500 p-1" title="{{ __('Remover') }}">
+                                    <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-stage-{{ $stage->id }}' } }))" class="text-gray-400 hover:text-red-500 p-1" title="{{ __('Remover') }}">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     </button>
                                 </form>
@@ -221,10 +221,10 @@
                                                 <p class="text-gray-400 text-xs mt-0.5">{{ $lead->due_date->format('d/m/Y') }}</p>
                                             @endif
                                         </div>
-                                        <form action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="shrink-0" onsubmit="return confirm('{{ __('Remover lead?') }}')">
+                                        <form id="form-destroy-lead-{{ $lead->id }}" action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="shrink-0" data-confirm-message="{{ __('Remover lead?') }}">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="text-gray-300 hover:text-red-500 p-0.5">
+                                            <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-lead-{{ $lead->id }}' } }))" class="text-gray-300 hover:text-red-500 p-0.5">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                             </button>
                                         </form>
@@ -246,6 +246,8 @@
             </div>
         </div>
     </div>
+
+    <x-confirm-modal name="confirm-modal" />
 
     @push('scripts')
     <script>
