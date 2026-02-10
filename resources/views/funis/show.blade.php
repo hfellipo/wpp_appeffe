@@ -296,36 +296,53 @@
     <x-confirm-modal name="confirm-modal" />
 
     {{-- Modal Automação da coluna --}}
-    <x-modal name="stage-automation-modal" :show="false" maxWidth="sm">
-        <div class="p-6">
-            <h3 class="text-sm font-semibold text-gray-800 mb-1" id="stage-automation-modal-title">{{ __('Automação da coluna') }}</h3>
-            <p class="text-xs text-gray-500 mb-4" id="stage-automation-modal-subtitle"></p>
-            <form id="form-stage-automation-assign" method="POST" action="">
-                @csrf
-                @method('PUT')
-                <div class="flex gap-2 items-end mb-4">
-                    <div class="flex-1">
-                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Vincular automação') }}</label>
-                        <select name="automation_id" id="stage-automation-select" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
-                            <option value="">{{ __('— Nenhuma —') }}</option>
-                            @foreach($automations as $a)
-                                <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (' . __('pausada') . ')' }}</option>
-                            @endforeach
-                        </select>
+    <x-modal name="stage-automation-modal" :show="false" maxWidth="5xl">
+        <div class="flex flex-col max-h-[85vh]">
+            <input type="hidden" id="stage-automation-edit-url" value="">
+            {{-- Painel resumo: vincular + configurado + ações --}}
+            <div id="stage-automation-resumo" class="p-6">
+                <h3 class="text-sm font-semibold text-gray-800 mb-1" id="stage-automation-modal-title">{{ __('Automação da coluna') }}</h3>
+                <p class="text-xs text-gray-500 mb-4" id="stage-automation-modal-subtitle"></p>
+                <form id="form-stage-automation-assign" method="POST" action="">
+                    @csrf
+                    @method('PUT')
+                    <div class="flex gap-2 items-end mb-4">
+                        <div class="flex-1">
+                            <label class="block text-xs text-gray-500 mb-0.5">{{ __('Vincular automação') }}</label>
+                            <select name="automation_id" id="stage-automation-select" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                                <option value="">{{ __('— Nenhuma —') }}</option>
+                                @foreach($automations as $a)
+                                    <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (' . __('pausada') . ')' }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <button type="submit" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Salvar') }}</button>
                     </div>
-                    <button type="submit" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Salvar') }}</button>
+                </form>
+                <div id="stage-automation-configured" class="hidden border-t border-gray-100 pt-4">
+                    <p class="text-xs font-medium text-gray-700 mb-1">{{ __('Configurado') }}</p>
+                    <p class="text-xs text-gray-600 mb-2" id="stage-automation-config-summary"></p>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <button type="button" id="stage-automation-config-btn" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Configurar automação') }}</button>
+                        <a id="stage-automation-edit-link" href="#" target="_blank" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 rounded">{{ __('Abrir em nova aba') }}</a>
+                        <form id="form-stage-automation-run" method="POST" action="" class="inline">
+                            @csrf
+                            <button type="submit" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">{{ __('Disparar agora') }}</button>
+                        </form>
+                        <a href="{{ route('automacao.agendamentos.index') }}" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded">{{ __('Agendar') }}</a>
+                    </div>
                 </div>
-            </form>
-            <div id="stage-automation-configured" class="hidden border-t border-gray-100 pt-4">
-                <p class="text-xs font-medium text-gray-700 mb-1">{{ __('Configurado') }}</p>
-                <p class="text-xs text-gray-600 mb-2" id="stage-automation-config-summary"></p>
-                <div class="flex flex-wrap gap-2">
-                    <a id="stage-automation-edit-link" href="#" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 rounded">{{ __('Editar automação') }}</a>
-                    <form id="form-stage-automation-run" method="POST" action="" class="inline">
-                        @csrf
-                        <button type="submit" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">{{ __('Disparar agora') }}</button>
-                    </form>
-                    <a href="{{ route('automacao.agendamentos.index') }}" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded">{{ __('Agendar') }}</a>
+            </div>
+            {{-- Painel configurar: iframe com a edição da automação --}}
+            <div id="stage-automation-configurar" class="hidden flex-1 flex flex-col min-h-0 border-t border-gray-200">
+                <div class="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200">
+                    <button type="button" id="stage-automation-back-resumo" class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        {{ __('Voltar ao resumo') }}
+                    </button>
+                </div>
+                <div class="flex-1 min-h-0 p-2">
+                    <iframe id="stage-automation-iframe" class="w-full border border-gray-200 rounded-lg bg-white" style="height: 65vh;" title="{{ __('Configurar automação') }}"></iframe>
                 </div>
             </div>
         </div>
@@ -397,9 +414,14 @@
         var configuredEl = document.getElementById('stage-automation-configured');
         var summaryEl = document.getElementById('stage-automation-config-summary');
         var editLink = document.getElementById('stage-automation-edit-link');
+        var editUrlInput = document.getElementById('stage-automation-edit-url');
+        var resumoEl = document.getElementById('stage-automation-resumo');
+        var configurarEl = document.getElementById('stage-automation-configurar');
+        var iframeEl = document.getElementById('stage-automation-iframe');
         if (!formAssign || !formRun) return;
         formAssign.action = el.dataset.updateUrl;
         formRun.action = el.dataset.runUrl;
+        if (editUrlInput) editUrlInput.value = el.dataset.automationEditUrl || '';
         if (titleEl) titleEl.textContent = '{{ __("Automação") }}: ' + (el.dataset.stageName || '');
         if (subtitleEl) subtitleEl.textContent = '{{ __("Só os contatos desta coluna serão considerados ao disparar.") }}';
         if (selectEl) selectEl.value = el.dataset.automationId || '';
@@ -410,7 +432,28 @@
         } else {
             configuredEl.classList.add('hidden');
         }
+        if (resumoEl) resumoEl.classList.remove('hidden');
+        if (configurarEl) configurarEl.classList.add('hidden');
+        if (iframeEl) iframeEl.src = '';
         window.dispatchEvent(new CustomEvent('open-modal', { detail: 'stage-automation-modal' }));
+    }
+    function showStageAutomationConfigurar() {
+        var url = document.getElementById('stage-automation-edit-url')?.value;
+        if (!url) return;
+        var resumoEl = document.getElementById('stage-automation-resumo');
+        var configurarEl = document.getElementById('stage-automation-configurar');
+        var iframeEl = document.getElementById('stage-automation-iframe');
+        if (resumoEl) resumoEl.classList.add('hidden');
+        if (configurarEl) configurarEl.classList.remove('hidden');
+        if (iframeEl) iframeEl.src = url;
+    }
+    function showStageAutomationResumo() {
+        var resumoEl = document.getElementById('stage-automation-resumo');
+        var configurarEl = document.getElementById('stage-automation-configurar');
+        var iframeEl = document.getElementById('stage-automation-iframe');
+        if (configurarEl) configurarEl.classList.add('hidden');
+        if (resumoEl) resumoEl.classList.remove('hidden');
+        if (iframeEl) iframeEl.src = '';
     }
     document.addEventListener('DOMContentLoaded', function() {
         var draggedCard = null;
@@ -420,6 +463,10 @@
         document.querySelectorAll('.stage-automation-btn').forEach(function(btn) {
             btn.addEventListener('click', openStageAutomationModal);
         });
+        var configBtn = document.getElementById('stage-automation-config-btn');
+        if (configBtn) configBtn.addEventListener('click', showStageAutomationConfigurar);
+        var backResumoBtn = document.getElementById('stage-automation-back-resumo');
+        if (backResumoBtn) backResumoBtn.addEventListener('click', showStageAutomationResumo);
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
         if (!csrf) return;
 
