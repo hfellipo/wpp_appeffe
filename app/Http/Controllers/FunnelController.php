@@ -11,6 +11,7 @@ use App\Models\FunnelStage;
 use App\Models\Lista;
 use App\Models\ScheduledPost;
 use App\Models\Tag;
+use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppMessage;
 use App\Services\AutomationRunnerService;
 use App\Services\WhatsAppSendService;
@@ -81,7 +82,19 @@ class FunnelController extends Controller
             $stageMessageStatus[$stage->id] = $this->getStageMessageStatusMap($stage);
         }
 
-        return view('funis.show', compact('funnel', 'contacts', 'listas', 'tags', 'automations', 'stageMessageStatus'));
+        $contactIds = $funnel->stages->pluck('leads')->flatten()->pluck('contact_id')->filter()->unique()->values()->all();
+        $contactConversations = [];
+        if (! empty($contactIds)) {
+            $convs = WhatsAppConversation::query()
+                ->where('user_id', $userId)
+                ->whereIn('contact_id', $contactIds)
+                ->get(['contact_id', 'public_id']);
+            foreach ($convs as $c) {
+                $contactConversations[$c->contact_id] = $c->public_id;
+            }
+        }
+
+        return view('funis.show', compact('funnel', 'contacts', 'listas', 'tags', 'automations', 'stageMessageStatus', 'contactConversations'));
     }
 
     /**

@@ -285,7 +285,13 @@
                                                 <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                                                 {{ $tempoParadoText }}
                                             </span>
-                                            <div class="relative shrink-0">
+                                            <div class="flex items-center gap-0.5 shrink-0">
+                                                @if($lead->contact_id)
+                                                    <button type="button" class="wa-chat-btn p-1 rounded text-green-600 hover:bg-green-50" title="{{ __('Ver conversa WhatsApp') }}" data-contact-id="{{ $lead->contact_id }}" data-conversation-id="{{ $contactConversations[$lead->contact_id] ?? '' }}" data-contact-name="{{ e($displayName) }}">
+                                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                                    </button>
+                                                @endif
+                                                <div class="relative">
                                                 <button type="button" @click="open = !open" class="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100" title="{{ __('Ações') }}">
                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                                 </button>
@@ -314,6 +320,7 @@
                                                         </button>
                                                     </form>
                                                 </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -328,6 +335,28 @@
     </div>
 
     <x-confirm-modal name="confirm-modal" />
+
+    {{-- Modal WhatsApp: últimas mensagens + resposta rápida --}}
+    <x-modal name="wa-chat-modal" :show="false" maxWidth="md">
+        <div class="flex flex-col max-h-[80vh]">
+            <div class="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
+                <span class="text-green-600"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></span>
+                <h3 class="font-semibold text-gray-800 text-sm" id="wa-chat-modal-title">{{ __('WhatsApp') }}</h3>
+            </div>
+            <div id="wa-chat-messages" class="flex-1 overflow-y-auto p-4 space-y-2 min-h-[200px] max-h-[360px] bg-gray-50/50">
+                <p class="text-xs text-gray-500 text-center py-4">{{ __('Carregando...') }}</p>
+            </div>
+            <div id="wa-chat-no-conversation" class="hidden p-4 border-t border-gray-200">
+                <button type="button" id="wa-chat-start-btn" class="w-full py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700">{{ __('Iniciar conversa') }}</button>
+            </div>
+            <div id="wa-chat-reply-area" class="hidden p-3 border-t border-gray-200">
+                <div class="flex gap-2">
+                    <input type="text" id="wa-chat-input" class="flex-1 text-sm rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-green-500/30 focus:border-green-500" placeholder="{{ __('Digite sua mensagem...') }}" maxlength="4000">
+                    <button type="button" id="wa-chat-send-btn" class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 shrink-0">{{ __('Enviar') }}</button>
+                </div>
+            </div>
+        </div>
+    </x-modal>
 
     {{-- Modal Automação da coluna --}}
     <x-modal name="stage-automation-modal" :show="false" maxWidth="5xl">
@@ -544,6 +573,101 @@
         if (resumoEl) resumoEl.classList.remove('hidden');
         if (iframeEl) iframeEl.src = '';
     }
+    var waChatState = { contactId: '', conversationId: '', contactName: '' };
+    var waApiBase = "{{ url('/whatsapp/api') }}";
+    function openWaChatModal(btn) {
+        var el = btn.target && btn.target.closest ? btn.target.closest('.wa-chat-btn') : btn;
+        if (!el) return;
+        waChatState.contactId = el.dataset.contactId || '';
+        waChatState.conversationId = el.dataset.conversationId || '';
+        waChatState.contactName = el.dataset.contactName || '';
+        document.getElementById('wa-chat-modal-title').textContent = 'WhatsApp — ' + (waChatState.contactName || 'Contato');
+        var messagesEl = document.getElementById('wa-chat-messages');
+        var noConvEl = document.getElementById('wa-chat-no-conversation');
+        var replyEl = document.getElementById('wa-chat-reply-area');
+        messagesEl.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">{{ __("Carregando...") }}</p>';
+        noConvEl.classList.add('hidden');
+        replyEl.classList.add('hidden');
+        if (waChatState.conversationId) {
+            loadWaChatMessages();
+            replyEl.classList.remove('hidden');
+        } else {
+            messagesEl.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">{{ __("Nenhuma conversa ainda. Clique em Iniciar conversa para abrir o chat no WhatsApp.") }}</p>';
+            noConvEl.classList.remove('hidden');
+        }
+        window.dispatchEvent(new CustomEvent('open-modal', { detail: 'wa-chat-modal' }));
+    }
+    function loadWaChatMessages() {
+        var messagesEl = document.getElementById('wa-chat-messages');
+        if (!waChatState.conversationId) return;
+        fetch(waApiBase + '/conversations/' + encodeURIComponent(waChatState.conversationId) + '/messages?limit=15', { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var items = (data && data.items) ? data.items : [];
+                if (items.length === 0) {
+                    messagesEl.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">{{ __("Nenhuma mensagem ainda.") }}</p>';
+                    return;
+                }
+                messagesEl.innerHTML = items.map(function(m) {
+                    var isOut = m.direction === 'out';
+                    var time = m.sent_at || m.created_at || '';
+                    if (time && time.length >= 19) time = time.substr(11, 5);
+                    var body = (m.body || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                    return '<div class="flex ' + (isOut ? 'justify-end' : 'justify-start') + '"><div class="max-w-[85%] rounded-lg px-3 py-2 text-sm ' + (isOut ? 'bg-green-100 text-gray-900' : 'bg-white border border-gray-200 text-gray-800') + '"><div class="break-words">' + (body || '[' + (m.message_type || '') + ']') + '</div><div class="text-[10px] text-gray-500 mt-1">' + time + '</div></div></div>';
+                }).join('');
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            })
+            .catch(function() {
+                messagesEl.innerHTML = '<p class="text-xs text-red-500 text-center py-4">{{ __("Erro ao carregar mensagens.") }}</p>';
+            });
+    }
+    function waChatStartConversation() {
+        var csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (!csrf || !waChatState.contactId) return;
+        document.getElementById('wa-chat-start-btn').disabled = true;
+        fetch(waApiBase + '/conversations/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify({ contact_id: parseInt(waChatState.contactId, 10) })
+        })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.success && data.conversation && data.conversation.id) {
+                    waChatState.conversationId = data.conversation.id;
+                    document.getElementById('wa-chat-no-conversation').classList.add('hidden');
+                    document.getElementById('wa-chat-reply-area').classList.remove('hidden');
+                    loadWaChatMessages();
+                } else {
+                    alert(data && data.error ? data.error : '{{ __("Não foi possível iniciar a conversa.") }}');
+                }
+            })
+            .catch(function() { alert('{{ __("Erro ao iniciar conversa.") }}'); })
+            .finally(function() { document.getElementById('wa-chat-start-btn').disabled = false; });
+    }
+    function waChatSendMessage() {
+        var input = document.getElementById('wa-chat-input');
+        var text = (input && input.value || '').trim();
+        if (!text || !waChatState.conversationId) return;
+        var csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (!csrf) return;
+        document.getElementById('wa-chat-send-btn').disabled = true;
+        fetch(waApiBase + '/conversations/' + encodeURIComponent(waChatState.conversationId) + '/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify({ text: text })
+        })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.success) {
+                    input.value = '';
+                    loadWaChatMessages();
+                } else {
+                    alert(data && data.error ? data.error : '{{ __("Falha ao enviar.") }}');
+                }
+            })
+            .catch(function() { alert('{{ __("Erro ao enviar mensagem.") }}'); })
+            .finally(function() { document.getElementById('wa-chat-send-btn').disabled = false; });
+    }
     document.addEventListener('DOMContentLoaded', function() {
         var draggedCard = null;
         document.querySelectorAll('.edit-lead-btn').forEach(function(btn) {
@@ -552,6 +676,15 @@
         document.querySelectorAll('.stage-automation-btn').forEach(function(btn) {
             btn.addEventListener('click', openStageAutomationModal);
         });
+        document.querySelectorAll('.wa-chat-btn').forEach(function(btn) {
+            btn.addEventListener('click', openWaChatModal);
+        });
+        var waStartBtn = document.getElementById('wa-chat-start-btn');
+        if (waStartBtn) waStartBtn.addEventListener('click', waChatStartConversation);
+        var waSendBtn = document.getElementById('wa-chat-send-btn');
+        if (waSendBtn) waSendBtn.addEventListener('click', waChatSendMessage);
+        var waInput = document.getElementById('wa-chat-input');
+        if (waInput) waInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); waChatSendMessage(); } });
         var configBtn = document.getElementById('stage-automation-config-btn');
         if (configBtn) configBtn.addEventListener('click', showStageAutomationConfigurar);
         var backResumoBtn = document.getElementById('stage-automation-back-resumo');
