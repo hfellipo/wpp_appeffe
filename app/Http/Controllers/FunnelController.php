@@ -59,7 +59,7 @@ class FunnelController extends Controller
     {
         $this->authorize('view', $funnel);
 
-        $funnel->load(['stages.leads' => fn ($q) => $q->orderBy('position')]);
+        $funnel->load(['stages.leads' => fn ($q) => $q->with(['contact.listas', 'contact.tags'])->orderBy('position')]);
         $funnel->loadCount('leads')->loadSum('leads', 'value');
         $userId = auth()->user()->accountId();
         $contacts = Contact::forUser($userId)->orderBy('name')->get(['id', 'name', 'phone']);
@@ -224,6 +224,30 @@ class FunnelController extends Controller
         }
         $lead->delete();
         return back()->with('success', __('Lead removido.'));
+    }
+
+    public function updateLead(Request $request, Funnel $funnel, FunnelLead $lead): RedirectResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $lead->funnel_id !== (int) $funnel->id) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'value' => ['nullable', 'numeric', 'min:0'],
+            'contact_id' => ['nullable', 'integer', 'exists:contacts,id'],
+        ]);
+
+        $lead->update([
+            'name' => $validated['name'],
+            'title' => $validated['title'] ?? null,
+            'value' => $validated['value'] ?? 0,
+            'contact_id' => $validated['contact_id'] ?? null,
+        ]);
+
+        return back()->with('success', __('Lead atualizado.'));
     }
 
     public function storeStage(Request $request, Funnel $funnel): RedirectResponse

@@ -207,36 +207,65 @@
                             </div>
                         <div class="funnel-stage-cards p-2 flex-1 overflow-y-auto space-y-2 min-h-0">
                             @foreach($stage->leads as $lead)
-                                <div class="funnel-lead-card bg-white rounded-md border border-gray-100 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing select-none" draggable="true" data-move-url="{{ route('funis.leads.move', [$funnel, $lead]) }}" data-stage-id="{{ $stage->id }}">
-                                    <div class="flex justify-between gap-2">
+                                @php
+                                    $displayName = $lead->name;
+                                    if ($lead->contact) {
+                                        $displayName = trim($lead->contact->name) !== '' ? $lead->contact->name : $lead->contact->phone;
+                                    }
+                                    $initial = mb_strtoupper(mb_substr($displayName, 0, 1)) ?: '?';
+                                    $tempoParado = $lead->updated_at->startOfDay()->diffInDays(now()->startOfDay());
+                                    $tempoParadoText = $tempoParado === 0 ? __('Hoje') : ($tempoParado === 1 ? '1d' : $tempoParado . 'd');
+                                    $contactTags = $lead->contact ? $lead->contact->tags : collect();
+                                    $contactListas = $lead->contact ? $lead->contact->listas : collect();
+                                @endphp
+                                <div class="funnel-lead-card bg-white rounded-lg border border-gray-100 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing select-none" draggable="true" data-move-url="{{ route('funis.leads.move', [$funnel, $lead]) }}" data-stage-id="{{ $stage->id }}">
+                                    <div class="flex gap-2">
+                                        <div class="shrink-0 w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-semibold text-sm" title="{{ $displayName }}">{{ $initial }}</div>
                                         <div class="min-w-0 flex-1">
-                                            <p class="font-medium text-gray-800 truncate text-sm">{{ $lead->name }}</p>
+                                            <div class="flex items-start justify-between gap-1">
+                                                <p class="font-medium text-gray-800 truncate text-sm">{{ $displayName }}</p>
+                                                <span class="text-gray-400 text-[10px] shrink-0">{{ $lead->updated_at->format('d/m/Y') }}</span>
+                                            </div>
                                             @if($lead->title)
-                                                <p class="text-gray-500 truncate text-xs">{{ $lead->title }}</p>
+                                                <p class="text-brand-600 font-medium truncate text-xs mt-0.5">{{ $lead->title }}</p>
                                             @endif
                                             @if($lead->value > 0)
-                                                <p class="text-gray-700 text-xs mt-0.5">R$ {{ number_format((float) $lead->value, 2, ',', '.') }}</p>
+                                                <p class="text-gray-600 text-xs mt-0.5">R$ {{ number_format((float) $lead->value, 2, ',', '.') }}</p>
                                             @endif
-                                            @if($lead->due_date)
-                                                <p class="text-gray-400 text-xs mt-0.5">{{ $lead->due_date->format('d/m/Y') }}</p>
-                                            @endif
+                                            <div class="flex flex-wrap gap-1 mt-1.5">
+                                                @foreach($contactTags as $tag)
+                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">{{ $tag->name }}</span>
+                                                @endforeach
+                                                @foreach($contactListas as $lista)
+                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">{{ $lista->name }}</span>
+                                                @endforeach
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-100 text-brand-700">{{ $stage->name }}</span>
+                                            </div>
+                                            <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                                                <form action="{{ route('funis.leads.move', [$funnel, $lead]) }}" method="POST" class="min-w-0 flex-1">
+                                                    @csrf
+                                                    <select name="funnel_stage_id" class="block w-full text-[10px] rounded border-gray-100 focus:border-gray-200 focus:ring-0 py-0.5" onchange="this.form.submit()">
+                                                        @foreach($funnel->stages as $s)
+                                                            <option value="{{ $s->id }}" {{ $s->id == $stage->id ? 'selected' : '' }}>{{ $s->name }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </form>
+                                                <span class="text-[10px] text-rose-500 shrink-0 ml-1 flex items-center gap-0.5" title="{{ __('Tempo nesta etapa') }}">{{ $tempoParadoText }}<span class="w-1 h-1 rounded-full bg-rose-400"></span></span>
+                                                <div class="flex items-center gap-0.5 shrink-0 ml-1">
+                                                        <button type="button" class="p-0.5 text-gray-400 hover:text-brand-600 edit-lead-btn" title="{{ __('Editar') }}" data-lead-id="{{ $lead->id }}" data-name="{{ e($lead->name) }}" data-title="{{ e($lead->title ?? '') }}" data-value="{{ $lead->value }}" data-contact-id="{{ $lead->contact_id ?? '' }}" data-update-url="{{ route('funis.leads.update', [$funnel, $lead]) }}">
+                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                    </button>
+                                                    <form id="form-destroy-lead-{{ $lead->id }}" action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="inline" data-confirm-message="{{ __('Remover lead?') }}">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-lead-{{ $lead->id }}' } }))" class="p-0.5 text-gray-400 hover:text-red-500" title="{{ __('Remover') }}">
+                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <form id="form-destroy-lead-{{ $lead->id }}" action="{{ route('funis.leads.destroy', [$funnel, $lead]) }}" method="POST" class="shrink-0" data-confirm-message="{{ __('Remover lead?') }}">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="button" onclick="window.dispatchEvent(new CustomEvent('open-confirm', { detail: { name: 'confirm-modal', formId: 'form-destroy-lead-{{ $lead->id }}' } }))" class="text-gray-300 hover:text-red-500 p-0.5">
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                            </button>
-                                        </form>
                                     </div>
-                                    <form action="{{ route('funis.leads.move', [$funnel, $lead]) }}" method="POST" class="mt-2 pt-2 border-t border-gray-50">
-                                        @csrf
-                                        <select name="funnel_stage_id" class="block w-full text-xs rounded border-gray-100 focus:border-gray-200 focus:ring-0 py-1" onchange="this.form.submit()">
-                                            @foreach($funnel->stages as $s)
-                                                <option value="{{ $s->id }}" {{ $s->id == $stage->id ? 'selected' : '' }}>{{ $s->name }}</option>
-                                            @endforeach
-                                        </select>
-                                    </form>
                                 </div>
                             @endforeach
                         </div>
@@ -249,10 +278,66 @@
 
     <x-confirm-modal name="confirm-modal" />
 
+    {{-- Modal Editar lead --}}
+    <x-modal name="edit-lead-modal" :show="false" maxWidth="sm">
+        <div class="p-6">
+            <h3 class="text-sm font-semibold text-gray-800 mb-4">{{ __('Editar lead') }}</h3>
+            <form id="form-edit-lead" method="POST" action="">
+                @csrf
+                @method('PUT')
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Nome') }}</label>
+                        <input type="text" name="name" id="edit-lead-name" required class="block w-full text-sm rounded border-gray-200 focus:border-gray-300 focus:ring-0" />
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Serviço / negócio') }}</label>
+                        <input type="text" name="title" id="edit-lead-title" class="block w-full text-sm rounded border-gray-200 focus:border-gray-300 focus:ring-0" />
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Valor (R$)') }}</label>
+                        <input type="number" name="value" id="edit-lead-value" step="0.01" min="0" class="block w-full text-sm rounded border-gray-200 focus:border-gray-300 focus:ring-0" />
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Contato') }}</label>
+                        <select name="contact_id" id="edit-lead-contact" class="block w-full text-sm rounded border-gray-200 focus:border-gray-300 focus:ring-0">
+                            <option value="">{{ __('— Nenhum —') }}</option>
+                            @foreach($contacts as $c)
+                                <option value="{{ $c->id }}">{{ $c->name }} @if($c->phone)({{ $c->phone }})@endif</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button type="button" onclick="window.dispatchEvent(new CustomEvent('close-modal', { detail: 'edit-lead-modal' }))" class="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">{{ __('Cancelar') }}</button>
+                    <button type="submit" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Salvar') }}</button>
+                </div>
+            </form>
+        </div>
+    </x-modal>
+
     @push('scripts')
     <script>
+    function openEditLeadModal(btn) {
+        var el = btn.target && btn.target.closest ? btn.target.closest('.edit-lead-btn') : btn;
+        if (!el || !el.dataset.updateUrl) return;
+        var form = document.getElementById('form-edit-lead');
+        if (!form) return;
+        form.action = el.dataset.updateUrl;
+        document.getElementById('edit-lead-name').value = el.dataset.name || '';
+        document.getElementById('edit-lead-title').value = el.dataset.title || '';
+        document.getElementById('edit-lead-value').value = el.dataset.value || '';
+        var contactSelect = document.getElementById('edit-lead-contact');
+        if (contactSelect) {
+            contactSelect.value = el.dataset.contactId || '';
+        }
+        window.dispatchEvent(new CustomEvent('open-modal', { detail: 'edit-lead-modal' }));
+    }
     document.addEventListener('DOMContentLoaded', function() {
         var draggedCard = null;
+        document.querySelectorAll('.edit-lead-btn').forEach(function(btn) {
+            btn.addEventListener('click', openEditLeadModal);
+        });
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
         if (!csrf) return;
 

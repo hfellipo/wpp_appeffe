@@ -272,6 +272,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/funis/{funnel}', [FunnelController::class, 'update'])->name('funis.update');
     Route::delete('/funis/{funnel}', [FunnelController::class, 'destroy'])->name('funis.destroy');
     Route::post('/funis/{funnel}/leads', [FunnelController::class, 'storeLead'])->name('funis.leads.store');
+    Route::put('/funis/{funnel}/leads/{lead}', [FunnelController::class, 'updateLead'])->name('funis.leads.update');
     Route::post('/funis/{funnel}/leads/bulk', [FunnelController::class, 'storeLeadsBulk'])->name('funis.leads.bulk');
     Route::post('/funis/{funnel}/leads/{lead}/move', [FunnelController::class, 'moveLead'])->name('funis.leads.move');
     Route::delete('/funis/{funnel}/leads/{lead}', [FunnelController::class, 'destroyLead'])->name('funis.leads.destroy');
