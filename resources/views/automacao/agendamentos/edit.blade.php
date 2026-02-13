@@ -98,13 +98,23 @@
                                     <p class="mt-1 text-sm text-gray-600">{{ __('Imagem atual:') }} 📷 {{ basename($post->image_path) }}</p>
                                     <p class="text-xs text-gray-500">{{ __('Envie outra para substituir.') }}</p>
                                 @endif
-                                <input
-                                    id="image"
-                                    name="image"
-                                    type="file"
-                                    accept="image/jpeg,image/png,image/gif,image/webp"
-                                    class="mt-1 block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
-                                />
+                                <label for="image" class="mt-1 flex flex-col items-center justify-center w-full min-h-[120px] border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                                    <input
+                                        id="image"
+                                        name="image"
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/gif,image/webp"
+                                        class="hidden"
+                                    />
+                                    <span class="flex flex-col items-center gap-1 text-gray-500">
+                                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                        <span class="text-sm font-medium text-gray-600">{{ __('Clique para escolher imagem') }}</span>
+                                        <span class="text-xs text-gray-400">{{ __('JPG, PNG, GIF ou WebP — máx. 5 MB') }}</span>
+                                    </span>
+                                    <span id="image-file-name" class="mt-2 text-sm text-brand-600 font-medium hidden"></span>
+                                </label>
                                 <x-input-error :messages="$errors->get('image')" class="mt-2" />
                             </div>
 
@@ -150,6 +160,16 @@
 
             radios.forEach(function (r) { r.addEventListener('change', toggleTarget); });
             toggleTarget();
+
+            var imageInput = document.getElementById('image');
+            var fileNameSpan = document.getElementById('image-file-name');
+            if (imageInput && fileNameSpan) {
+                imageInput.addEventListener('change', function () {
+                    var name = this.files && this.files.length ? this.files[0].name : '';
+                    fileNameSpan.textContent = name ? name : '';
+                    fileNameSpan.classList.toggle('hidden', !name);
+                });
+            }
         });
     </script>
 </x-app-layout>
