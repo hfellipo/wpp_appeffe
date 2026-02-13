@@ -105,11 +105,18 @@ class RunAutomationsCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Contatos que batem com o gatilho e ainda não receberam esta automação.
+     * Sempre excluímos quem já tem pelo menos um AutomationRun para esta automação,
+     * garantindo no máximo uma mensagem por usuário por automação.
+     */
     private function contactsMatchingTrigger(Automation $automation, $trigger): \Illuminate\Support\Collection
     {
-        $alreadyRunIds = $automation->run_once_per_contact
-            ? AutomationRun::query()->where('automation_id', $automation->id)->pluck('contact_id')
-            : collect();
+        $alreadyRunIds = AutomationRun::query()
+            ->where('automation_id', $automation->id)
+            ->pluck('contact_id')
+            ->unique()
+            ->values();
 
         $excludeRun = $alreadyRunIds->isNotEmpty();
 

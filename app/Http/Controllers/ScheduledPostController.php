@@ -3,13 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessScheduledPostJob;
+use App\Models\Contact;
+use App\Models\FunnelStage;
 use App\Models\Lista;
 use App\Models\ScheduledPost;
 use App\Models\Tag;
 use App\Models\WhatsAppConversation;
+use App\Services\WhatsAppSendService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\StreamedResponse;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -307,7 +311,168 @@ class ScheduledPostController extends Controller
     }
 
     /**
-     * Envia imediatamente um post agendado (ainda pendente).
+     * Página de envio em tempo real: mostra progresso (qual contato está recebendo) e resumo final.
+     */
+    public function enviando(ScheduledPost $scheduled_post): View|RedirectResponse
+    {
+        $this->authorize('sendNow', $scheduled_post);
+
+        if ($scheduled_post->sent_at !== null) {
+            return redirect()
+                ->route('automacao.agendamentos.index')
+                ->with('error', __('Este post já foi enviado.'));
+        }
+
+        return view('automacao.agendamentos.enviando', ['post' => $scheduled_post]);
+    }
+
+    /**
+     * Stream SSE: envia o post e emite eventos de progresso (contato atual, %) e resultado (enviado/falha).
+     */
+    public function sendNowStream(ScheduledPost $scheduled_post, WhatsAppSendService $sendService): StreamedResponse
+    {
+        $this->authorize('sendNow', $scheduled_post);
+
+        $accountId = (int) $scheduled_post->user_id;
+        $message = trim((string) $scheduled_post->message);
+        $hasImage = ! empty($scheduled_post->image_path);
+        $sendMedia = $hasImage && Storage::disk('local')->exists($scheduled_post->image_path);
+        $mimeType = $sendMedia ? ($scheduled_post->image_mime ?: 'image/jpeg') : null;
+
+        $sendEvent = function (array $data) {
+            echo 'data: ' . json_encode($data) . "\n\n";
+            if (ob_get_level()) {
+                ob_flush();
+            }
+            flush();
+        };
+
+        return response()->stream(function () use ($scheduled_post, $sendService, $accountId, $message, $sendMedia, $mimeType, $sendEvent) {
+            if ($scheduled_post->sent_at !== null) {
+                $sendEvent(['type' => 'error', 'message' => __('Este post já foi enviado.')]);
+                return;
+            }
+            if (! $sendMedia && $message === '') {
+                $sendEvent(['type' => 'error', 'message' => __('Mensagem e imagem vazios.')]);
+                return;
+            }
+
+            $results = [];
+            $total = 0;
+            $current = 0;
+
+            try {
+                if ($scheduled_post->target_type === 'group') {
+                    $conversation = WhatsAppConversation::query()
+                        ->where('user_id', $accountId)
+                        ->where('kind', 'group')
+                        ->where('id', $scheduled_post->target_id)
+                        ->first();
+                    if (! $conversation) {
+                        $sendEvent(['type' => 'error', 'message' => __('Grupo não encontrado.')]);
+                        return;
+                    }
+                    $label = trim($conversation->custom_contact_name ?? '') ?: trim($conversation->contact_name ?? '') ?: $conversation->peer_jid;
+                    $total = 1;
+                    $sendEvent(['type' => 'progress', 'contact_name' => $label, 'percent' => 0, 'current' => 0, 'total' => 1]);
+                    if ($sendMedia) {
+                        $sent = $sendService->sendMediaToConversation($conversation, $scheduled_post->image_path, $mimeType, $message, null, 'scheduled_post', $scheduled_post->id);
+                    } else {
+                        $sent = $sendService->sendTextToConversation($conversation, $message, null, 'scheduled_post', $scheduled_post->id);
+                    }
+                    $sendEvent(['type' => 'result', 'contact_name' => $label, 'status' => $sent ? 'sent' : 'failed']);
+                    $results[] = ['name' => $label, 'status' => $sent ? 'sent' : 'failed'];
+                    $sendEvent(['type' => 'progress', 'contact_name' => $label, 'percent' => 100, 'current' => 1, 'total' => 1]);
+                } else {
+                    $contacts = collect();
+                    if ($scheduled_post->target_type === 'list') {
+                        $lista = Lista::forUser($accountId)->find($scheduled_post->target_id);
+                        if (! $lista) {
+                            $sendEvent(['type' => 'error', 'message' => __('Lista não encontrada.')]);
+                            return;
+                        }
+                        $contacts = $lista->contacts()->get();
+                    } elseif ($scheduled_post->target_type === 'tag') {
+                        $tag = Tag::forUser($accountId)->find($scheduled_post->target_id);
+                        if (! $tag) {
+                            $sendEvent(['type' => 'error', 'message' => __('Tag não encontrada.')]);
+                            return;
+                        }
+                        $contacts = $tag->contacts()->get();
+                    } elseif ($scheduled_post->target_type === 'funnel_stage') {
+                        $stage = FunnelStage::query()->find($scheduled_post->target_id);
+                        if (! $stage) {
+                            $sendEvent(['type' => 'error', 'message' => __('Coluna do funil não encontrada.')]);
+                            return;
+                        }
+                        $contactIds = $stage->leads()->whereNotNull('contact_id')->pluck('contact_id')->unique()->filter();
+                        $contacts = Contact::forUser($accountId)->whereIn('id', $contactIds)->get();
+                    }
+                    $total = $contacts->count();
+                    if ($total === 0) {
+                        $sendEvent(['type' => 'done', 'summary' => ['sent' => 0, 'failed' => 0, 'results' => []], 'message' => __('Nenhum contato na lista/tag/coluna.')]);
+                        return;
+                    }
+                    foreach ($contacts as $index => $contact) {
+                        $current = $index + 1;
+                        $name = $contact->name ?: $contact->phone ?: ('#' . $contact->id);
+                        $percent = (int) round(($current / $total) * 100);
+                        $sendEvent(['type' => 'progress', 'contact_name' => $name, 'percent' => $percent, 'current' => $current, 'total' => $total]);
+                        $sent = false;
+                        if ($sendMedia) {
+                            $sent = $sendService->sendMediaToContact($accountId, $contact, $scheduled_post->image_path, $mimeType, $message, null, 'scheduled_post', $scheduled_post->id) !== null;
+                        } else {
+                            $sent = $sendService->sendTextToContact($accountId, $contact, $message, null, 'scheduled_post', $scheduled_post->id) !== null;
+                        }
+                        $status = $sent ? 'sent' : 'failed';
+                        $sendEvent(['type' => 'result', 'contact_name' => $name, 'status' => $status]);
+                        $results[] = ['name' => $name, 'status' => $status];
+                    }
+                }
+
+                $scheduled_post->update(['sent_at' => now()]);
+
+                $sentCount = collect($results)->where('status', 'sent')->count();
+                $failedCount = collect($results)->where('status', 'failed')->count();
+                $deliveredCount = \App\Models\WhatsAppMessage::query()
+                    ->where('source_type', 'scheduled_post')
+                    ->where('source_id', $scheduled_post->id)
+                    ->whereNotNull('delivered_at')
+                    ->count();
+                $readCount = \App\Models\WhatsAppMessage::query()
+                    ->where('source_type', 'scheduled_post')
+                    ->where('source_id', $scheduled_post->id)
+                    ->whereNotNull('read_at')
+                    ->count();
+
+                $sendEvent([
+                    'type' => 'done',
+                    'summary' => [
+                        'sent' => $sentCount,
+                        'failed' => $failedCount,
+                        'total' => count($results),
+                        'delivered' => $deliveredCount,
+                        'read' => $readCount,
+                        'results' => $results,
+                    ],
+                ]);
+            } catch (\Throwable $e) {
+                Log::channel('single')->error('ScheduledPost sendNowStream: falha', [
+                    'scheduled_post_id' => $scheduled_post->id,
+                    'message' => $e->getMessage(),
+                ]);
+                $sendEvent(['type' => 'error', 'message' => $e->getMessage()]);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+            'Connection' => 'keep-alive',
+        ]);
+    }
+
+    /**
+     * Envia imediatamente um post agendado (redireciona para a página de progresso).
      */
     public function sendNow(ScheduledPost $scheduled_post): RedirectResponse
     {
@@ -319,21 +484,7 @@ class ScheduledPostController extends Controller
                 ->with('error', __('Este post já foi enviado.'));
         }
 
-        try {
-            ProcessScheduledPostJob::dispatchSync($scheduled_post->id, true);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::channel('single')->error('ScheduledPost sendNow: falha', [
-                'scheduled_post_id' => $scheduled_post->id,
-                'message' => $e->getMessage(),
-            ]);
-            return redirect()
-                ->route('automacao.agendamentos.index')
-                ->with('error', __('Falha ao enviar: :msg. Verifique a Evolution API e os logs.', ['msg' => $e->getMessage()]));
-        }
-
-        return redirect()
-            ->route('automacao.agendamentos.index')
-            ->with('success', __('Mensagem enviada com sucesso.'));
+        return redirect()->route('automacao.agendamentos.enviando', $scheduled_post);
     }
 
     /**

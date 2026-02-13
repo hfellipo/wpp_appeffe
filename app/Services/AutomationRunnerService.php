@@ -53,22 +53,21 @@ class AutomationRunnerService
             ];
         }
 
-        // Evita envio duplicado no mesmo ciclo: se já existe run para este (automação, contato) nos últimos 5 min, não cria outro
-        $recentRun = AutomationRun::query()
+        // Garante no máximo uma mensagem por (automação, contato): se já existe qualquer run, não envia de novo
+        $existingRun = AutomationRun::query()
             ->where('automation_id', $automation->id)
             ->where('contact_id', $contact->id)
-            ->where('ran_at', '>=', now()->subMinutes(5))
             ->first();
-        if ($recentRun !== null) {
-            Log::info('automation run skipped: duplicate in same cycle', [
+        if ($existingRun !== null) {
+            Log::info('automation run skipped: contact already received this automation', [
                 'automation_id' => $automation->id,
                 'contact_id' => $contact->id,
-                'existing_run_id' => $recentRun->id,
+                'existing_run_id' => $existingRun->id,
             ]);
             return [
                 'success' => true,
-                'message' => __('Automação já executada para este contato neste ciclo.'),
-                'run' => $recentRun,
+                'message' => __('Automação já executada para este contato. Cada contato recebe no máximo uma vez por automação.'),
+                'run' => $existingRun,
                 'details' => [],
             ];
         }

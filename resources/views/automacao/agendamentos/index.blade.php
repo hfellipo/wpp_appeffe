@@ -102,10 +102,7 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
                                         <div class="flex items-center justify-end gap-2 flex-wrap">
                                             @if(!$post->sent_at)
-                                                <form action="{{ route('automacao.agendamentos.send-now', $post) }}" method="POST" class="inline">
-                                                    @csrf
-                                                    <button type="submit" class="text-brand-600 hover:text-brand-900">{{ __('Enviar agora') }}</button>
-                                                </form>
+                                                <a href="{{ route('automacao.agendamentos.enviando', $post) }}" class="text-brand-600 hover:text-brand-900">{{ __('Enviar agora') }}</a>
                                                 <span class="text-gray-300">|</span>
                                                 <a href="{{ route('automacao.agendamentos.edit', $post) }}" class="text-gray-600 hover:text-gray-900">{{ __('Reconfigurar') }}</a>
                                                 <span class="text-gray-300">|</span>

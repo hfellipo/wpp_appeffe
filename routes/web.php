@@ -265,6 +265,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/automacao/agendamentos/{scheduled_post}', [ScheduledPostController::class, 'update'])->name('automacao.agendamentos.update');
     Route::post('/automacao/agendamentos/{scheduled_post}/duplicate', [ScheduledPostController::class, 'duplicate'])->name('automacao.agendamentos.duplicate');
     Route::delete('/automacao/agendamentos/{scheduled_post}', [ScheduledPostController::class, 'destroy'])->name('automacao.agendamentos.destroy');
+    Route::get('/automacao/agendamentos/{scheduled_post}/enviando', [ScheduledPostController::class, 'enviando'])->name('automacao.agendamentos.enviando');
+    Route::get('/automacao/agendamentos/{scheduled_post}/send-now-stream', [ScheduledPostController::class, 'sendNowStream'])->name('automacao.agendamentos.send-now-stream');
     Route::post('/automacao/agendamentos/{scheduled_post}/send-now', [ScheduledPostController::class, 'sendNow'])->name('automacao.agendamentos.send-now');
 
     // Funil de vendas (vários funis, quadro Kanban por funil)
