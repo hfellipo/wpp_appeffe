@@ -10,10 +10,10 @@ class AutomationCondition extends Model
     protected $fillable = [
         'automation_id',
         'position',
-        'field_type',   // 'attribute' | 'custom'
-        'field_key',    // 'name' | 'email' | 'phone'
+        'field_type',   // 'attribute' | 'custom' | 'message_status'
+        'field_key',    // 'name' | 'email' | 'phone' (when attribute)
         'contact_field_id',
-        'operator',     // equals, not_equals, contains, is_empty, is_not_empty
+        'operator',     // equals, not_equals, ... ou is_sent, is_delivered, is_read, etc. (when message_status)
         'value',
         'type',
         'config',
@@ -33,8 +33,8 @@ class AutomationCondition extends Model
         return $this->belongsTo(ContactField::class, 'contact_field_id');
     }
 
-    /** Retorna o valor do campo no contato para avaliação. */
-    public function getContactValue(\App\Models\Contact $contact): ?string
+    /** Retorna o valor do campo no contato para avaliação (atributo ou custom). */
+    public function getContactValue(Contact $contact): ?string
     {
         if ($this->field_type === 'attribute') {
             return match ($this->field_key) {
@@ -50,9 +50,29 @@ class AutomationCondition extends Model
         return null;
     }
 
-    /** Verifica se a regra passa para o contato. */
-    public function evaluate(\App\Models\Contact $contact): bool
+    /**
+     * Última mensagem enviada (pelo app) ao contato.
+     * Usada nas condições "Se" por status da mensagem.
+     */
+    public static function getLastOutboundMessageForContact(Contact $contact): ?WhatsAppMessage
     {
+        return WhatsAppMessage::query()
+            ->where('direction', 'out')
+            ->whereHas('conversation', fn ($q) => $q->where('contact_id', $contact->id))
+            ->orderByDesc('sent_at')
+            ->first();
+    }
+
+    /**
+     * Verifica se a regra passa para o contato.
+     * Suporta: atributo do contato, campo personalizado e condição "Se" por status da mensagem.
+     */
+    public function evaluate(Contact $contact): bool
+    {
+        if ($this->field_type === 'message_status') {
+            return $this->evaluateMessageStatus($contact);
+        }
+
         $actual = $this->getContactValue($contact);
         $actual = $actual === null ? '' : trim((string) $actual);
         $expected = trim((string) ($this->value ?? ''));
@@ -63,6 +83,21 @@ class AutomationCondition extends Model
             'contains' => $expected !== '' && str_contains($actual, $expected),
             'is_empty' => $actual === '',
             'is_not_empty' => $actual !== '',
+            default => false,
+        };
+    }
+
+    /** Avalia a condição "Se" baseada no status da última mensagem enviada ao contato. */
+    private function evaluateMessageStatus(Contact $contact): bool
+    {
+        $lastMessage = self::getLastOutboundMessageForContact($contact);
+
+        return match ($this->operator) {
+            'is_sent' => $lastMessage !== null && $lastMessage->sent_at !== null,
+            'is_delivered' => $lastMessage !== null && $lastMessage->delivered_at !== null,
+            'is_read' => $lastMessage !== null && $lastMessage->read_at !== null,
+            'is_not_delivered' => $lastMessage === null || $lastMessage->delivered_at === null,
+            'is_not_read' => $lastMessage === null || $lastMessage->read_at === null,
             default => false,
         };
     }

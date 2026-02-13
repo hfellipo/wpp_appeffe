@@ -95,6 +95,7 @@ class AutomationController extends Controller
             'customFields' => $customFields,
             'triggerTypes' => Automation::triggerTypes(),
             'conditionOperators' => Automation::conditionOperators(),
+            'messageStatusOperators' => Automation::messageStatusOperators(),
             'attributeFields' => Automation::attributeFields(),
             'actionTypes' => Automation::actionTypes(),
         ]);
@@ -147,10 +148,10 @@ class AutomationController extends Controller
                 'condition_mode' => ['required', 'string', 'in:all,rules'],
                 'condition_logic' => ['nullable', 'required_if:condition_mode,rules', 'string', 'in:and,or'],
                 'conditions' => ['nullable', 'array'],
-                'conditions.*.field_type' => ['required_with:conditions', 'string', 'in:attribute,custom'],
+                'conditions.*.field_type' => ['required_with:conditions', 'string', 'in:attribute,custom,message_status'],
                 'conditions.*.field_key' => ['nullable', 'required_if:conditions.*.field_type,attribute', 'string', 'in:name,email,phone'],
                 'conditions.*.contact_field_id' => ['nullable', 'required_if:conditions.*.field_type,custom', 'exists:contact_fields,id'],
-                'conditions.*.operator' => ['required_with:conditions', 'string', 'in:equals,not_equals,contains,is_empty,is_not_empty'],
+                'conditions.*.operator' => ['required_with:conditions', 'string', 'in:equals,not_equals,contains,is_empty,is_not_empty,is_sent,is_delivered,is_read,is_not_delivered,is_not_read'],
                 'conditions.*.value' => ['nullable', 'string', 'max:500'],
             ]);
 
@@ -167,27 +168,33 @@ class AutomationController extends Controller
                     if (empty($r['field_type']) || empty($r['operator'])) {
                         continue;
                     }
-                    if ($r['field_type'] === 'custom' && empty($r['contact_field_id'])) {
-                        continue;
-                    }
-                    if ($r['field_type'] === 'attribute' && empty($r['field_key'])) {
-                        continue;
-                    }
                     $contactFieldId = null;
                     $fieldKey = null;
-                    if ($r['field_type'] === 'custom') {
-                        $contactFieldId = (int) $r['contact_field_id'];
-                        if (!\App\Models\ContactField::forUser($accountId)->where('id', $contactFieldId)->exists()) {
+                    $value = null;
+                    if ($r['field_type'] === 'message_status') {
+                        if (! in_array($r['operator'], ['is_sent', 'is_delivered', 'is_read', 'is_not_delivered', 'is_not_read'], true)) {
                             continue;
                         }
-                    } else {
+                    } elseif ($r['field_type'] === 'custom') {
+                        if (empty($r['contact_field_id'])) {
+                            continue;
+                        }
+                        $contactFieldId = (int) $r['contact_field_id'];
+                        if (! \App\Models\ContactField::forUser($accountId)->where('id', $contactFieldId)->exists()) {
+                            continue;
+                        }
+                        $value = $request->input("conditions.{$i}.value", $r['value'] ?? null);
+                        $value = $value !== null && $value !== '' ? trim((string) $value) : null;
+                    } elseif ($r['field_type'] === 'attribute') {
+                        if (empty($r['field_key'])) {
+                            continue;
+                        }
                         $fieldKey = $r['field_key'];
+                        $value = $request->input("conditions.{$i}.value", $r['value'] ?? null);
+                        $value = $value !== null && $value !== '' ? trim((string) $value) : null;
                     }
-                    // Valor: ler do request direto para garantir que não se perde (validated pode não incluir)
-                    $value = $request->input("conditions.{$i}.value", $r['value'] ?? null);
-                    $value = $value !== null && $value !== '' ? trim((string) $value) : null;
                     $automacao->conditions()->create([
-                        'type' => 'rule', // legado: tabela exige type; regras novas usam field_type/operator/value
+                        'type' => 'rule',
                         'position' => $i,
                         'field_type' => $r['field_type'],
                         'field_key' => $fieldKey,

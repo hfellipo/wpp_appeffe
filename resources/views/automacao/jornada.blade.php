@@ -115,14 +115,21 @@
                                         @foreach($automation->conditions->take(3) as $c)
                                             <li class="flex items-center gap-2">
                                                 <span class="text-gray-400">•</span>
-                                                @if($c->field_type === 'attribute')
+                                                @if($c->field_type === 'message_status')
+                                                    {{ __('Última mensagem') }}
+                                                    {{ \App\Models\Automation::messageStatusOperators()[$c->operator] ?? $c->operator }}
+                                                @elseif($c->field_type === 'attribute')
                                                     {{ \App\Models\Automation::attributeFields()[$c->field_key] ?? $c->field_key }}
+                                                    {{ \App\Models\Automation::conditionOperators()[$c->operator] ?? $c->operator }}
+                                                    @if(!in_array($c->operator, ['is_empty', 'is_not_empty']))
+                                                        <span class="font-medium text-gray-800">"{{ Str::limit($c->value ?? '', 20) }}"</span>
+                                                    @endif
                                                 @else
                                                     {{ $c->contactField?->name ?? __('Campo') }}
-                                                @endif
-                                                {{ \App\Models\Automation::conditionOperators()[$c->operator] ?? $c->operator }}
-                                                @if(!in_array($c->operator, ['is_empty', 'is_not_empty']))
-                                                    <span class="font-medium text-gray-800">"{{ Str::limit($c->value, 20) }}"</span>
+                                                    {{ \App\Models\Automation::conditionOperators()[$c->operator] ?? $c->operator }}
+                                                    @if(!in_array($c->operator, ['is_empty', 'is_not_empty']))
+                                                        <span class="font-medium text-gray-800">"{{ Str::limit($c->value ?? '', 20) }}"</span>
+                                                    @endif
                                                 @endif
                                             </li>
                                         @endforeach

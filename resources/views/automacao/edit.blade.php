@@ -109,7 +109,7 @@
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ __('Quem deve receber as ações?') }}</h3>
-                        <p class="text-sm text-gray-500 mt-1">{{ __('Deixe passar todos ou defina regras (campos do contato) com lógica E ou OU.') }}</p>
+                        <p class="text-sm text-gray-500 mt-1">{{ __('Deixe passar todos ou defina regras: atributos do contato, campos personalizados ou status da última mensagem enviada (entregue, lida) com lógica E ou OU.') }}</p>
                     </div>
                     <form action="{{ route('automacao.update', $automation) }}" method="POST" class="p-6" id="form-conditions">
                         @csrf
@@ -123,7 +123,7 @@
                             </label>
                             <label class="flex items-center gap-2">
                                 <input type="radio" name="condition_mode" value="rules" {{ old('condition_mode', $automation->condition_logic !== null ? 'rules' : 'all') == 'rules' ? 'checked' : '' }} class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
-                                <span class="font-medium">{{ __('Só quem atender às regras abaixo') }}</span>
+                                <span class="font-medium">{{ __('Se: só quem atender às regras abaixo') }}</span>
                             </label>
                         </div>
 
@@ -141,10 +141,11 @@
                                     @php
                                         $rule = is_array($rule) ? $rule : (array) $rule;
                                         $rule = array_merge(['field_type' => 'attribute', 'field_key' => 'name', 'operator' => 'equals', 'value' => ''], $rule);
+                                        $isMessageStatus = ($rule['field_type'] ?? '') === 'message_status';
                                     @endphp
                                     <div class="condition-rule flex flex-wrap items-end gap-3 p-4 bg-gray-50 rounded-lg" data-index="{{ $idx }}">
                                         <div class="flex-1 min-w-[120px]">
-                                            <x-input-label :value="__('Campo')" class="text-xs" />
+                                            <x-input-label :value="__('Se (campo ou status)')" class="text-xs" />
                                             <select name="conditions[{{ $idx }}][field_type]" class="rule-field-type mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" data-index="{{ $idx }}">
                                                 <optgroup label="{{ __('Atributos') }}">
                                                     @foreach($attributeFields as $key => $label)
@@ -158,19 +159,25 @@
                                                         @endforeach
                                                     </optgroup>
                                                 @endif
+                                                <optgroup label="{{ __('Status da mensagem') }}">
+                                                    <option value="message_status" {{ $isMessageStatus ? 'selected' : '' }}>{{ __('Última mensagem enviada ao contato') }}</option>
+                                                </optgroup>
                                             </select>
                                             <input type="hidden" name="conditions[{{ $idx }}][field_key]" class="rule-field-key" value="{{ $rule['field_key'] ?? 'name' }}">
                                             <input type="hidden" name="conditions[{{ $idx }}][contact_field_id]" class="rule-contact-field-id" value="{{ $rule['contact_field_id'] ?? '' }}">
                                         </div>
-                                        <div class="w-40">
+                                        <div class="w-44">
                                             <x-input-label :value="__('Operador')" class="text-xs" />
                                             <select name="conditions[{{ $idx }}][operator]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm rule-operator">
                                                 @foreach($conditionOperators as $op => $label)
-                                                    <option value="{{ $op }}" {{ ($rule['operator'] ?? '') === $op ? 'selected' : '' }}>{{ $label }}</option>
+                                                    <option value="{{ $op }}" data-operator-group="field" {{ !$isMessageStatus && ($rule['operator'] ?? '') === $op ? 'selected' : '' }}>{{ $label }}</option>
+                                                @endforeach
+                                                @foreach($messageStatusOperators ?? [] as $op => $label)
+                                                    <option value="{{ $op }}" data-operator-group="message_status" {{ $isMessageStatus && ($rule['operator'] ?? '') === $op ? 'selected' : '' }}>{{ $label }}</option>
                                                 @endforeach
                                             </select>
                                         </div>
-                                        <div class="rule-value-wrap flex-1 min-w-[140px] {{ in_array($rule['operator'] ?? '', ['is_empty', 'is_not_empty']) ? 'hidden' : '' }}">
+                                        <div class="rule-value-wrap flex-1 min-w-[140px] {{ ($isMessageStatus || in_array($rule['operator'] ?? '', ['is_empty', 'is_not_empty'])) ? 'hidden' : '' }}">
                                             <x-input-label :value="__('Valor')" class="text-xs" />
                                             <input type="text" name="conditions[{{ $idx }}][value]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" value="{{ $rule['value'] ?? '' }}" placeholder="{{ __('Valor') }}">
                                         </div>
@@ -322,6 +329,19 @@
             var attributeFields = @json($attributeFields ?? []);
             var customFields = @json($customFields->keyBy('id')->map(fn($f) => ['id' => $f->id, 'name' => $f->name]) ?? []);
             var operators = @json($conditionOperators ?? []);
+            var messageStatusOperators = @json($messageStatusOperators ?? []);
+
+            function syncOperatorOptions(opSelect, fieldType) {
+                var isMsg = fieldType === 'message_status';
+                var group = isMsg ? 'message_status' : 'field';
+                for (var i = 0; i < opSelect.options.length; i++) {
+                    var opt = opSelect.options[i];
+                    var optGroup = opt.getAttribute('data-operator-group');
+                    opt.hidden = optGroup !== group;
+                }
+                var firstVisible = Array.from(opSelect.options).find(function(o) { return !o.hidden; });
+                if (firstVisible) opSelect.value = firstVisible.value;
+            }
 
             function ruleHtml(index) {
                 var optgroups = '<optgroup label="{{ __("Atributos") }}">';
@@ -332,16 +352,18 @@
                     for (var id in customFields) { optgroups += '<option value="custom" data-field-id="'+id+'">'+customFields[id].name+'</option>'; }
                     optgroups += '</optgroup>';
                 }
+                optgroups += '<optgroup label="{{ __("Status da mensagem") }}"><option value="message_status">{{ __("Última mensagem enviada ao contato") }}</option></optgroup>';
                 var opOptions = '';
-                for (var o in operators) { opOptions += '<option value="'+o+'">'+operators[o]+'</option>'; }
+                for (var o in operators) { opOptions += '<option value="'+o+'" data-operator-group="field">'+operators[o]+'</option>'; }
+                for (var o in messageStatusOperators) { opOptions += '<option value="'+o+'" data-operator-group="message_status">'+messageStatusOperators[o]+'</option>'; }
                 return '<div class="condition-rule flex flex-wrap items-end gap-3 p-4 bg-gray-50 rounded-lg" data-index="'+index+'">'+
                     '<div class="flex-1 min-w-[120px]">'+
-                    '<label class="text-xs block text-gray-700">{{ __("Campo") }}</label>'+
+                    '<label class="text-xs block text-gray-700">{{ __("Se (campo ou status)") }}</label>'+
                     '<select name="conditions['+index+'][field_type]" class="rule-field-type mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm" data-index="'+index+'">'+optgroups+'</select>'+
                     '<input type="hidden" name="conditions['+index+'][field_key]" class="rule-field-key" value="name">'+
                     '<input type="hidden" name="conditions['+index+'][contact_field_id]" class="rule-contact-field-id" value="">'+
                     '</div>'+
-                    '<div class="w-40">'+
+                    '<div class="w-44">'+
                     '<label class="text-xs block text-gray-700">{{ __("Operador") }}</label>'+
                     '<select name="conditions['+index+'][operator]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm rule-operator">'+opOptions+'</select>'+
                     '</div>'+
@@ -362,7 +384,6 @@
 
                 function bindRuleEvents() {
                     rulesList.querySelectorAll('.condition-rule').forEach(function(block) {
-                        var idx = block.getAttribute('data-index');
                         var fieldSelect = block.querySelector('.rule-field-type');
                         var opSelect = block.querySelector('.rule-operator');
                         var keyInput = block.querySelector('.rule-field-key');
@@ -373,21 +394,40 @@
                             fieldSelect.dataset.bound = '1';
                             fieldSelect.addEventListener('change', function() {
                                 var opt = this.options[this.selectedIndex];
-                                if (opt.value === 'attribute') {
+                                var ft = opt.value;
+                                if (ft === 'attribute') {
                                     keyInput.value = opt.getAttribute('data-key') || 'name';
                                     fieldIdInput.value = '';
-                                } else {
+                                } else if (ft === 'custom') {
                                     keyInput.value = '';
                                     fieldIdInput.value = opt.getAttribute('data-field-id') || '';
+                                } else {
+                                    keyInput.value = '';
+                                    fieldIdInput.value = '';
                                 }
+                                syncOperatorOptions(opSelect, ft);
+                                valueWrap.classList.toggle('hidden', ft === 'message_status');
                             });
                         }
                         if (opSelect && !opSelect.dataset.bound) {
                             opSelect.dataset.bound = '1';
                             opSelect.addEventListener('change', function() {
-                                var hide = ['is_empty','is_not_empty'].indexOf(this.value) >= 0;
-                                valueWrap.classList.toggle('hidden', hide);
+                                var fieldType = this.closest('.condition-rule').querySelector('.rule-field-type').value;
+                                if (fieldType !== 'message_status') {
+                                    var hide = ['is_empty','is_not_empty'].indexOf(this.value) >= 0;
+                                    valueWrap.classList.toggle('hidden', hide);
+                                }
                             });
+                        }
+                    });
+                    rulesList.querySelectorAll('.condition-rule').forEach(function(block) {
+                        var fieldSelect = block.querySelector('.rule-field-type');
+                        var opSelect = block.querySelector('.rule-operator');
+                        var valueWrap = block.querySelector('.rule-value-wrap');
+                        if (fieldSelect && opSelect && valueWrap) {
+                            var ft = fieldSelect.value;
+                            syncOperatorOptions(opSelect, ft);
+                            if (ft === 'message_status') valueWrap.classList.add('hidden');
                         }
                     });
                     rulesList.querySelectorAll('.remove-rule').forEach(function(btn) {

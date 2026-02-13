@@ -82,6 +82,28 @@ class Automation extends Model
         ];
     }
 
+    /** Operadores para condição "Se" baseada no status da última mensagem enviada ao contato. */
+    public static function messageStatusOperators(): array
+    {
+        return [
+            'is_sent' => __('foi enviada'),
+            'is_delivered' => __('foi entregue'),
+            'is_read' => __('foi lida'),
+            'is_not_delivered' => __('não foi entregue'),
+            'is_not_read' => __('não foi lida'),
+        ];
+    }
+
+    /** Tipos de campo para condições: atributo do contato, campo personalizado ou status da mensagem. */
+    public static function conditionFieldTypes(): array
+    {
+        return [
+            'attribute' => __('Atributo do contato'),
+            'custom' => __('Campo personalizado'),
+            'message_status' => __('Status da última mensagem enviada'),
+        ];
+    }
+
     public static function attributeFields(): array
     {
         return [
