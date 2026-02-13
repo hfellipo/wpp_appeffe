@@ -2,167 +2,19 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Automation;
-use App\Models\AutomationRun;
-use App\Models\Contact;
-use App\Services\AutomationRunnerService;
+use App\Services\AutomationProcessorService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 
 class RunAutomationsCommand extends Command
 {
     protected $signature = 'automations:run';
 
-    protected $description = 'Verifica automações devidas e executa ações (envio WhatsApp, lista, tag) igual ao chat.';
+    protected $description = 'Processa automações: retoma jornadas em delay e executa gatilhos (tag/lista) com condições e ações (estilo BotConversa).';
 
-    public function handle(AutomationRunnerService $runner): int
+    public function handle(AutomationProcessorService $processor): int
     {
-        $now = now();
-
-        // Retomar runs pausados no "Aguardar (delay)" — o cron roda a cada minuto e continua o fluxo
-        $toResume = AutomationRun::query()
-            ->whereNotNull('resume_at')
-            ->whereNotNull('resume_from_position')
-            ->where('resume_at', '<=', $now)
-            ->get();
-
-        if ($toResume->isNotEmpty()) {
-            Log::info('automations:run resuming runs', [
-                'count' => $toResume->count(),
-                'run_ids' => $toResume->pluck('id')->toArray(),
-            ]);
-        }
-
-        foreach ($toResume as $run) {
-            $automation = Automation::query()->with('actions')->find($run->automation_id);
-            $contact = Contact::query()->find($run->contact_id);
-            if (! $automation || ! $contact || (int) $contact->user_id !== (int) $automation->user_id) {
-                continue;
-            }
-            $fromPosition = (int) $run->resume_from_position;
-            if ($fromPosition < 0) {
-                continue;
-            }
-            $runner->runForContactFromPosition($automation, $contact, $run->fresh(), $fromPosition);
-        }
-
-        $automations = Automation::query()
-            ->where('is_active', true)
-            ->with(['trigger', 'conditions', 'actions'])
-            ->get();
-
-        $due = $automations->filter(function (Automation $a) use ($now) {
-            $last = $a->last_checked_at;
-            if ($last === null) {
-                return true;
-            }
-            $interval = (int) ($a->interval_minutes ?? 15);
-            return $last->copy()->addMinutes($interval)->lte($now);
-        });
-
-        foreach ($due as $automation) {
-            $automation->update(['last_checked_at' => $now]);
-
-            $trigger = $automation->trigger;
-            if (! $trigger) {
-                continue;
-            }
-
-            $contactIds = $this->contactsMatchingTrigger($automation, $trigger);
-            if ($contactIds->isEmpty()) {
-                continue;
-            }
-
-            $contacts = Contact::query()
-                ->forUser($automation->user_id)
-                ->whereIn('id', $contactIds)
-                ->get();
-
-            foreach ($contacts as $contact) {
-                if (! $this->contactPassesConditions($automation, $contact)) {
-                    continue;
-                }
-
-                // Trava por (automação, contato) para garantir um único envio por ciclo (não bloqueia; se lock ocupado, pula)
-                $lockKey = 'automation_run_' . $automation->id . '_' . $contact->id;
-                $lock = Cache::lock($lockKey, 120);
-                if ($lock->get()) {
-                    try {
-                        $runner->runForContact($automation, $contact);
-                    } finally {
-                        $lock->release();
-                    }
-                } else {
-                    Log::info('automations:run skipped contact (lock held)', [
-                        'automation_id' => $automation->id,
-                        'contact_id' => $contact->id,
-                    ]);
-                }
-            }
-        }
+        $processor->process();
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Contatos que batem com o gatilho e ainda não receberam esta automação.
-     * Sempre excluímos quem já tem pelo menos um AutomationRun para esta automação,
-     * garantindo no máximo uma mensagem por usuário por automação.
-     */
-    private function contactsMatchingTrigger(Automation $automation, $trigger): \Illuminate\Support\Collection
-    {
-        $alreadyRunIds = AutomationRun::query()
-            ->where('automation_id', $automation->id)
-            ->pluck('contact_id')
-            ->unique()
-            ->values();
-
-        $excludeRun = $alreadyRunIds->isNotEmpty();
-
-        if ($trigger->type === 'tag_added') {
-            $tagId = (int) ($trigger->config['tag_id'] ?? 0);
-            if ($tagId <= 0) {
-                return collect();
-            }
-            $q = Contact::query()
-                ->forUser($automation->user_id)
-                ->whereHas('tags', fn ($q) => $q->where('tags.id', $tagId));
-            if ($excludeRun) {
-                $q->whereNotIn('id', $alreadyRunIds);
-            }
-            return $q->pluck('id');
-        }
-
-        if ($trigger->type === 'list_added') {
-            $listaId = (int) ($trigger->config['lista_id'] ?? 0);
-            if ($listaId <= 0) {
-                return collect();
-            }
-            $q = Contact::query()
-                ->forUser($automation->user_id)
-                ->whereHas('listas', fn ($q) => $q->where('listas.id', $listaId));
-            if ($excludeRun) {
-                $q->whereNotIn('id', $alreadyRunIds);
-            }
-            return $q->pluck('id');
-        }
-
-        return collect();
-    }
-
-    private function contactPassesConditions(Automation $automation, Contact $contact): bool
-    {
-        if ($automation->condition_logic === null) {
-            return true;
-        }
-        $rules = $automation->conditions;
-        if ($rules->isEmpty()) {
-            return true;
-        }
-        $results = $rules->map(fn ($r) => $r->evaluate($contact));
-        return $automation->condition_logic === 'and'
-            ? $results->every(fn ($v) => $v)
-            : $results->contains(true);
     }
 }
