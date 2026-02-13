@@ -15,10 +15,14 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('automacao.edit', ['automacao' => $automation, 'step' => 'trigger']) }}" class="btn-secondary text-sm">
-                    {{ __('Editar') }}
+                <a href="{{ route('automacao.flow', $automation) }}" class="btn-primary text-sm inline-flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+                    {{ __('Editor de fluxo (drag-and-drop)') }}
                 </a>
-                <a href="{{ route('automacao.test', $automation) }}" class="btn-primary text-sm inline-flex items-center gap-2">
+                <a href="{{ route('automacao.edit', ['automacao' => $automation, 'step' => 'trigger']) }}" class="btn-secondary text-sm">
+                    {{ __('Gatilho e condições') }}
+                </a>
+                <a href="{{ route('automacao.test', $automation) }}" class="btn-secondary text-sm inline-flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Automation;
 use App\Models\AutomationAction;
 use App\Models\AutomationCondition;
+use App\Models\AutomationEdge;
+use App\Models\AutomationNode;
 use App\Models\AutomationTrigger;
 use App\Models\Contact;
 use App\Models\Lista;
@@ -48,6 +50,128 @@ class AutomationController extends Controller
         return redirect()
             ->route('automacao.edit', ['automacao' => $automation, 'step' => 'trigger'])
             ->with('success', __('Automação criada. Configure o gatilho.'));
+    }
+
+    /**
+     * Editor de fluxo drag-and-drop (N8N/BotConversa style).
+     */
+    public function flow(Automation $automacao): View
+    {
+        $this->authorize('update', $automacao);
+        $automacao->load(['flowNodes', 'flowEdges']);
+        $accountId = auth()->user()->accountId();
+        $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
+        $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+
+        return view('automacao.flow', [
+            'automation' => $automacao,
+            'listas' => $listas,
+            'tags' => $tags,
+            'nodeTypes' => AutomationNode::nodeTypes(),
+        ]);
+    }
+
+    /**
+     * API: retorna nodes e edges para o editor.
+     */
+    public function flowData(Automation $automacao): JsonResponse
+    {
+        $this->authorize('update', $automacao);
+        $automacao->load(['flowNodes', 'flowEdges']);
+        $nodes = $automacao->flowNodes->map(fn (AutomationNode $n) => [
+            'id' => (string) $n->id,
+            'type' => $n->type,
+            'position' => ['x' => (float) $n->position_x, 'y' => (float) $n->position_y],
+            'data' => [
+                'label' => $n->label ?? AutomationNode::nodeTypes()[$n->type] ?? $n->type,
+                'config' => $n->config ?? [],
+            ],
+        ])->values()->all();
+        $edges = $automacao->flowEdges->map(fn (AutomationEdge $e) => [
+            'id' => "e{$e->source_node_id}-{$e->target_node_id}",
+            'source' => (string) $e->source_node_id,
+            'target' => (string) $e->target_node_id,
+            'sourceHandle' => $e->source_handle ?? 'default',
+            'targetHandle' => $e->target_handle ?? 'input',
+        ])->values()->all();
+        return response()->json(['nodes' => $nodes, 'edges' => $edges]);
+    }
+
+    /**
+     * API: salva nodes e edges do fluxo.
+     */
+    public function flowUpdate(Request $request, Automation $automacao): JsonResponse
+    {
+        $this->authorize('update', $automacao);
+        $validated = $request->validate([
+            'nodes' => ['required', 'array'],
+            'nodes.*.id' => ['required', 'string'],
+            'nodes.*.type' => ['required', 'string', 'in:start,send_message,delay,add_tag,add_list'],
+            'nodes.*.position' => ['required', 'array'],
+            'nodes.*.position.x' => ['required', 'numeric'],
+            'nodes.*.position.y' => ['required', 'numeric'],
+            'nodes.*.data' => ['nullable', 'array'],
+            'nodes.*.data.label' => ['nullable', 'string'],
+            'nodes.*.data.config' => ['nullable', 'array'],
+            'edges' => ['required', 'array'],
+            'edges.*.source' => ['required', 'string'],
+            'edges.*.target' => ['required', 'string'],
+            'edges.*.sourceHandle' => ['nullable', 'string'],
+            'edges.*.targetHandle' => ['nullable', 'string'],
+        ]);
+        $nodesPayload = $validated['nodes'];
+        $edgesPayload = $validated['edges'];
+        $existingByFrontId = $automacao->flowNodes->keyBy(fn (AutomationNode $node) => (string) $node->id);
+        $idMap = []; // frontend id -> database id
+        foreach ($nodesPayload as $n) {
+            $pos = $n['position'];
+            $data = $n['data'] ?? [];
+            $config = $data['config'] ?? [];
+            $label = $data['label'] ?? null;
+            $type = $n['type'];
+            $frontId = $n['id'] ?? null;
+            $existing = $frontId ? $existingByFrontId->get($frontId) : null;
+            if ($existing) {
+                $existing->update([
+                    'type' => $type,
+                    'position_x' => $pos['x'],
+                    'position_y' => $pos['y'],
+                    'config' => $config,
+                    'label' => $label,
+                ]);
+                $idMap[$frontId] = $existing->id;
+            } else {
+                $node = AutomationNode::create([
+                    'automation_id' => $automacao->id,
+                    'type' => $type,
+                    'position_x' => $pos['x'],
+                    'position_y' => $pos['y'],
+                    'config' => $config,
+                    'label' => $label,
+                ]);
+                $idMap[$frontId] = $node->id;
+            }
+        }
+        $payloadFrontIds = collect($nodesPayload)->pluck('id')->map(fn ($id) => (string) $id)->flip();
+        $toDelete = $automacao->flowNodes->filter(fn (AutomationNode $node) => ! $payloadFrontIds->has((string) $node->id));
+        foreach ($toDelete as $node) {
+            $node->delete();
+        }
+        $automacao->flowEdges()->delete();
+        foreach ($edgesPayload as $e) {
+            $src = $idMap[$e['source']] ?? null;
+            $tgt = $idMap[$e['target']] ?? null;
+            if ($src && $tgt) {
+                AutomationEdge::create([
+                    'automation_id' => $automacao->id,
+                    'source_node_id' => $src,
+                    'target_node_id' => $tgt,
+                    'source_handle' => $e['sourceHandle'] ?? 'default',
+                    'target_handle' => $e['targetHandle'] ?? 'input',
+                ]);
+            }
+        }
+        return response()->json(['ok' => true, 'message' => __('Fluxo salvo.')]);
     }
 
     /**

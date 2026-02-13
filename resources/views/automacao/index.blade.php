@@ -55,6 +55,7 @@
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <a href="{{ route('automacao.jornada', $a) }}" class="text-sm font-medium text-brand-600 hover:text-brand-800">{{ $a->name }}</a>
+                                        <a href="{{ route('automacao.flow', $a) }}" class="ml-2 text-xs text-gray-500 hover:text-brand-600" title="{{ __('Editor de fluxo (drag-and-drop)') }}">{{ __('Fluxo') }}</a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                         @if($a->trigger)

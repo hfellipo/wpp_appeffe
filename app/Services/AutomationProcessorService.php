@@ -43,9 +43,12 @@ class AutomationProcessorService
     {
         $toResume = AutomationRun::query()
             ->whereNotNull('resume_at')
-            ->whereNotNull('resume_from_position')
             ->where('resume_at', '<=', $now)
-            ->get();
+            ->get()
+            ->filter(function (AutomationRun $run) {
+                $meta = $run->metadata ?? [];
+                return $run->resume_from_position !== null || ! empty($meta['resume_from_node_id']);
+            });
 
         if ($toResume->isEmpty()) {
             return;
@@ -57,16 +60,21 @@ class AutomationProcessorService
         ]);
 
         foreach ($toResume as $run) {
-            $automation = Automation::query()->with('actions')->find($run->automation_id);
+            $automation = Automation::query()->with(['actions', 'flowNodes', 'flowEdges'])->find($run->automation_id);
             $contact = Contact::query()->find($run->contact_id);
             if (! $automation || ! $contact || (int) $contact->user_id !== (int) $automation->user_id) {
                 continue;
             }
-            $fromPosition = (int) $run->resume_from_position;
-            if ($fromPosition < 0) {
+            $metadata = $run->metadata ?? [];
+            $nodeId = isset($metadata['resume_from_node_id']) ? (int) $metadata['resume_from_node_id'] : null;
+            if ($nodeId > 0) {
+                $this->runner->runForContactFromNode($automation, $contact, $run->fresh(), $nodeId);
                 continue;
             }
-            $this->runner->runForContactFromPosition($automation, $contact, $run->fresh(), $fromPosition);
+            $fromPosition = (int) $run->resume_from_position;
+            if ($fromPosition >= 0) {
+                $this->runner->runForContactFromPosition($automation, $contact, $run->fresh(), $fromPosition);
+            }
         }
     }
 

@@ -48,6 +48,18 @@ class Automation extends Model
         return $this->hasMany(AutomationAction::class)->orderBy('position');
     }
 
+    /** Nós do fluxo visual (drag-and-drop). Quando existir, a execução usa o grafo em vez da lista de actions. */
+    public function flowNodes(): HasMany
+    {
+        return $this->hasMany(AutomationNode::class, 'automation_id');
+    }
+
+    /** Arestas do fluxo visual (conexões entre nós). */
+    public function flowEdges(): HasMany
+    {
+        return $this->hasMany(AutomationEdge::class, 'automation_id');
+    }
+
     public function runs(): HasMany
     {
         return $this->hasMany(AutomationRun::class, 'automation_id');

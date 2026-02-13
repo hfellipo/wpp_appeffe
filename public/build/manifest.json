@@ -1,6 +1,14 @@
 {
+  "_client-C1kmQfpX.js": {
+    "file": "assets/client-C1kmQfpX.js",
+    "name": "client",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/automation-flow.jsx"
+    ]
+  },
   "resources/css/app.css": {
-    "file": "assets/app-DzGM4E83.css",
+    "file": "assets/app-D_p8sFzT.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
@@ -9,5 +17,17 @@
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true
+  },
+  "resources/js/automation-flow.jsx": {
+    "file": "assets/automation-flow-CWT_45ty.js",
+    "name": "automation-flow",
+    "src": "resources/js/automation-flow.jsx",
+    "isEntry": true,
+    "dynamicImports": [
+      "_client-C1kmQfpX.js"
+    ],
+    "css": [
+      "assets/automation-flow-BZV40eAE.css"
+    ]
   }
 }

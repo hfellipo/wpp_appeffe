@@ -249,6 +249,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/automacao/create', [AutomationController::class, 'create'])->name('automacao.create');
     Route::post('/automacao', [AutomationController::class, 'store'])->name('automacao.store');
     Route::get('/automacao/{automacao}/jornada', [AutomationController::class, 'jornada'])->name('automacao.jornada');
+    Route::get('/automacao/{automacao}/flow', [AutomationController::class, 'flow'])->name('automacao.flow');
+    Route::get('/automacao/{automacao}/flow/data', [AutomationController::class, 'flowData'])->name('automacao.flow.data');
+    Route::put('/automacao/{automacao}/flow', [AutomationController::class, 'flowUpdate'])->name('automacao.flow.update');
     Route::get('/automacao/{automacao}/edit', [AutomationController::class, 'edit'])->name('automacao.edit');
     Route::put('/automacao/{automacao}', [AutomationController::class, 'update'])->name('automacao.update');
     Route::delete('/automacao/{automacao}', [AutomationController::class, 'destroy'])->name('automacao.destroy');
