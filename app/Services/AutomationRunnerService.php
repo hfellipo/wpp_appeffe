@@ -26,6 +26,7 @@ class AutomationRunnerService
     /**
      * Executa a automação para um único contato (teste ou fila).
      * Se houver "Aguardar (delay)", o run fica com resume_at no metadata; o cron retoma depois.
+     * Garante um único envio por (automação, contato) por ciclo: se já existir run recente, não envia de novo.
      *
      * @return array{success: bool, message: string, run: ?AutomationRun, details: array}
      */
@@ -48,6 +49,26 @@ class AutomationRunnerService
                 'success' => false,
                 'message' => __('Esta automação não tem nenhuma ação configurada.'),
                 'run' => null,
+                'details' => [],
+            ];
+        }
+
+        // Evita envio duplicado no mesmo ciclo: se já existe run para este (automação, contato) nos últimos 5 min, não cria outro
+        $recentRun = AutomationRun::query()
+            ->where('automation_id', $automation->id)
+            ->where('contact_id', $contact->id)
+            ->where('ran_at', '>=', now()->subMinutes(5))
+            ->first();
+        if ($recentRun !== null) {
+            Log::info('automation run skipped: duplicate in same cycle', [
+                'automation_id' => $automation->id,
+                'contact_id' => $contact->id,
+                'existing_run_id' => $recentRun->id,
+            ]);
+            return [
+                'success' => true,
+                'message' => __('Automação já executada para este contato neste ciclo.'),
+                'run' => $recentRun,
                 'details' => [],
             ];
         }

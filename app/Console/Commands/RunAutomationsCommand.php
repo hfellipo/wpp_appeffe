@@ -7,6 +7,7 @@ use App\Models\AutomationRun;
 use App\Models\Contact;
 use App\Services\AutomationRunnerService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class RunAutomationsCommand extends Command
@@ -83,7 +84,21 @@ class RunAutomationsCommand extends Command
                     continue;
                 }
 
-                $runner->runForContact($automation, $contact);
+                // Trava por (automação, contato) para garantir um único envio por ciclo (não bloqueia; se lock ocupado, pula)
+                $lockKey = 'automation_run_' . $automation->id . '_' . $contact->id;
+                $lock = Cache::lock($lockKey, 120);
+                if ($lock->get()) {
+                    try {
+                        $runner->runForContact($automation, $contact);
+                    } finally {
+                        $lock->release();
+                    }
+                } else {
+                    Log::info('automations:run skipped contact (lock held)', [
+                        'automation_id' => $automation->id,
+                        'contact_id' => $contact->id,
+                    ]);
+                }
             }
         }
 
