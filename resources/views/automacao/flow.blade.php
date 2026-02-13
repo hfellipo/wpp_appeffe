@@ -42,15 +42,7 @@
     </div>
 
     <script>
-        window.AUTOMATION_FLOW = @json([
-            'automationId' => $automation->id,
-            'flowDataUrl' => route('automacao.flow.data', ['automacao' => $automation]),
-            'flowUpdateUrl' => route('automacao.flow.update', ['automacao' => $automation]),
-            'csrfToken' => csrf_token(),
-            'listas' => $listas,
-            'tags' => $tags,
-            'nodeTypes' => $nodeTypes,
-        ]);
+        window.AUTOMATION_FLOW = {!! json_encode($flowConfig) !!};
     </script>
     @vite(['resources/css/app.css', 'resources/js/automation-flow.jsx'])
 </x-app-layout>

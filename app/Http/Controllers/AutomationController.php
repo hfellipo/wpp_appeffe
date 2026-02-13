@@ -62,12 +62,24 @@ class AutomationController extends Controller
         $accountId = auth()->user()->accountId();
         $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
         $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+        $nodeTypes = AutomationNode::nodeTypes();
+
+        $flowConfig = [
+            'automationId' => $automacao->id,
+            'flowDataUrl' => route('automacao.flow.data', ['automacao' => $automacao]),
+            'flowUpdateUrl' => route('automacao.flow.update', ['automacao' => $automacao]),
+            'csrfToken' => csrf_token(),
+            'listas' => $listas,
+            'tags' => $tags,
+            'nodeTypes' => $nodeTypes,
+        ];
 
         return view('automacao.flow', [
             'automation' => $automacao,
             'listas' => $listas,
             'tags' => $tags,
-            'nodeTypes' => AutomationNode::nodeTypes(),
+            'nodeTypes' => $nodeTypes,
+            'flowConfig' => $flowConfig,
         ]);
     }
 
