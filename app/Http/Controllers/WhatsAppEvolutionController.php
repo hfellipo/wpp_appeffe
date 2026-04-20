@@ -338,6 +338,18 @@ class WhatsAppEvolutionController extends Controller
         $resp = $this->client->get("/instance/connect/{$instance}", ['qrcode' => true]);
         $data = is_array($resp['json']) ? $resp['json'] : [];
 
+        // Se a instância não existe na Evolution (4xx), recria para obter um QR fresco.
+        // Isso acontece quando a URL/KEY da API mudou e as instâncias antigas não existem mais.
+        $instanceNotFound = $resp['status'] >= 400 && $resp['status'] < 500;
+        if ($instanceNotFound) {
+            $resp = $this->client->post('/instance/create', [
+                'instanceName' => $instance,
+                'qrcode' => true,
+                'integration' => 'WHATSAPP-BAILEYS',
+            ]);
+            $data = is_array($resp['json']) ? $resp['json'] : [];
+        }
+
         // Evolution pode devolver base64 direto ou dentro de qrcode.base64
         $qrcodeBase64 = $data['qrcode']['base64'] ?? ($data['base64'] ?? null);
         $qrText = $data['qrcode']['code'] ?? ($data['code'] ?? null);
