@@ -218,13 +218,24 @@ class WhatsAppEvolutionController extends Controller
         $resp = $this->client->post('/instance/create', $payload);
         $data = is_array($resp['json']) ? $resp['json'] : [];
 
+        // Se a instância já existe na Evolution (403 "already in use"), faz fallback
+        // para o connect endpoint para obter um novo QR code.
+        $alreadyExists = $resp['status'] === 403
+            && str_contains(strtolower($resp['text']), 'already in use');
+
+        if ($alreadyExists) {
+            $resp = $this->client->get("/instance/connect/{$whatsappNumber}", ['qrcode' => true]);
+            $data = is_array($resp['json']) ? $resp['json'] : [];
+        }
+
         $instanceNameFromApi = $data['instance']['instanceName'] ?? $whatsappNumber;
         $instanceToken = $data['hash'] ?? null;
 
         // Normaliza QR (só imagem data:image...; se vier 2@..., isso é texto)
-        $qrcodeBase64 = $data['qrcode']['base64'] ?? null;
-        $qrText = $data['qrcode']['code'] ?? null;
-        $pairingCode = $data['qrcode']['pairingCode'] ?? null;
+        // O connect endpoint retorna base64/code diretamente (sem wrapper qrcode)
+        $qrcodeBase64 = $data['qrcode']['base64'] ?? ($data['base64'] ?? null);
+        $qrText = $data['qrcode']['code'] ?? ($data['code'] ?? null);
+        $pairingCode = $data['qrcode']['pairingCode'] ?? ($data['pairingCode'] ?? null);
 
         if (is_string($qrcodeBase64) && preg_match('/^\d+@/', $qrcodeBase64)) {
             // veio code no lugar do base64
@@ -276,7 +287,7 @@ class WhatsAppEvolutionController extends Controller
                 'user_id' => $accountId,
                 'whatsapp_number' => $whatsappNumber,
                 'instance_name' => $instanceNameFromApi,
-                'instance_token' => $instanceToken,
+                'instance_token' => $instanceToken ?: (isset($wa) ? $wa->instance_token : null),
                 'status' => $data['instance']['status'] ?? 'connecting',
                 'metadata' => $meta,
             ]);
