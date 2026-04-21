@@ -129,6 +129,15 @@ class EvolutionWebhookProcessor
         $state = (string) (Arr::get($data, 'state') ?? Arr::get($data, 'connectionState') ?? Arr::get($data, 'status') ?? '');
         if ($state !== '') {
             $wa->status = $state;
+
+            $stateLower = strtolower($state);
+            if (!$wa->connected_at && in_array($stateLower, ['open', 'connected', 'online', 'ready'], true)) {
+                $wa->connected_at = now();
+            }
+            if (in_array($stateLower, ['close', 'closed', 'disconnected', 'offline'], true)) {
+                $wa->disconnected_at = now();
+            }
+
             $wa->save();
 
             $this->publish((int) $wa->user_id, 'wa.connection.update', [

@@ -39,7 +39,7 @@ return [
         'url' => env('EVOLUTION_API_URL'),
         'key' => env('EVOLUTION_API_KEY'),
         // true = processa webhook na hora (mensagens chegam sem rodar queue:work)
-        'webhook_sync' => env('EVOLUTION_WEBHOOK_SYNC', false),
+        'webhook_sync' => env('EVOLUTION_WEBHOOK_SYNC', true),
         // true = loga no storage/logs/laravel.log a resposta de participantes (telefone/nome) para debug
         'debug_participants' => env('EVOLUTION_DEBUG_PARTICIPANTS', false),
     ],

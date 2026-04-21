@@ -66,7 +66,7 @@
                                 </button>
                             </div>
 
-                            <div class="mt-4">
+                            <div class="mt-4 space-y-4">
                                 <template x-if="qrImage">
                                     <div class="flex flex-col items-center gap-3">
                                         <img :src="qrImage"
@@ -90,6 +90,32 @@
                                 <template x-if="!qrImage && !qrText && pairingCode">
                                     <div class="space-y-2">
                                         <pre class="text-xs bg-gray-50 border border-gray-200 rounded-md p-3 whitespace-pre-wrap break-words" x-text="pairingCode"></pre>
+                                    </div>
+                                </template>
+
+                                <template x-if="!qrImage && !qrText && !pairingCode">
+                                    <div class="flex flex-col items-center gap-2 py-8 text-gray-500 text-sm">
+                                        <svg class="animate-spin h-6 w-6 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                                        </svg>
+                                        <span>{{ __('Carregando QR Code...') }}</span>
+                                    </div>
+                                </template>
+
+                                <!-- Barra de status: aguardando conexão + countdown -->
+                                <template x-if="qrImage || qrText">
+                                    <div class="rounded-md bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700 flex items-center justify-between gap-3">
+                                        <div class="flex items-center gap-2">
+                                            <svg class="animate-spin h-4 w-4 text-blue-500 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                                            </svg>
+                                            <span>{{ __('Aguardando leitura do QR Code...') }}</span>
+                                        </div>
+                                        <span class="text-xs text-blue-500 shrink-0">
+                                            {{ __('Atualiza em') }} <span x-text="qrSecondsLeft"></span>s
+                                        </span>
                                     </div>
                                 </template>
                             </div>
@@ -283,6 +309,8 @@
                     _checkTimer: null,
                     _checking: false,
                     _headerConnected: null,
+                    _qrPollTimer: null,
+                    _qrCountdownTimer: null,
                     confirmDisconnectOpen: false,
                     confirmDisconnectInstance: '',
                     qrModalOpen: false,
@@ -296,14 +324,69 @@
                     qrImage: '',
                     qrText: '',
                     pairingCode: '',
+                    qrSecondsLeft: 25,
 
                     openQrModal() {
                         this.qrModalOpen = true;
-                        this.$nextTick(() => this.renderQr());
+                        this.$nextTick(() => {
+                            this.renderQr();
+                            this.startQrPolling();
+                            this.startQrCountdown();
+                        });
                     },
 
                     closeQrModal() {
                         this.qrModalOpen = false;
+                        this.stopQrTimers();
+                    },
+
+                    stopQrTimers() {
+                        if (this._qrPollTimer)     { clearInterval(this._qrPollTimer);     this._qrPollTimer = null; }
+                        if (this._qrCountdownTimer) { clearInterval(this._qrCountdownTimer); this._qrCountdownTimer = null; }
+                    },
+
+                    startQrPolling() {
+                        if (this._qrPollTimer) clearInterval(this._qrPollTimer);
+                        this._qrPollTimer = setInterval(async () => {
+                            if (!this.qrModalOpen || !this.instanceName) return;
+                            const res = await this.refreshState(this.instanceName, { silent: true });
+                            if (res?.ok && this.isConnectedStatus(res.state)) {
+                                this.stopQrTimers();
+                                this.closeQrModal();
+                                this.successMessage = 'WhatsApp conectado com sucesso!';
+                                this.error = '';
+                                this.emitHeaderConnection(true);
+                                this.applyStatusBadge(this.normalizeNumber(this.instanceName), res.state);
+                            }
+                        }, 3000);
+                    },
+
+                    startQrCountdown() {
+                        this.qrSecondsLeft = 25;
+                        if (this._qrCountdownTimer) clearInterval(this._qrCountdownTimer);
+                        this._qrCountdownTimer = setInterval(async () => {
+                            this.qrSecondsLeft -= 1;
+                            if (this.qrSecondsLeft <= 0) {
+                                clearInterval(this._qrCountdownTimer);
+                                this._qrCountdownTimer = null;
+                                await this.refreshQrCode();
+                            }
+                        }, 1000);
+                    },
+
+                    async refreshQrCode() {
+                        if (!this.qrModalOpen || !this.instanceName) return;
+                        const inst = this.normalizeNumber(this.instanceName);
+                        if (!inst) return;
+                        try {
+                            const url = "{{ url('/settings/whatsapp/connect') }}/" + encodeURIComponent(inst);
+                            const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            const payload = await resp.json().catch(() => ({}));
+                            if (resp.ok && payload?.success !== false) {
+                                this.setFromPayload(payload);
+                            }
+                        } catch {}
+                        this.startQrCountdown();
                     },
 
                     openAddWhatsApp() {
