@@ -32,10 +32,12 @@ class WhatsAppMessage extends Model
         'delivered_at',
         'read_at',
         'raw_payload',
+        'reactions',
     ];
 
     protected $casts = [
         'body' => 'encrypted',
+        'reactions' => 'array',
         'sent_at' => 'datetime',
         'delivered_at' => 'datetime',
         'read_at' => 'datetime',

@@ -1114,6 +1114,7 @@ class WhatsAppInboxController extends Controller
             'delivered_at',
             'read_at',
             'created_at',
+            'reactions',
         ]);
 
         if ($after === '') {
@@ -1160,6 +1161,7 @@ class WhatsAppInboxController extends Controller
                     'read_at' => optional($m->read_at)->toIso8601String(),
                     'created_at' => optional($m->created_at)->toIso8601String(),
                     'attachment' => $attachmentData,
+                    'reactions' => is_array($m->reactions) && count($m->reactions) > 0 ? $m->reactions : null,
                 ];
             })->values(),
             'meta' => [

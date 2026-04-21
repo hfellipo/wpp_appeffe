@@ -425,6 +425,12 @@ class EvolutionWebhookProcessor
             $participantJid = (string) Arr::get($m, 'key.participant', '');
             $messageTypeRaw = (string) Arr::get($m, 'messageType', 'unknown');
 
+            // Reações de emoji: atualizar o campo reactions da mensagem alvo
+            if ($messageTypeRaw === 'reactionMessage') {
+                $this->handleReaction($wa, $m, $accountId, $fromMe);
+                continue;
+            }
+
             $kind = str_contains($remoteJid, '@g.us') ? 'group' : 'direct';
             $peerJidCanonical = $kind === 'direct' ? $this->canonicalDirectPeerJid($remoteJid) : $remoteJid;
 
@@ -654,6 +660,45 @@ class EvolutionWebhookProcessor
                 }
             }
         }
+    }
+
+    private function handleReaction(WhatsAppInstance $wa, array $m, int $accountId, bool $fromMe): void
+    {
+        $reaction  = Arr::get($m, 'message.reactionMessage', []);
+        $targetId  = (string) Arr::get($reaction, 'key.id', '');
+        $emoji     = (string) Arr::get($reaction, 'text', '');
+
+        if ($targetId === '') return;
+
+        $targetMsg = WhatsAppMessage::query()->where('remote_id', $targetId)->first();
+        if (!$targetMsg) return;
+
+        // JID de quem reagiu
+        $senderJid = $fromMe
+            ? preg_replace('/\D/', '', (string) $wa->instance_name) . '@s.whatsapp.net'
+            : (string) Arr::get($m, 'key.remoteJid', Arr::get($m, 'key.participant', ''));
+
+        $reactions = is_array($targetMsg->reactions) ? $targetMsg->reactions : [];
+
+        // Remove reação anterior deste sender (só um emoji por pessoa)
+        $reactions = array_values(array_filter($reactions, fn($r) => ($r['sender'] ?? '') !== $senderJid));
+
+        // Emoji vazio = remover reação
+        if ($emoji !== '') {
+            $reactions[] = [
+                'emoji'    => $emoji,
+                'sender'   => $senderJid,
+                'from_me'  => $fromMe,
+            ];
+        }
+
+        $targetMsg->reactions = $reactions ?: null;
+        $targetMsg->saveQuietly();
+
+        $this->publish($accountId, 'wa.message.reaction', [
+            'message_id' => $targetMsg->public_id,
+            'reactions'  => $reactions,
+        ]);
     }
 
     /**

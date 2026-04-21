@@ -560,6 +560,19 @@ window.waInboxChatify = function waInboxChatify() {
                 this.bumpLastEventId(data);
             });
 
+            es.addEventListener('wa.message.reaction', (evt) => {
+                const data = safeJsonParse(evt.data) || {};
+                const msgId = String(data.message_id || '');
+                const reactions = data.reactions || null;
+                if (!msgId) return;
+                const m = this.messages.find((x) => String(x.id) === msgId);
+                if (m) {
+                    m.reactions = reactions && reactions.length > 0 ? reactions : null;
+                    this.messages = [...this.messages];
+                }
+                this.bumpLastEventId(data);
+            });
+
             es.addEventListener('wa.presence', (evt) => {
                 const data = safeJsonParse(evt.data) || {};
                 const convId = String(data.conversation_id || '');
@@ -1038,6 +1051,18 @@ window.waInboxChatify = function waInboxChatify() {
             const s = String(n || '');
             if (!s) return '';
             return '+' + s;
+        },
+
+        groupReactions(reactions) {
+            const groups = {};
+            for (const r of (reactions || [])) {
+                const e = r.emoji || '';
+                if (!e) continue;
+                if (!groups[e]) groups[e] = { emoji: e, count: 0, fromMe: false };
+                groups[e].count++;
+                if (r.from_me) groups[e].fromMe = true;
+            }
+            return Object.values(groups);
         },
 
         formatTimeShort(v) {

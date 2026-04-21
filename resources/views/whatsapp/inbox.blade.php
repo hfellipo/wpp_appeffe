@@ -243,6 +243,40 @@
             @keyframes wa-spin { to { transform: rotate(360deg); } }
             .messages-list { width: 100%; }
 
+            /* Reações de emoji */
+            .wa-reactions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 3px;
+                margin-top: -6px;
+                margin-bottom: 4px;
+                padding: 0 6px;
+            }
+            .wa-reactions--out { justify-content: flex-end; }
+            .wa-reaction-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                background: #fff;
+                border: 1px solid rgba(0,0,0,0.12);
+                border-radius: 12px;
+                padding: 2px 7px;
+                font-size: 15px;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.10);
+                cursor: default;
+                line-height: 1;
+            }
+            .wa-reaction-pill--mine {
+                background: #e7f8ee;
+                border-color: #25d366;
+            }
+            .wa-reaction-count {
+                font-size: 11px;
+                font-weight: 600;
+                color: #555;
+                line-height: 1;
+            }
+
             /* Emoji picker – enviar e receber emojis */
             .wa-send-card { position: relative; }
             .wa-emoji-picker {
@@ -719,7 +753,7 @@
                                                 <span x-text="m.direction === 'out' ? 'Você' : (m.sender_name || 'Desconhecido')"></span>
                                             </div>
                                         </template>
-                                        <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''">
+                                        <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''" style="position:relative;">
                                             <div class="message-card-content" :class="{
                                                 'wa-sender-media': m.direction === 'out' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type)),
                                                 'wa-received-media': m.direction === 'in' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type))
@@ -801,6 +835,17 @@
                                                     </span>
                                                 </div>
                                             </div>
+                                            <!-- Reações de emoji -->
+                                            <template x-if="m.reactions && m.reactions.length > 0">
+                                                <div class="wa-reactions" :class="m.direction === 'out' ? 'wa-reactions--out' : ''">
+                                                    <template x-for="group in groupReactions(m.reactions)" :key="group.emoji">
+                                                        <span class="wa-reaction-pill" :class="group.fromMe ? 'wa-reaction-pill--mine' : ''" :title="group.count + ' reação(ões)'">
+                                                            <span x-text="group.emoji"></span>
+                                                            <span x-show="group.count > 1" class="wa-reaction-count" x-text="group.count"></span>
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                            </template>
                                         </div>
                                     </div>
                                 </template>
