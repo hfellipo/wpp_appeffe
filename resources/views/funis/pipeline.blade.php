@@ -588,24 +588,29 @@ function pipelineStage(opts) {
         async deleteRule(rule) {
             if (!confirm('Remover este evento?')) return;
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const fd = new FormData();
-            fd.append('_method', 'DELETE');
-            fd.append('_token', csrf);
             try {
                 const res = await fetch(rule.destroy_url, {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body: fd
+                    headers: {
+                        'X-CSRF-TOKEN': csrf,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: '_method=DELETE&_token=' + encodeURIComponent(csrf)
                 });
-                if (res.ok || res.status === 302) {
+                if (res.ok) {
                     this.rules = this.rules.filter(r => r.id !== rule.id);
                 } else {
-                    const data = await res.json().catch(() => ({}));
-                    this.ruleFeedback = data.message || data.error || 'Erro ao remover evento (status ' + res.status + ').';
+                    let errMsg = 'HTTP ' + res.status;
+                    try { const d = await res.json(); errMsg = d.message || d.error || errMsg; } catch(_) {}
+                    console.error('[deleteRule]', res.status, errMsg, rule.destroy_url);
+                    this.ruleFeedback = '❌ ' + errMsg;
                     this.ruleFeedbackOk = false;
                 }
             } catch(e) {
-                this.ruleFeedback = 'Erro de conexão ao remover evento.';
+                console.error('[deleteRule] network error', e);
+                this.ruleFeedback = '❌ Erro de conexão.';
                 this.ruleFeedbackOk = false;
             }
         },
