@@ -90,6 +90,50 @@
                 </div>
             @endif
 
+            @if ($instances->isNotEmpty())
+            @php
+                $total        = $instances->count();
+                $ativos       = $instances->where('active', true)->count();
+                $desativados  = $instances->where('active', false)->count();
+                $totalMsg     = $instances->sum('msg_count');
+                $totalChats   = $instances->sum('chat_count');
+                $totalContatos= $instances->sum('contact_count');
+                $semVinculo   = $instances->where('in_db', false)->count();
+            @endphp
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div class="wi-card text-center py-4 px-3">
+                    <div class="text-2xl font-bold text-gray-900">{{ $total }}</div>
+                    <div class="text-xs text-gray-500 mt-0.5">Total</div>
+                </div>
+                <div class="wi-card text-center py-4 px-3">
+                    <div class="flex items-center justify-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                        <span class="text-2xl font-bold text-green-700">{{ $ativos }}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-0.5">Ativo{{ $ativos !== 1 ? 's' : '' }}</div>
+                </div>
+                <div class="wi-card text-center py-4 px-3">
+                    <div class="flex items-center justify-center gap-1.5">
+                        <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+                        <span class="text-2xl font-bold text-red-600">{{ $desativados }}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-0.5">Desconectado{{ $desativados !== 1 ? 's' : '' }}</div>
+                </div>
+                <div class="wi-card text-center py-4 px-3">
+                    <div class="text-2xl font-bold text-gray-900">{{ number_format($totalChats) }}</div>
+                    <div class="text-xs text-gray-500 mt-0.5">Conversas</div>
+                </div>
+                <div class="wi-card text-center py-4 px-3">
+                    <div class="text-2xl font-bold text-gray-900">{{ number_format($totalContatos) }}</div>
+                    <div class="text-xs text-gray-500 mt-0.5">Contatos</div>
+                </div>
+                <div class="wi-card text-center py-4 px-3">
+                    <div class="text-2xl font-bold text-gray-900">{{ number_format($totalMsg) }}</div>
+                    <div class="text-xs text-gray-500 mt-0.5">Mensagens</div>
+                </div>
+            </div>
+            @endif
+
             <!-- Feedback -->
             <div x-show="feedback.msg" x-cloak
                  :class="feedback.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'"
