@@ -531,87 +531,51 @@ class WhatsAppEvolutionController extends Controller
     {
         $accountId = auth()->user()->accountId();
 
-        // Instâncias locais (incluindo deletadas para diagnóstico)
-        $local = WhatsAppInstance::withTrashed()
-            ->where('user_id', $accountId)
-            ->orderByDesc('updated_at')
-            ->get();
-
-        // Instâncias ao vivo na Evolution
-        $evMap = [];
+        // Busca instâncias da Evolution (fonte de verdade)
+        $evList = [];
         if ($this->client->isConfigured()) {
-            $resp = $this->client->get('/instance/fetchInstances');
+            $resp   = $this->client->get('/instance/fetchInstances');
             $evList = is_array($resp['json']) ? $resp['json'] : [];
-            foreach ($evList as $ev) {
-                $name = preg_replace('/\D/', '', (string) ($ev['name'] ?? ''));
-                if ($name !== '') {
-                    $evMap[$name] = $ev;
-                }
-            }
         }
 
-        // Merge: para cada instância local, complementa com dados da Evolution
-        $rows = $local->map(function (WhatsAppInstance $wa) use ($evMap) {
-            $name = preg_replace('/\D/', '', (string) $wa->instance_name);
-            $ev   = $evMap[$name] ?? null;
+        // Monta mapa do DB local para complementar com token/timestamps
+        $localMap = WhatsAppInstance::withTrashed()
+            ->where('user_id', $accountId)
+            ->get()
+            ->keyBy(fn ($w) => preg_replace('/\D/', '', (string) $w->instance_name));
 
-            return [
-                'id'                => $wa->id,
-                'instance_name'     => $wa->instance_name,
-                'whatsapp_number'   => $wa->whatsapp_number,
-                'status_db'         => $wa->status,
-                'status_ev'         => $ev ? strtolower((string) ($ev['connectionStatus'] ?? '')) : null,
-                'token'             => $wa->instance_token,    // já descriptografado pelo cast
-                'ev_token'          => $ev ? ($ev['token'] ?? null) : null,
-                'profile_name'      => $ev ? ($ev['profileName'] ?? null) : null,
-                'profile_pic'       => $ev ? ($ev['profilePicUrl'] ?? null) : null,
-                'owner_jid'         => $ev ? ($ev['ownerJid'] ?? null) : null,
-                'msg_count'         => $ev ? (int) ($ev['_count']['Message'] ?? 0) : null,
-                'contact_count'     => $ev ? (int) ($ev['_count']['Contact'] ?? 0) : null,
-                'chat_count'        => $ev ? (int) ($ev['_count']['Chat'] ?? 0) : null,
-                'ev_created_at'     => $ev ? ($ev['createdAt'] ?? null) : null,
-                'connected_at'      => optional($wa->connected_at)->toIso8601String(),
-                'disconnected_at'   => optional($wa->disconnected_at)->toIso8601String(),
-                'deleted_at'        => optional($wa->deleted_at)->toIso8601String(),
-                'webhook_url'       => $wa->webhook_url,
-                'in_db'             => true,
-                'in_evolution'      => $ev !== null,
-            ];
-        });
+        // Somente instâncias que existem na Evolution
+        $rows = collect($evList)
+            ->filter(fn ($ev) => ($ev['name'] ?? '') !== '')
+            ->map(function ($ev) use ($localMap) {
+                $name   = preg_replace('/\D/', '', (string) ($ev['name'] ?? ''));
+                $wa     = $localMap[$name] ?? null;
+                $status = strtolower((string) ($ev['connectionStatus'] ?? 'unknown'));
 
-        // Instâncias que estão na Evolution mas NÃO estão no DB local
-        $localNames = $local->map(fn ($w) => preg_replace('/\D/', '', (string) $w->instance_name))->filter()->all();
-        foreach ($evMap as $name => $ev) {
-            if (!in_array($name, $localNames, true)) {
-                $rows->push([
-                    'id'              => null,
-                    'instance_name'   => $name,
-                    'whatsapp_number' => $name,
-                    'status_db'       => null,
-                    'status_ev'       => strtolower((string) ($ev['connectionStatus'] ?? '')),
-                    'token'           => null,
-                    'ev_token'        => $ev['token'] ?? null,
-                    'profile_name'    => $ev['profileName'] ?? null,
-                    'profile_pic'     => $ev['profilePicUrl'] ?? null,
-                    'owner_jid'       => $ev['ownerJid'] ?? null,
-                    'msg_count'       => (int) ($ev['_count']['Message'] ?? 0),
-                    'contact_count'   => (int) ($ev['_count']['Contact'] ?? 0),
-                    'chat_count'      => (int) ($ev['_count']['Chat'] ?? 0),
-                    'ev_created_at'   => $ev['createdAt'] ?? null,
-                    'connected_at'    => null,
-                    'disconnected_at' => null,
-                    'deleted_at'      => null,
-                    'webhook_url'     => null,
-                    'in_db'           => false,
-                    'in_evolution'    => true,
-                ]);
-            }
-        }
+                return [
+                    'id'            => $wa?->id,
+                    'instance_name' => $ev['name'],
+                    'status'        => $status,
+                    'active'        => in_array($status, ['open', 'connected', 'online', 'ready'], true),
+                    'token'         => $wa?->instance_token ?? ($ev['token'] ?? null),
+                    'ev_token'      => $ev['token'] ?? null,
+                    'profile_name'  => $ev['profileName'] ?? null,
+                    'profile_pic'   => $ev['profilePicUrl'] ?? null,
+                    'owner_jid'     => $ev['ownerJid'] ?? null,
+                    'msg_count'     => (int) ($ev['_count']['Message'] ?? 0),
+                    'contact_count' => (int) ($ev['_count']['Contact'] ?? 0),
+                    'chat_count'    => (int) ($ev['_count']['Chat'] ?? 0),
+                    'connected_at'  => $wa?->connected_at?->toIso8601String(),
+                    'webhook_url'   => $wa?->webhook_url,
+                    'in_db'         => $wa !== null,
+                ];
+            })
+            ->values();
 
         return view('settings.whatsapp-instances', [
-            'instances'   => $rows->values(),
-            'configured'  => $this->client->isConfigured(),
-            'apiUrl'      => $this->client->baseUrl(),
+            'instances'  => $rows,
+            'configured' => $this->client->isConfigured(),
+            'apiUrl'     => $this->client->baseUrl(),
         ]);
     }
 
