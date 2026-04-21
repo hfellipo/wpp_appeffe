@@ -1318,8 +1318,16 @@
             var inlineTrigger  = document.getElementById('inline-trigger-select');
             var inlineForm     = document.getElementById('form-inline-rule');
             var inlineRulesList= document.getElementById('inline-rules-list');
-            var inlineStatusUrl= null; // store-url para submit
+            var inlineFeedback = document.getElementById('inline-rule-feedback');
+            var inlineSubmitBtn= inlineForm ? inlineForm.querySelector('button[type="submit"]') : null;
             var inlineStageId  = null;
+            var inlineRules    = []; // local cache of current rules
+
+            var triggerIcons = {
+                message_status: '📨', whatsapp_replied: '💬', specific_reply: '🔑',
+                tag_added: '🏷️', list_added: '📋'
+            };
+            var actionLabels = { move: 'Mover', send: 'Enviar msg', move_and_send: 'Mover + Enviar' };
 
             function updateInlineTriggerVis() {
                 var v = inlineTrigger ? inlineTrigger.value : '';
@@ -1335,42 +1343,82 @@
                 document.getElementById('inline-message-wrap').classList.toggle('hidden', v === 'move');
             }
 
+            function ruleCard(r) {
+                var icon   = triggerIcons[r.trigger_type] || '⚡';
+                var extra  = r.trigger_extra ? ' <span class="text-gray-500">(' + r.trigger_extra + ')</span>' : '';
+                var kw     = r.keyword ? ' <span class="bg-violet-100 text-violet-700 rounded px-1 font-mono">"' + r.keyword + '"</span>' : '';
+                var action = actionLabels[r.action_type || 'move'] || 'Mover';
+                var dest   = (r.action_type !== 'send' && r.target_stage_name) ? ' <span class="text-gray-400">→</span> <span class="font-medium">' + r.target_stage_name + '</span>' : '';
+                var msg    = (r.action_type !== 'move' && r.action_message) ? ' <span class="text-gray-400 italic truncate max-w-[120px] inline-block align-bottom">"' + r.action_message.substring(0, 40) + '"</span>' : '';
+                return '<div class="flex items-start justify-between gap-2 p-3 bg-white border border-violet-100 rounded-xl text-xs shadow-sm mb-2" data-rule-id="' + r.id + '">'
+                     + '<div class="flex-1 min-w-0">'
+                     + '<div class="flex items-center gap-1 flex-wrap mb-0.5">'
+                     + '<span class="text-base leading-none">' + icon + '</span>'
+                     + '<span class="font-semibold text-gray-800">' + (r.trigger_label || '') + '</span>'
+                     + extra + kw
+                     + '</div>'
+                     + '<div class="flex items-center gap-1 flex-wrap text-violet-700">'
+                     + '<span class="bg-violet-50 rounded px-1.5 py-0.5 font-medium">' + action + '</span>'
+                     + dest + msg
+                     + '</div>'
+                     + '</div>'
+                     + '<button type="button" onclick="inlineDeleteRule(this, \'' + (r.destroy_url || '') + '\')" '
+                     + 'class="shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors text-base font-bold" title="Remover">×</button>'
+                     + '</div>';
+            }
+
+            window.inlineDeleteRule = function(btn, url) {
+                if (!confirm('Remover esta regra?')) return;
+                btn.disabled = true;
+                var csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                fetch(url, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+                    body: '_method=DELETE&_token=' + encodeURIComponent(csrf)
+                }).then(function(r) {
+                    if (r.ok || r.status === 302) {
+                        var card = btn.closest('[data-rule-id]');
+                        if (card) card.remove();
+                        // Check if list is empty
+                        var remaining = inlineRulesList ? inlineRulesList.querySelectorAll('[data-rule-id]') : [];
+                        if (remaining.length === 0) {
+                            if (inlineRulesList) inlineRulesList.innerHTML = '<p class="text-xs text-gray-400 italic mb-2">Nenhuma regra configurada ainda.</p>';
+                        }
+                    } else {
+                        btn.disabled = false;
+                        alert('Erro ao remover regra.');
+                    }
+                }).catch(function() { btn.disabled = false; alert('Erro ao remover regra.'); });
+            };
+
             function renderInlineRules(rules) {
                 if (!inlineRulesList) return;
                 if (!rules || rules.length === 0) {
                     inlineRulesList.innerHTML = '<p class="text-xs text-gray-400 italic mb-2">Nenhuma regra configurada ainda.</p>';
                     return;
                 }
-                var triggerIcons = {
-                    message_status: '📨', whatsapp_replied: '💬', specific_reply: '🔑',
-                    tag_added: '🏷️', list_added: '📋'
-                };
-                var actionLabels = { move: 'Mover', send: 'Enviar msg', move_and_send: 'Mover + Enviar' };
-                inlineRulesList.innerHTML = '<p class="text-xs font-semibold text-gray-600 mb-2">Regras ativas</p>'
-                    + rules.map(function(r) {
-                        var icon   = triggerIcons[r.trigger_type] || '⚡';
-                        var extra  = r.trigger_extra ? ' (' + r.trigger_extra + ')' : '';
-                        var kw     = r.keyword ? ' <span class="text-violet-600 font-semibold">"' + r.keyword + '"</span>' : '';
-                        var action = actionLabels[r.action_type || 'move'] || 'Mover';
-                        var dest   = (r.action_type !== 'send' && r.target_stage_name) ? ' → ' + r.target_stage_name : '';
-                        return '<div class="flex items-start justify-between gap-2 p-3 bg-violet-50 border border-violet-100 rounded-lg text-xs mb-2">'
-                             + '<div class="flex-1"><span class="font-semibold">' + icon + ' ' + (r.trigger_label || '') + extra + '</span>'
-                             + kw + ' <span class="text-gray-500">|</span> '
-                             + '<span class="text-violet-700">' + action + dest + '</span></div>'
-                             + '<form method="POST" action="' + (r.destroy_url || '') + '" class="inline shrink-0" onsubmit="return confirm(\'Remover?\');">'
-                             + '<input type="hidden" name="_token" value="{{ csrf_token() }}">'
-                             + '<input type="hidden" name="_method" value="DELETE">'
-                             + '<button type="submit" class="text-red-400 hover:text-red-700 text-base leading-none font-bold">×</button>'
-                             + '</form></div>';
-                    }).join('');
+                inlineRulesList.innerHTML = rules.map(ruleCard).join('');
+            }
+
+            function showFeedback(msg, isError) {
+                if (!inlineFeedback) return;
+                inlineFeedback.textContent = msg;
+                inlineFeedback.className = 'text-xs rounded px-3 py-2 mb-1 ' + (isError
+                    ? 'bg-red-50 border border-red-200 text-red-700'
+                    : 'bg-emerald-50 border border-emerald-200 text-emerald-700');
+                inlineFeedback.classList.remove('hidden');
+                if (!isError) {
+                    setTimeout(function() { inlineFeedback.classList.add('hidden'); }, 3000);
+                }
             }
 
             // Called when opening the automation modal — syncs data for Eventos tab
             window._syncInlineRules = function(storeUrl, stageId, rules) {
                 inlineStageId = stageId;
+                inlineRules   = rules || [];
                 if (inlineForm) inlineForm.action = storeUrl;
-                renderInlineRules(rules);
-                // Disable current stage in target dropdown
+                if (inlineFeedback) inlineFeedback.classList.add('hidden');
+                renderInlineRules(inlineRules);
                 var targetSel = document.getElementById('inline-target-stage');
                 if (targetSel) {
                     Array.from(targetSel.options).forEach(function(opt) {
@@ -1378,6 +1426,52 @@
                     });
                 }
             };
+
+            // AJAX submit — no page reload
+            if (inlineForm) {
+                inlineForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    var csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                    var formData = new FormData(inlineForm);
+                    if (inlineSubmitBtn) { inlineSubmitBtn.disabled = true; inlineSubmitBtn.textContent = 'Salvando...'; }
+                    if (inlineFeedback) inlineFeedback.classList.add('hidden');
+
+                    fetch(inlineForm.action, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData
+                    })
+                    .then(function(res) { return res.json().then(function(d) { return { ok: res.ok, data: d }; }); })
+                    .then(function(res) {
+                        if (res.ok && res.data.success) {
+                            // Append new rule card to the list
+                            var newRule = res.data.rule;
+                            var emptyMsg = inlineRulesList ? inlineRulesList.querySelector('p.italic') : null;
+                            if (emptyMsg) emptyMsg.remove();
+                            if (inlineRulesList) inlineRulesList.insertAdjacentHTML('beforeend', ruleCard(newRule));
+                            showFeedback('✅ Regra adicionada!', false);
+                            // Reset form fields
+                            if (inlineTrigger) inlineTrigger.value = inlineTrigger.options[0].value;
+                            var kwInput = document.getElementById('inline-keyword');
+                            if (kwInput) kwInput.value = '';
+                            var msgArea = document.getElementById('inline-action-message');
+                            if (msgArea) msgArea.value = '';
+                            var targetSel = document.getElementById('inline-target-stage');
+                            if (targetSel) targetSel.value = '';
+                            var firstRadio = inlineForm.querySelector('input.inline-action-radio');
+                            if (firstRadio) { firstRadio.checked = true; }
+                            updateInlineTriggerVis();
+                            updateInlineActionVis();
+                        } else {
+                            showFeedback(res.data.error || 'Erro ao salvar regra.', true);
+                        }
+                    })
+                    .catch(function() { showFeedback('Erro de conexão. Tente novamente.', true); })
+                    .finally(function() {
+                        if (inlineSubmitBtn) { inlineSubmitBtn.disabled = false; inlineSubmitBtn.textContent = 'Adicionar regra'; }
+                    });
+                });
+            }
 
             if (inlineTrigger) {
                 inlineTrigger.addEventListener('change', updateInlineTriggerVis);
@@ -1387,9 +1481,6 @@
                 r.addEventListener('change', updateInlineActionVis);
             });
             updateInlineActionVis();
-
-            // Submit via regular POST (page reload) — simple and reliable
-            // The form already has correct action set when the modal opens
         })();
 
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content;

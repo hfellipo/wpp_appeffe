@@ -22,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -587,7 +588,7 @@ class FunnelController extends Controller
         return response()->json(['success' => true]);
     }
 
-    public function storeStageRule(Request $request, Funnel $funnel, FunnelStage $stage): RedirectResponse
+    public function storeStageRule(Request $request, Funnel $funnel, FunnelStage $stage): RedirectResponse|JsonResponse
     {
         $this->authorize('update', $funnel);
         if ((int) $stage->funnel_id !== (int) $funnel->id) {
@@ -596,7 +597,7 @@ class FunnelController extends Controller
 
         $actionType = $request->input('action_type', 'move');
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'trigger_type'   => ['required', 'string', 'in:message_status,whatsapp_replied,specific_reply,tag_added,list_added'],
             'target_stage_id'=> ['nullable', 'integer', 'exists:funnel_stages,id'],
             'tag_id'         => ['nullable', 'required_if:trigger_type,tag_added', 'integer', 'exists:tags,id'],
@@ -607,19 +608,41 @@ class FunnelController extends Controller
             'action_message' => ['nullable', 'required_if:action_type,send', 'required_if:action_type,move_and_send', 'string', 'max:65535'],
         ]);
 
+        if ($validator->fails()) {
+            $error = $validator->errors()->first();
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['error' => $error], 422);
+            }
+            return back()->with('error', $error);
+        }
+
+        $validated = $validator->validated();
+
         // action_type "move" and "move_and_send" require a target_stage
         if (in_array($actionType, ['move', 'move_and_send'], true) && empty($validated['target_stage_id'])) {
-            return back()->with('error', __('Escolha a etapa de destino.'));
+            $error = __('Escolha a etapa de destino.');
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['error' => $error], 422);
+            }
+            return back()->with('error', $error);
         }
 
         $targetStage = null;
         if (! empty($validated['target_stage_id'])) {
             $targetStage = FunnelStage::where('funnel_id', $funnel->id)->find($validated['target_stage_id']);
             if (! $targetStage) {
-                return back()->with('error', __('Estágio de destino inválido.'));
+                $error = __('Estágio de destino inválido.');
+                if ($request->wantsJson() || $request->ajax()) {
+                    return response()->json(['error' => $error], 422);
+                }
+                return back()->with('error', $error);
             }
             if (in_array($actionType, ['move', 'move_and_send'], true) && (int) $targetStage->id === (int) $stage->id) {
-                return back()->with('error', __('Escolha uma etapa diferente da atual.'));
+                $error = __('Escolha uma etapa diferente da atual.');
+                if ($request->wantsJson() || $request->ajax()) {
+                    return response()->json(['error' => $error], 422);
+                }
+                return back()->with('error', $error);
             }
         }
 
@@ -634,7 +657,7 @@ class FunnelController extends Controller
             $config['status'] = $validated['status'];
         }
 
-        FunnelStageRule::create([
+        $rule = FunnelStageRule::create([
             'funnel_stage_id' => $stage->id,
             'trigger_type'    => $validated['trigger_type'],
             'trigger_config'  => $config ?: null,
@@ -644,10 +667,37 @@ class FunnelController extends Controller
             'action_message'  => $validated['action_message'] ?? null,
         ]);
 
+        if ($request->wantsJson() || $request->ajax()) {
+            $triggerTypes = FunnelStageRule::triggerTypes();
+            $extra = '';
+            if ($rule->trigger_type === 'message_status' && ! empty($rule->trigger_config['status'])) {
+                $extra = $rule->trigger_config['status'];
+            } elseif ($rule->trigger_type === 'tag_added' && ! empty($rule->trigger_config['tag_id'])) {
+                $extra = Tag::find($rule->trigger_config['tag_id'])?->name ?? '';
+            } elseif ($rule->trigger_type === 'list_added' && ! empty($rule->trigger_config['lista_id'])) {
+                $extra = Lista::find($rule->trigger_config['lista_id'])?->name ?? '';
+            }
+
+            return response()->json([
+                'success' => true,
+                'rule'    => [
+                    'id'                => $rule->id,
+                    'trigger_type'      => $rule->trigger_type,
+                    'trigger_label'     => $triggerTypes[$rule->trigger_type] ?? $rule->trigger_type,
+                    'trigger_extra'     => $extra,
+                    'keyword'           => $rule->keyword,
+                    'action_type'       => $rule->action_type ?? 'move',
+                    'action_message'    => $rule->action_message,
+                    'target_stage_name' => $targetStage?->name ?? '',
+                    'destroy_url'       => route('funis.stages.rules.destroy', [$funnel->id, $stage->id, $rule->id]),
+                ],
+            ]);
+        }
+
         return back()->with('success', __('Regra adicionada com sucesso.'));
     }
 
-    public function destroyStageRule(Funnel $funnel, FunnelStage $stage, FunnelStageRule $rule): RedirectResponse
+    public function destroyStageRule(Request $request, Funnel $funnel, FunnelStage $stage, FunnelStageRule $rule): RedirectResponse|JsonResponse
     {
         $this->authorize('update', $funnel);
         if ((int) $stage->funnel_id !== (int) $funnel->id || (int) $rule->funnel_stage_id !== (int) $stage->id) {
@@ -655,6 +705,10 @@ class FunnelController extends Controller
         }
 
         $rule->delete();
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['success' => true]);
+        }
 
         return back()->with('success', __('Regra removida.'));
     }
