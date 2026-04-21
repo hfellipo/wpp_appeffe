@@ -3,7 +3,7 @@
         <div class="flex justify-between items-center flex-wrap gap-3">
             <div>
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Instâncias WhatsApp</h2>
-                <p class="text-sm text-gray-500 mt-1">Instâncias ativas na Evolution API.</p>
+                <p class="text-sm text-gray-500 mt-1">Gerencie os números WhatsApp conectados.</p>
             </div>
             <div class="flex items-center gap-3">
                 <a href="{{ route('whatsapp.index') }}" class="btn-secondary">Conectar número</a>
@@ -85,17 +85,8 @@
 
             @if (!$configured)
                 <div class="rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-yellow-800 text-sm">
-                    <strong>Evolution API não configurada.</strong>
-                    Verifique <code>EVOLUTION_API_URL</code> e <code>EVOLUTION_API_KEY</code> no <code>.env</code>.
-                </div>
-            @else
-                <div class="rounded-lg bg-blue-50 border border-blue-200 p-3 text-blue-700 text-sm flex items-center gap-2">
-                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z"/>
-                    </svg>
-                    API: <strong>{{ $apiUrl }}</strong>
-                    &nbsp;·&nbsp;
-                    <strong>{{ $instances->count() }}</strong> instância(s) encontrada(s) na Evolution
+                    <strong>Serviço WhatsApp não configurado.</strong>
+                    Entre em contato com o suporte.
                 </div>
             @endif
 
@@ -110,7 +101,7 @@
             @if ($instances->isEmpty())
                 <div class="wi-empty wi-card">
                     <div class="text-4xl mb-3">📱</div>
-                    <p class="font-medium text-gray-600">Nenhuma instância encontrada na Evolution.</p>
+                    <p class="font-medium text-gray-600">Nenhum número WhatsApp conectado.</p>
                     <p class="text-sm mt-1">
                         <a href="{{ route('whatsapp.index') }}" class="text-green-600 hover:underline">Adicionar número WhatsApp →</a>
                     </p>
