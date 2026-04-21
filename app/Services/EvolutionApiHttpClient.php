@@ -169,6 +169,51 @@ class EvolutionApiHttpClient
     }
 
     /**
+     * Configure webhook for an instance in Evolution API.
+     * POST /webhook/set/{instance}
+     *
+     * @param  string[]  $events  Leave empty to use default event set.
+     * @return array{status:int, json:array|null, text:string, headers:array}
+     */
+    public function setWebhook(string $instance, string $webhookUrl, array $events = []): array
+    {
+        $instance = trim($instance);
+        if ($instance === '' || $webhookUrl === '') {
+            return ['status' => 0, 'json' => null, 'text' => 'Missing instance or webhookUrl', 'headers' => []];
+        }
+
+        if (empty($events)) {
+            $events = [
+                'CONNECTION_UPDATE',
+                'MESSAGES_UPSERT',
+                'MESSAGES_UPDATE',
+                'MESSAGES_DELETE',
+                'SEND_MESSAGE',
+                'QRCODE_UPDATED',
+                'CONTACTS_UPSERT',
+                'CONTACTS_UPDATE',
+                'CHATS_UPSERT',
+                'CHATS_UPDATE',
+                'CHATS_DELETE',
+                'GROUPS_UPSERT',
+                'GROUP_UPDATE',
+                'GROUP_PARTICIPANTS_UPDATE',
+                'CALL',
+            ];
+        }
+
+        return $this->post("/webhook/set/{$instance}", [
+            'webhook' => [
+                'enabled'          => true,
+                'url'              => $webhookUrl,
+                'webhookByEvents'  => false,
+                'webhookBase64'    => false,
+                'events'           => $events,
+            ],
+        ]);
+    }
+
+    /**
      * Get media (image/video/document) as base64 from a received message.
      * POST /chat/getBase64FromMediaMessage/{instance}
      * Body: { "message": { "key": { "id": "MESSAGE_ID" } }, "convertToMp4": false }

@@ -295,6 +295,10 @@ class WhatsAppEvolutionController extends Controller
             $wa->save();
         }
 
+        // Registra webhook automaticamente na Evolution
+        $webhookUrl = rtrim((string) config('app.url'), '/') . '/webhook/evolution';
+        $webhookResp = $this->client->setWebhook($instanceNameFromApi, $webhookUrl);
+
         return response()->json([
             'success' => true,
             'instanceName' => $instanceNameFromApi,
@@ -364,6 +368,10 @@ class WhatsAppEvolutionController extends Controller
         } else {
             $qrcodeBase64 = null;
         }
+
+        // Registra webhook automaticamente na Evolution
+        $webhookUrl = rtrim((string) config('app.url'), '/') . '/webhook/evolution';
+        $this->client->setWebhook($instance, $webhookUrl);
 
         return response()->json([
             'success' => true,
