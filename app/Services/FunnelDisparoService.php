@@ -39,8 +39,9 @@ class FunnelDisparoService
     }
 
     /**
-     * Send the next message for a disparo (respecting delay_seconds).
-     * Called once per cron tick per disparo.
+     * Send the next message(s) for a disparo.
+     * - delay_seconds = 0 → sends ALL contacts immediately in a loop
+     * - delay_seconds > 0 → sends ONE per cron tick (respects delay between calls)
      */
     public function processNext(FunnelDisparo $disparo): void
     {
@@ -48,9 +49,43 @@ class FunnelDisparoService
             return;
         }
 
+        if ($disparo->delay_seconds === 0) {
+            $this->processAll($disparo);
+        } else {
+            $this->sendOne($disparo);
+        }
+    }
+
+    /**
+     * Send all remaining contacts immediately (no delay).
+     */
+    private function processAll(FunnelDisparo $disparo): void
+    {
+        $disparo->status = 'running';
+        $disparo->save();
+
+        $ids = $disparo->contact_ids ?? [];
+
+        foreach ($ids as $contactId) {
+            // Re-read from DB in case it was cancelled externally
+            $disparo->refresh();
+            if ($disparo->status === 'cancelled') return;
+
+            $this->sendOne($disparo, (int) $contactId);
+        }
+    }
+
+    /**
+     * Send a single contact from the disparo queue.
+     * If $contactId is null, picks the next pending one.
+     */
+    private function sendOne(FunnelDisparo $disparo, ?int $contactId = null): void
+    {
         $disparo->status = 'running';
 
-        $contactId = $disparo->nextContactId();
+        if ($contactId === null) {
+            $contactId = $disparo->nextContactId();
+        }
 
         if ($contactId === null) {
             $disparo->status       = 'completed';
@@ -64,9 +99,7 @@ class FunnelDisparoService
 
         if ($contact) {
             try {
-                if ($disparo->mode === 'round_robin') {
-                    // nextForUser already does round-robin — just call normally
-                } elseif ($disparo->mode === 'random') {
+                if ($disparo->mode === 'random') {
                     $this->pinRandomInstance($disparo->user_id);
                 }
 

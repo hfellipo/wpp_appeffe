@@ -529,14 +529,18 @@
             <div id="stage-automation-resumo" class="overflow-y-auto">
 
                 {{-- Header com abas --}}
-                <div class="flex border-b border-gray-200 bg-gray-50 px-6 pt-4 gap-4">
+                <div class="flex border-b border-gray-200 bg-gray-50 px-6 pt-4 gap-1">
                     <button type="button" id="tab-disparo"
-                            class="tab-btn text-sm font-medium pb-3 border-b-2 border-blue-600 text-blue-700 -mb-px">
-                        Disparo
+                            class="tab-btn text-sm font-medium px-3 pb-3 border-b-2 border-blue-600 text-blue-700 -mb-px">
+                        📤 Disparo
+                    </button>
+                    <button type="button" id="tab-eventos"
+                            class="tab-btn text-sm font-medium px-3 pb-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px">
+                        ⚡ Eventos
                     </button>
                     <button type="button" id="tab-automacao"
-                            class="tab-btn text-sm font-medium pb-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px">
-                        Automação
+                            class="tab-btn text-sm font-medium px-3 pb-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px">
+                        🤖 Automação
                     </button>
                 </div>
 
@@ -659,6 +663,112 @@
                         <button type="submit" id="stage-btn-disparar"
                                 class="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
                             Disparar para esta coluna
+                        </button>
+                    </form>
+                </div>
+
+                {{-- ---- ABA EVENTOS ---- --}}
+                <div id="panel-eventos" class="p-6 hidden">
+                    <p class="text-xs text-gray-500 mb-4">
+                        Configure o que acontece automaticamente quando um evento ocorrer com os leads desta coluna.
+                    </p>
+
+                    {{-- Regras existentes --}}
+                    <div id="inline-rules-list" class="mb-4 space-y-2"></div>
+
+                    {{-- Formulário nova regra --}}
+                    <form id="form-inline-rule" method="POST" action="" class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+                        @csrf
+                        <p class="text-xs font-semibold text-gray-700 mb-1">Nova regra de evento</p>
+
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Quando ocorrer</label>
+                            <select id="inline-trigger-select" name="trigger_type"
+                                    class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                                @foreach(\App\Models\FunnelStageRule::triggerTypes() as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div id="inline-status-wrap" class="hidden">
+                            <label class="block text-xs text-gray-500 mb-0.5">Status da mensagem</label>
+                            <select name="status" id="inline-status-select"
+                                    class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                                <option value="">— Selecione —</option>
+                                @foreach(\App\Models\FunnelStageRule::messageStatusOptions() as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div id="inline-keyword-wrap" class="hidden">
+                            <label class="block text-xs text-gray-500 mb-0.5">Palavra-chave (mensagem contém)</label>
+                            <input type="text" name="keyword" id="inline-keyword"
+                                   placeholder='Ex: "sim", "confirmar", "quero"'
+                                   class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                        </div>
+
+                        <div id="inline-tag-wrap" class="hidden">
+                            <label class="block text-xs text-gray-500 mb-0.5">Tag</label>
+                            <select name="tag_id" id="inline-tag-id"
+                                    class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                                <option value="">— Selecione —</option>
+                                @foreach($tags as $t)
+                                    <option value="{{ $t->id }}">{{ $t->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div id="inline-list-wrap" class="hidden">
+                            <label class="block text-xs text-gray-500 mb-0.5">Lista</label>
+                            <select name="lista_id" id="inline-lista-id"
+                                    class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                                <option value="">— Selecione —</option>
+                                @foreach($listas as $l)
+                                    <option value="{{ $l->id }}">{{ $l->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Ação</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                @foreach(\App\Models\FunnelStageRule::actionTypes() as $val => $lbl)
+                                    <label class="cursor-pointer">
+                                        <input type="radio" name="action_type" value="{{ $val }}"
+                                               class="inline-action-radio peer sr-only" {{ $val === 'move' ? 'checked' : '' }}>
+                                        <span class="block text-center text-xs py-1.5 px-1 border border-gray-200 rounded-md
+                                                     peer-checked:border-violet-500 peer-checked:bg-violet-50 peer-checked:text-violet-700
+                                                     hover:bg-gray-100 transition-colors">{{ $lbl }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div id="inline-target-wrap">
+                            <label class="block text-xs text-gray-500 mb-0.5">Mover para a coluna</label>
+                            <select name="target_stage_id" id="inline-target-stage"
+                                    class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                                <option value="">— Selecione —</option>
+                                @foreach($funnel->stages as $s)
+                                    <option value="{{ $s->id }}">{{ $s->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div id="inline-message-wrap" class="hidden">
+                            <label class="block text-xs text-gray-500 mb-0.5">Mensagem automática</label>
+                            <textarea name="action_message" id="inline-action-message" rows="3"
+                                      placeholder="Será enviada automaticamente ao contato quando o evento ocorrer..."
+                                      class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30"></textarea>
+                        </div>
+
+                        <div id="inline-rule-feedback" class="hidden text-xs rounded px-2 py-1.5"></div>
+
+                        <button type="submit"
+                                class="w-full py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700">
+                            Adicionar regra
                         </button>
                     </form>
                 </div>
@@ -1043,26 +1153,28 @@
             var progressTimer = null;
 
             // Abas
-            var tabDisparo   = document.getElementById('tab-disparo');
-            var tabAutomacao = document.getElementById('tab-automacao');
-            var panelDisparo = document.getElementById('panel-disparo');
-            var panelAutomacao = document.getElementById('panel-automacao');
+            var tabs = {
+                disparo:   { btn: document.getElementById('tab-disparo'),   panel: document.getElementById('panel-disparo') },
+                eventos:   { btn: document.getElementById('tab-eventos'),   panel: document.getElementById('panel-eventos') },
+                automacao: { btn: document.getElementById('tab-automacao'), panel: document.getElementById('panel-automacao') },
+            };
 
-            function switchTab(tab) {
-                var isDisparo = tab === 'disparo';
-                tabDisparo.classList.toggle('border-blue-600', isDisparo);
-                tabDisparo.classList.toggle('text-blue-700', isDisparo);
-                tabDisparo.classList.toggle('border-transparent', !isDisparo);
-                tabDisparo.classList.toggle('text-gray-500', !isDisparo);
-                tabAutomacao.classList.toggle('border-blue-600', !isDisparo);
-                tabAutomacao.classList.toggle('text-blue-700', !isDisparo);
-                tabAutomacao.classList.toggle('border-transparent', isDisparo);
-                tabAutomacao.classList.toggle('text-gray-500', isDisparo);
-                panelDisparo.classList.toggle('hidden', !isDisparo);
-                panelAutomacao.classList.toggle('hidden', isDisparo);
+            function switchTab(active) {
+                Object.keys(tabs).forEach(function(name) {
+                    var t = tabs[name];
+                    var isActive = name === active;
+                    if (!t.btn || !t.panel) return;
+                    t.btn.classList.toggle('border-blue-600', isActive);
+                    t.btn.classList.toggle('text-blue-700', isActive);
+                    t.btn.classList.toggle('border-transparent', !isActive);
+                    t.btn.classList.toggle('text-gray-500', !isActive);
+                    t.panel.classList.toggle('hidden', !isActive);
+                });
             }
-            if (tabDisparo) tabDisparo.addEventListener('click', function() { switchTab('disparo'); });
-            if (tabAutomacao) tabAutomacao.addEventListener('click', function() { switchTab('automacao'); });
+            Object.keys(tabs).forEach(function(name) {
+                var t = tabs[name];
+                if (t.btn) t.btn.addEventListener('click', function() { switchTab(name); });
+            });
 
             // Delay slider label
             var slider = document.getElementById('stage-delay-slider');
@@ -1191,6 +1303,85 @@
                     if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Disparar para esta coluna'; }
                 });
             });
+        })();
+
+        // ---- REGRAS INLINE (aba Eventos) ----
+        (function() {
+            var inlineTrigger  = document.getElementById('inline-trigger-select');
+            var inlineForm     = document.getElementById('form-inline-rule');
+            var inlineRulesList= document.getElementById('inline-rules-list');
+            var inlineStatusUrl= null; // store-url para submit
+            var inlineStageId  = null;
+
+            function updateInlineTriggerVis() {
+                var v = inlineTrigger ? inlineTrigger.value : '';
+                document.getElementById('inline-status-wrap').classList.toggle('hidden',  v !== 'message_status');
+                document.getElementById('inline-keyword-wrap').classList.toggle('hidden', v !== 'specific_reply');
+                document.getElementById('inline-tag-wrap').classList.toggle('hidden',     v !== 'tag_added');
+                document.getElementById('inline-list-wrap').classList.toggle('hidden',    v !== 'list_added');
+            }
+
+            function updateInlineActionVis() {
+                var v = (document.querySelector('input.inline-action-radio:checked') || {}).value || 'move';
+                document.getElementById('inline-target-wrap').classList.toggle('hidden',   v === 'send');
+                document.getElementById('inline-message-wrap').classList.toggle('hidden', v === 'move');
+            }
+
+            function renderInlineRules(rules) {
+                if (!inlineRulesList) return;
+                if (!rules || rules.length === 0) {
+                    inlineRulesList.innerHTML = '<p class="text-xs text-gray-400 italic mb-2">Nenhuma regra configurada ainda.</p>';
+                    return;
+                }
+                var triggerIcons = {
+                    message_status: '📨', whatsapp_replied: '💬', specific_reply: '🔑',
+                    tag_added: '🏷️', list_added: '📋'
+                };
+                var actionLabels = { move: 'Mover', send: 'Enviar msg', move_and_send: 'Mover + Enviar' };
+                inlineRulesList.innerHTML = '<p class="text-xs font-semibold text-gray-600 mb-2">Regras ativas</p>'
+                    + rules.map(function(r) {
+                        var icon   = triggerIcons[r.trigger_type] || '⚡';
+                        var extra  = r.trigger_extra ? ' (' + r.trigger_extra + ')' : '';
+                        var kw     = r.keyword ? ' <span class="text-violet-600 font-semibold">"' + r.keyword + '"</span>' : '';
+                        var action = actionLabels[r.action_type || 'move'] || 'Mover';
+                        var dest   = (r.action_type !== 'send' && r.target_stage_name) ? ' → ' + r.target_stage_name : '';
+                        return '<div class="flex items-start justify-between gap-2 p-3 bg-violet-50 border border-violet-100 rounded-lg text-xs mb-2">'
+                             + '<div class="flex-1"><span class="font-semibold">' + icon + ' ' + (r.trigger_label || '') + extra + '</span>'
+                             + kw + ' <span class="text-gray-500">|</span> '
+                             + '<span class="text-violet-700">' + action + dest + '</span></div>'
+                             + '<form method="POST" action="' + (r.destroy_url || '') + '" class="inline shrink-0" onsubmit="return confirm(\'Remover?\');">'
+                             + '<input type="hidden" name="_token" value="{{ csrf_token() }}">'
+                             + '<input type="hidden" name="_method" value="DELETE">'
+                             + '<button type="submit" class="text-red-400 hover:text-red-700 text-base leading-none font-bold">×</button>'
+                             + '</form></div>';
+                    }).join('');
+            }
+
+            // Called when opening the automation modal — syncs data for Eventos tab
+            window._syncInlineRules = function(storeUrl, stageId, rules) {
+                inlineStageId = stageId;
+                if (inlineForm) inlineForm.action = storeUrl;
+                renderInlineRules(rules);
+                // Disable current stage in target dropdown
+                var targetSel = document.getElementById('inline-target-stage');
+                if (targetSel) {
+                    Array.from(targetSel.options).forEach(function(opt) {
+                        opt.disabled = opt.value && parseInt(opt.value, 10) === parseInt(stageId, 10);
+                    });
+                }
+            };
+
+            if (inlineTrigger) {
+                inlineTrigger.addEventListener('change', updateInlineTriggerVis);
+                updateInlineTriggerVis();
+            }
+            document.querySelectorAll('input.inline-action-radio').forEach(function(r) {
+                r.addEventListener('change', updateInlineActionVis);
+            });
+            updateInlineActionVis();
+
+            // Submit via regular POST (page reload) — simple and reliable
+            // The form already has correct action set when the modal opens
         })();
 
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
