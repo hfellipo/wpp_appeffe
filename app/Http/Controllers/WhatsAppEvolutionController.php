@@ -524,6 +524,174 @@ class WhatsAppEvolutionController extends Controller
     }
 
     /**
+     * GET /settings/whatsapp/instances
+     * Painel de instâncias: une dados locais (DB) com dados ao vivo da Evolution.
+     */
+    public function instances(): View
+    {
+        $accountId = auth()->user()->accountId();
+
+        // Instâncias locais (incluindo deletadas para diagnóstico)
+        $local = WhatsAppInstance::withTrashed()
+            ->where('user_id', $accountId)
+            ->orderByDesc('updated_at')
+            ->get();
+
+        // Instâncias ao vivo na Evolution
+        $evMap = [];
+        if ($this->client->isConfigured()) {
+            $resp = $this->client->get('/instance/fetchInstances');
+            $evList = is_array($resp['json']) ? $resp['json'] : [];
+            foreach ($evList as $ev) {
+                $name = preg_replace('/\D/', '', (string) ($ev['name'] ?? ''));
+                if ($name !== '') {
+                    $evMap[$name] = $ev;
+                }
+            }
+        }
+
+        // Merge: para cada instância local, complementa com dados da Evolution
+        $rows = $local->map(function (WhatsAppInstance $wa) use ($evMap) {
+            $name = preg_replace('/\D/', '', (string) $wa->instance_name);
+            $ev   = $evMap[$name] ?? null;
+
+            return [
+                'id'                => $wa->id,
+                'instance_name'     => $wa->instance_name,
+                'whatsapp_number'   => $wa->whatsapp_number,
+                'status_db'         => $wa->status,
+                'status_ev'         => $ev ? strtolower((string) ($ev['connectionStatus'] ?? '')) : null,
+                'token'             => $wa->instance_token,    // já descriptografado pelo cast
+                'ev_token'          => $ev ? ($ev['token'] ?? null) : null,
+                'profile_name'      => $ev ? ($ev['profileName'] ?? null) : null,
+                'profile_pic'       => $ev ? ($ev['profilePicUrl'] ?? null) : null,
+                'owner_jid'         => $ev ? ($ev['ownerJid'] ?? null) : null,
+                'msg_count'         => $ev ? (int) ($ev['_count']['Message'] ?? 0) : null,
+                'contact_count'     => $ev ? (int) ($ev['_count']['Contact'] ?? 0) : null,
+                'chat_count'        => $ev ? (int) ($ev['_count']['Chat'] ?? 0) : null,
+                'ev_created_at'     => $ev ? ($ev['createdAt'] ?? null) : null,
+                'connected_at'      => optional($wa->connected_at)->toIso8601String(),
+                'disconnected_at'   => optional($wa->disconnected_at)->toIso8601String(),
+                'deleted_at'        => optional($wa->deleted_at)->toIso8601String(),
+                'webhook_url'       => $wa->webhook_url,
+                'in_db'             => true,
+                'in_evolution'      => $ev !== null,
+            ];
+        });
+
+        // Instâncias que estão na Evolution mas NÃO estão no DB local
+        $localNames = $local->map(fn ($w) => preg_replace('/\D/', '', (string) $w->instance_name))->filter()->all();
+        foreach ($evMap as $name => $ev) {
+            if (!in_array($name, $localNames, true)) {
+                $rows->push([
+                    'id'              => null,
+                    'instance_name'   => $name,
+                    'whatsapp_number' => $name,
+                    'status_db'       => null,
+                    'status_ev'       => strtolower((string) ($ev['connectionStatus'] ?? '')),
+                    'token'           => null,
+                    'ev_token'        => $ev['token'] ?? null,
+                    'profile_name'    => $ev['profileName'] ?? null,
+                    'profile_pic'     => $ev['profilePicUrl'] ?? null,
+                    'owner_jid'       => $ev['ownerJid'] ?? null,
+                    'msg_count'       => (int) ($ev['_count']['Message'] ?? 0),
+                    'contact_count'   => (int) ($ev['_count']['Contact'] ?? 0),
+                    'chat_count'      => (int) ($ev['_count']['Chat'] ?? 0),
+                    'ev_created_at'   => $ev['createdAt'] ?? null,
+                    'connected_at'    => null,
+                    'disconnected_at' => null,
+                    'deleted_at'      => null,
+                    'webhook_url'     => null,
+                    'in_db'           => false,
+                    'in_evolution'    => true,
+                ]);
+            }
+        }
+
+        return view('settings.whatsapp-instances', [
+            'instances'   => $rows->values(),
+            'configured'  => $this->client->isConfigured(),
+            'apiUrl'      => $this->client->baseUrl(),
+        ]);
+    }
+
+    /**
+     * POST /settings/whatsapp/instances/{instance}/sync
+     * Sincroniza status da Evolution no DB local.
+     */
+    public function syncInstance(string $instance): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        $instance  = preg_replace('/\D/', '', $instance);
+
+        $wa = WhatsAppInstance::where('user_id', $accountId)
+            ->where('instance_name', $instance)
+            ->first();
+
+        $resp = $this->client->get("/instance/connectionState/{$instance}");
+        $data = is_array($resp['json']) ? $resp['json'] : [];
+        $state = $data['instance']['state'] ?? ($data['state'] ?? null);
+
+        if ($wa && $state) {
+            $wa->status = $state;
+            $stateLower = strtolower($state);
+            if (!$wa->connected_at && in_array($stateLower, ['open', 'connected', 'online', 'ready'], true)) {
+                $wa->connected_at = now();
+            }
+            if (in_array($stateLower, ['close', 'closed', 'disconnected'], true)) {
+                $wa->disconnected_at = now();
+            }
+            $wa->save();
+        }
+
+        return response()->json([
+            'success'  => true,
+            'instance' => $instance,
+            'state'    => $state,
+        ]);
+    }
+
+    /**
+     * POST /settings/whatsapp/instances/{instance}/token-refresh
+     * Atualiza o token local com o token atual da Evolution.
+     */
+    public function tokenRefresh(string $instance): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        $instance  = preg_replace('/\D/', '', $instance);
+
+        $resp = $this->client->get('/instance/fetchInstances');
+        $list = is_array($resp['json']) ? $resp['json'] : [];
+
+        $evToken = null;
+        foreach ($list as $ev) {
+            if (preg_replace('/\D/', '', (string) ($ev['name'] ?? '')) === $instance) {
+                $evToken = $ev['token'] ?? null;
+                break;
+            }
+        }
+
+        if (!$evToken) {
+            return response()->json(['success' => false, 'error' => 'Instância não encontrada na Evolution.'], 404);
+        }
+
+        $wa = WhatsAppInstance::where('user_id', $accountId)
+            ->where('instance_name', $instance)
+            ->first();
+
+        if ($wa) {
+            $wa->instance_token = $evToken;
+            $wa->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'instance' => $instance,
+            'token'   => $evToken,
+        ]);
+    }
+
+    /**
      * POST /settings/whatsapp/delete/{instance}
      * Remove a instância na Evolution e remove o registro local (soft delete).
      */

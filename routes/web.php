@@ -204,6 +204,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/state/{instance}', [WhatsAppEvolutionController::class, 'state'])->name('state');
         Route::post('/disconnect/{instance}', [WhatsAppEvolutionController::class, 'disconnect'])->name('disconnect');
         Route::post('/delete/{instance}', [WhatsAppEvolutionController::class, 'delete'])->name('delete');
+        Route::get('/instances', [WhatsAppEvolutionController::class, 'instances'])->name('instances');
+        Route::post('/instances/{instance}/sync', [WhatsAppEvolutionController::class, 'syncInstance'])->name('instances.sync');
+        Route::post('/instances/{instance}/token-refresh', [WhatsAppEvolutionController::class, 'tokenRefresh'])->name('instances.token-refresh');
     });
 
     // Contact Fields routes (MUST be before resource to avoid conflicts)
