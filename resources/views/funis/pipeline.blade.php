@@ -473,8 +473,9 @@ function pipelineStage(opts) {
             }
             this.loading = true;
             this.feedback = '';
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             const fd = new FormData();
-            fd.append('_token', _csrf);
+            fd.append('_token', csrf);
             fd.append('message', this.msg);
             fd.append('mode', this.mode);
             fd.append('delay_seconds', this.delay);
@@ -486,7 +487,7 @@ function pipelineStage(opts) {
             try {
                 const res = await fetch(this.sendMsgUrl, {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': _csrf, 'Accept': 'application/json' },
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     body: fd
                 });
                 const data = await res.json();
@@ -548,8 +549,9 @@ function pipelineStage(opts) {
         async addRule() {
             this.ruleLoading = true;
             this.ruleFeedback = '';
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             const fd = new FormData();
-            fd.append('_token', _csrf);
+            fd.append('_token', csrf);
             fd.append('trigger_type',    this.newRule.trigger_type);
             fd.append('action_type',     this.newRule.action_type);
             if (this.newRule.status)          fd.append('status',          this.newRule.status);
@@ -561,7 +563,7 @@ function pipelineStage(opts) {
             try {
                 const res = await fetch(this.storeRuleUrl, {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': _csrf, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     body: fd
                 });
                 const data = await res.json();
@@ -585,25 +587,35 @@ function pipelineStage(opts) {
 
         async deleteRule(rule) {
             if (!confirm('Remover este evento?')) return;
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const fd = new FormData();
+            fd.append('_method', 'DELETE');
+            fd.append('_token', csrf);
             try {
                 const res = await fetch(rule.destroy_url, {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': _csrf, 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-                    body: '_method=DELETE&_token=' + encodeURIComponent(_csrf)
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: fd
                 });
-                if (res.ok) {
+                if (res.ok || res.status === 302) {
                     this.rules = this.rules.filter(r => r.id !== rule.id);
                 } else {
-                    alert('Erro ao remover evento.');
+                    const data = await res.json().catch(() => ({}));
+                    this.ruleFeedback = data.message || data.error || 'Erro ao remover evento (status ' + res.status + ').';
+                    this.ruleFeedbackOk = false;
                 }
-            } catch(e) { alert('Erro de conexão.'); }
+            } catch(e) {
+                this.ruleFeedback = 'Erro de conexão ao remover evento.';
+                this.ruleFeedbackOk = false;
+            }
         },
 
         // Called by global deploy to dispatch this stage
         async dispatchWithConfig(globalSchedDate, globalSchedTime) {
             if (!this.msg.trim() && !this.imgFile) return { skipped: true };
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             const fd = new FormData();
-            fd.append('_token', _csrf);
+            fd.append('_token', csrf);
             fd.append('message', this.msg);
             fd.append('mode', this.mode);
             fd.append('delay_seconds', this.delay);
@@ -616,7 +628,7 @@ function pipelineStage(opts) {
             }
             const res  = await fetch(this.sendMsgUrl, {
                 method: 'POST',
-                headers: { 'X-CSRF-TOKEN': _csrf, 'Accept': 'application/json' },
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: fd
             });
             const data = await res.json();
