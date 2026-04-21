@@ -242,7 +242,9 @@
                                             data-automation-name="{{ $stage->automation ? e($stage->automation->name) : '' }}"
                                             data-automation-actions-count="{{ $stage->automation ? $stage->automation->actions->count() : 0 }}"
                                             data-automation-trigger-label="{{ $stage->automation && $stage->automation->trigger ? (\App\Models\Automation::triggerTypes()[$stage->automation->trigger->type] ?? $stage->automation->trigger->type) : '' }}"
-                                            data-automation-edit-url="{{ $stage->automation ? route('automacao.edit', $stage->automation) : '' }}">
+                                            data-automation-edit-url="{{ $stage->automation ? route('automacao.edit', $stage->automation) : '' }}"
+                                            data-rules-store-url="{{ route('funis.stages.rules.store', [$funnel, $stage]) }}"
+                                            data-rules="{{ json_encode($stageRulesData) }}">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                     </button>
                                     <button type="button"
@@ -931,6 +933,12 @@
         if (iframeEl) iframeEl.src = '';
         var previewEl = document.getElementById('stage-automation-preview');
         if (previewEl) previewEl.classList.add('hidden');
+        // Sync Eventos tab with this stage's rules
+        if (window._syncInlineRules) {
+            var rules = [];
+            try { rules = JSON.parse(el.dataset.rules || '[]'); } catch(e) {}
+            window._syncInlineRules(el.dataset.rulesStoreUrl || '', el.dataset.stageId || '', rules);
+        }
         window.dispatchEvent(new CustomEvent('open-modal', { detail: 'stage-automation-modal' }));
     }
     function showStageAutomationConfigurar() {
