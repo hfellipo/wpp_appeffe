@@ -684,15 +684,23 @@ window.waInboxChatify = function waInboxChatify() {
 
         async refreshConversations(silent = false) {
             if (!silent) this.loadingConversations = true;
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 10000);
             try {
-                const resp = await fetch('/whatsapp/api/conversations', { headers: { 'Accept': 'application/json' } });
+                const resp = await fetch('/whatsapp/api/conversations', {
+                    headers: { 'Accept': 'application/json' },
+                    signal: ctrl.signal,
+                });
                 const data = await resp.json().catch(() => ({}));
                 const items = Array.isArray(data.items) ? data.items : [];
                 this.conversations = this.deduplicateConversations(items);
                 this.directConversations = this.conversations.filter((c) => String(c.kind || 'direct') === 'direct');
                 this.groupConversations = this.conversations.filter((c) => String(c.kind) === 'group');
                 this.fetchAvatarsForList();
+            } catch (e) {
+                // timeout ou erro de rede: não travar o spinner
             } finally {
+                clearTimeout(t);
                 if (!silent) this.loadingConversations = false;
             }
         },
@@ -734,13 +742,21 @@ window.waInboxChatify = function waInboxChatify() {
 
         async refreshMessages(c) {
             if (!this.loadingMessages) this.loadingMessages = true;
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 8000);
             try {
-                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages`, { headers: { 'Accept': 'application/json' } });
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/messages`, {
+                    headers: { 'Accept': 'application/json' },
+                    signal: ctrl.signal,
+                });
                 const data = await resp.json().catch(() => ({}));
                 this.messages = Array.isArray(data.items) ? data.items : [];
                 this._lastMessageId = this.messages.length ? (this.messages[this.messages.length - 1].id || 0) : 0;
                 this.$nextTick(() => this.scrollToBottom(true));
+            } catch (e) {
+                this.messages = [];
             } finally {
+                clearTimeout(t);
                 this.loadingMessages = false;
             }
         },

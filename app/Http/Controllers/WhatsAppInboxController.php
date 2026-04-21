@@ -46,12 +46,13 @@ class WhatsAppInboxController extends Controller
     {
         $accountId = auth()->user()->accountId();
 
-        // Varredura dos grupos na Evolution (grupos criados no celular aparecem mesmo sem movimento)
+        // Varredura dos grupos na Evolution (grupos criados no celular aparecem mesmo sem movimento).
+        // Marca o cache ANTES de chamar a API para evitar que falhas repetidas bloqueiem toda request.
         $cacheKey = 'wa_sync_groups_' . $accountId;
         if (Cache::get($cacheKey) === null) {
+            Cache::put($cacheKey, true, self::GROUPS_SYNC_THROTTLE_SECONDS);
             try {
                 $this->webhookProcessor->syncGroupsFromEvolutionForUser($accountId);
-                Cache::put($cacheKey, true, self::GROUPS_SYNC_THROTTLE_SECONDS);
             } catch (\Throwable $e) {
                 Log::channel('single')->warning('WhatsApp groups sync failed', [
                     'account_id' => $accountId,
@@ -149,40 +150,56 @@ class WhatsAppInboxController extends Controller
             }
         }
 
-        // Nome do dono do número: prioridade tabela contacts (app). Parear por número em todos os formatos.
+        // Nome do dono do número: prioridade tabela contacts (app).
+        // Busca apenas os contatos cujos telefones batem com as conversas abertas (query direcionada).
         $appContactNamesByKey = [];
         $directItems = $items->filter(fn (WhatsAppConversation $c) => ($c->kind ?? '') !== 'group');
         if ($directItems->isNotEmpty()) {
-            $allContacts = Contact::forUser($accountId)->get(['name', 'phone']);
+            // Gera os formatos de telefone que o modelo Contact armazena: (DDD)XXXXX-XXXX ou (DDD)XXXX-XXXX
+            $phonePatterns = [];
             foreach ($directItems as $c) {
-                $convDigits = preg_replace('/\D/', '', (string) ($c->contact_number ?? ''));
-                $convDigits = ltrim($convDigits, '0');
-                if ($convDigits === '') continue;
-                foreach ($allContacts as $appCt) {
-                    $contactDigits = preg_replace('/\D/', '', (string) ($appCt->phone ?? ''));
-                    $contactDigits = ltrim($contactDigits, '0');
-                    if ($contactDigits === '') continue;
-                    if (!$this->conversationPhoneMatchesContact($convDigits, $contactDigits)) {
-                        continue;
-                    }
-                    $name = trim((string) ($appCt->name ?? ''));
-                    if ($name === '') continue;
+                $raw = preg_replace('/\D/', '', (string) ($c->contact_number ?? ''));
+                // Remove prefixo de país (55) para isolar DDD+número
+                $local = ltrim($raw, '0');
+                if (str_starts_with($local, '55') && strlen($local) >= 12) {
+                    $local = substr($local, 2);
+                }
+                if (strlen($local) === 11) {
+                    $phonePatterns[] = sprintf('(%s)%s-%s', substr($local, 0, 2), substr($local, 2, 5), substr($local, 7, 4));
+                } elseif (strlen($local) === 10) {
+                    $phonePatterns[] = sprintf('(%s)%s-%s', substr($local, 0, 2), substr($local, 2, 4), substr($local, 6, 4));
+                }
+            }
+            $phonePatterns = array_values(array_unique($phonePatterns));
+
+            if (!empty($phonePatterns)) {
+                $contactLookup = [];
+                Contact::forUser($accountId)
+                    ->whereIn('phone', $phonePatterns)
+                    ->get(['name', 'phone'])
+                    ->each(function ($appCt) use (&$contactLookup) {
+                        $digits = ltrim(preg_replace('/\D/', '', (string) ($appCt->phone ?? '')), '0');
+                        $name   = trim((string) ($appCt->name ?? ''));
+                        if ($digits === '' || $name === '') return;
+                        $contactLookup[$digits] = $name;
+                        if (strlen($digits) >= 11) $contactLookup[substr($digits, -11)] = $name;
+                        if (strlen($digits) >= 10) $contactLookup[substr($digits, -10)] = $name;
+                    });
+
+                foreach ($directItems as $c) {
+                    $convDigits = ltrim(preg_replace('/\D/', '', (string) ($c->contact_number ?? '')), '0');
+                    if ($convDigits === '') continue;
+
+                    $name = $contactLookup[$convDigits]
+                        ?? (strlen($convDigits) >= 11 ? ($contactLookup[substr($convDigits, -11)] ?? null) : null)
+                        ?? (strlen($convDigits) >= 10 ? ($contactLookup[substr($convDigits, -10)] ?? null) : null)
+                        ?? null;
+
+                    if ($name === null) continue;
                     $inst = $c->instance_name;
                     $appContactNamesByKey[$inst . '|' . $convDigits] = $name;
-                    $appContactNamesByKey[$inst . '|' . $contactDigits] = $name;
-                    if (strlen($convDigits) >= 11) {
-                        $appContactNamesByKey[$inst . '|' . substr($convDigits, -11)] = $name;
-                    }
-                    if (strlen($convDigits) >= 10) {
-                        $appContactNamesByKey[$inst . '|' . substr($convDigits, -10)] = $name;
-                    }
-                    if (strlen($contactDigits) >= 11) {
-                        $appContactNamesByKey[$inst . '|' . substr($contactDigits, -11)] = $name;
-                    }
-                    if (strlen($contactDigits) >= 10) {
-                        $appContactNamesByKey[$inst . '|' . substr($contactDigits, -10)] = $name;
-                    }
-                    break;
+                    if (strlen($convDigits) >= 11) $appContactNamesByKey[$inst . '|' . substr($convDigits, -11)] = $name;
+                    if (strlen($convDigits) >= 10) $appContactNamesByKey[$inst . '|' . substr($convDigits, -10)] = $name;
                 }
             }
         }

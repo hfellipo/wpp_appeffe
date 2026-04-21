@@ -65,11 +65,11 @@ class EvolutionApiHttpClient
         }
     }
 
-    public function get(string $path, array $query = []): array
+    public function get(string $path, array $query = [], int $timeout = 10): array
     {
         $url = "{$this->baseUrl}/" . ltrim($path, '/');
         try {
-            $response = Http::timeout(10)->withHeaders($this->headers())->get($url, $query);
+            $response = Http::timeout($timeout)->withHeaders($this->headers())->get($url, $query);
             return $this->normalize($response);
         } catch (\Throwable $e) {
             return [
@@ -139,7 +139,7 @@ class EvolutionApiHttpClient
      *
      * @return array{status:int, json:array|null, text:string, headers:array}
      */
-    public function fetchAllGroups(string $instance, bool $getParticipants = true): array
+    public function fetchAllGroups(string $instance, bool $getParticipants = true, int $timeout = 4): array
     {
         $instance = trim($instance);
         if ($instance === '') {
@@ -147,7 +147,7 @@ class EvolutionApiHttpClient
         }
         return $this->get("/group/fetchAllGroups/{$instance}", [
             'getParticipants' => $getParticipants ? 'true' : 'false',
-        ]);
+        ], $timeout);
     }
 
     /**
