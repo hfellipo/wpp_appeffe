@@ -22,6 +22,10 @@
             <div class="flex items-center gap-3 flex-wrap">
                 <span class="text-xs text-gray-500">{{ $funnel->leads_count }} leads · R$ {{ number_format((float) ($funnel->leads_sum_value ?? 0), 2, ',', '.') }}</span>
                 <a href="{{ route('funis.edit', $funnel) }}" class="text-xs text-gray-500 hover:text-gray-700">{{ __('Editar funil') }}</a>
+                <a href="{{ route('funis.pipeline', $funnel) }}" class="inline-flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Pipeline
+                </a>
                 <div class="flex items-center gap-1.5">
                     <button type="button" onclick="document.getElementById('colunas-panel').classList.toggle('hidden')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50" title="{{ __('Colunas') }}">
                         <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>

@@ -69,6 +69,33 @@ class FunnelController extends Controller
             ->with('success', __('Funil criado. Use "Novo lead" para adicionar cards ao quadro.'));
     }
 
+    public function pipeline(Funnel $funnel): View
+    {
+        $this->authorize('view', $funnel);
+
+        $funnel->load([
+            'stages' => fn ($q) => $q->orderBy('position')->with([
+                'leads'      => fn ($q) => $q->whereNotNull('contact_id'),
+                'stageRules' => fn ($q) => $q->with('targetStage'),
+            ]),
+        ]);
+
+        $userId  = auth()->user()->accountId();
+        $listas  = Lista::forUser($userId)->orderBy('name')->get(['id', 'name']);
+        $tags    = Tag::forUser($userId)->orderBy('name')->get(['id', 'name']);
+
+        $stageIds      = $funnel->stages->pluck('id');
+        $activeDisparos = FunnelDisparo::query()
+            ->where('user_id', $userId)
+            ->whereIn('funnel_stage_id', $stageIds)
+            ->latest('id')
+            ->get()
+            ->groupBy('funnel_stage_id')
+            ->map(fn ($g) => $g->first());
+
+        return view('funis.pipeline', compact('funnel', 'listas', 'tags', 'activeDisparos'));
+    }
+
     public function show(Funnel $funnel): View|RedirectResponse
     {
         $this->authorize('view', $funnel);

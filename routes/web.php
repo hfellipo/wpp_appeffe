@@ -280,6 +280,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/funis/create', [FunnelController::class, 'create'])->name('funis.create');
     Route::post('/funis', [FunnelController::class, 'store'])->name('funis.store');
     Route::get('/funis/{funnel}', [FunnelController::class, 'show'])->name('funis.show');
+    Route::get('/funis/{funnel}/pipeline', [FunnelController::class, 'pipeline'])->name('funis.pipeline');
     Route::get('/funis/{funnel}/edit', [FunnelController::class, 'edit'])->name('funis.edit');
     Route::put('/funis/{funnel}', [FunnelController::class, 'update'])->name('funis.update');
     Route::delete('/funis/{funnel}', [FunnelController::class, 'destroy'])->name('funis.destroy');
