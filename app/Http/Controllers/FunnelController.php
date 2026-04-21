@@ -6,6 +6,7 @@ use App\Models\Automation;
 use App\Models\AutomationRun;
 use App\Models\Contact;
 use App\Models\Funnel;
+use App\Models\FunnelDisparo;
 use App\Models\FunnelLead;
 use App\Models\FunnelStage;
 use App\Models\FunnelStageRule;
@@ -15,6 +16,7 @@ use App\Models\Tag;
 use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppMessage;
 use App\Services\AutomationRunnerService;
+use App\Services\FunnelDisparoService;
 use App\Services\WhatsAppSendService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -460,90 +462,129 @@ class FunnelController extends Controller
         return response()->json(['contacts' => $contacts]);
     }
 
-    public function sendStageMessage(Request $request, Funnel $funnel, FunnelStage $stage, WhatsAppSendService $sendService): RedirectResponse
+    public function sendStageMessage(Request $request, Funnel $funnel, FunnelStage $stage, FunnelDisparoService $disparoService): JsonResponse
     {
         $this->authorize('update', $funnel);
         if ((int) $stage->funnel_id !== (int) $funnel->id) {
             abort(404);
         }
 
-        $sendNow = $request->boolean('send_now');
-        if ($sendNow) {
-            $validated = $request->validate([
-                'message' => ['nullable', 'string', 'max:65535'],
-                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
-            ]);
-        } else {
-            $validated = $request->validate([
-                'scheduled_date' => ['required', 'date', 'after_or_equal:today'],
-                'scheduled_time' => ['required', 'string', 'regex:/^\d{1,2}:\d{2}$/'],
-                'message' => ['nullable', 'string', 'max:65535'],
-                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
-            ]);
-        }
+        $validated = $request->validate([
+            'message'        => ['nullable', 'string', 'max:65535'],
+            'image'          => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+            'mode'           => ['nullable', 'string', 'in:sequential,round_robin,random'],
+            'delay_seconds'  => ['nullable', 'integer', 'min:0', 'max:300'],
+            'scheduled_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'scheduled_time' => ['nullable', 'string', 'regex:/^\d{1,2}:\d{2}$/'],
+        ]);
 
         $message = trim((string) ($validated['message'] ?? ''));
         $imagePath = null;
         $imageMime = null;
+
         if ($request->hasFile('image')) {
             $file = $request->file('image');
-            $dir = 'scheduled_posts/' . now()->format('Y/m');
-            $name = Str::ulid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName() ?: 'image.jpg');
+            $dir  = 'funnel_disparos/' . now()->format('Y/m');
+            $name = Str::ulid() . '.' . ($file->getClientOriginalExtension() ?: 'jpg');
             $imagePath = $file->storeAs($dir, $name, ['disk' => 'local']);
             $imageMime = $file->getMimeType() ?: 'image/jpeg';
         }
 
         if ($message === '' && ! $imagePath) {
-            return back()->withInput()->withErrors(['message' => __('Informe a mensagem (legenda) ou envie uma imagem.')]);
+            return response()->json(['error' => __('Informe a mensagem ou envie uma imagem.')], 422);
         }
 
-        $contactIds = $stage->leads()->whereNotNull('contact_id')->pluck('contact_id')->unique()->filter();
-        $contacts = Contact::forUser(auth()->user()->accountId())->whereIn('id', $contactIds)->get();
+        $accountId  = auth()->user()->accountId();
+        $contactIds = $stage->leads()
+            ->whereNotNull('contact_id')
+            ->pluck('contact_id')
+            ->unique()
+            ->filter()
+            ->values()
+            ->map(fn ($id) => (int) $id)
+            ->all();
 
-        if ($contacts->isEmpty()) {
-            return back()->with('error', __('Nenhum lead desta coluna tem contato vinculado.'));
+        if (empty($contactIds)) {
+            return response()->json(['error' => __('Nenhum lead desta coluna tem contato vinculado.')], 422);
         }
 
-        $accountId = auth()->user()->accountId();
-
-        if ($sendNow) {
-            $sent = 0;
-            foreach ($contacts as $contact) {
-                try {
-                    if ($imagePath && Storage::disk('local')->exists($imagePath)) {
-                        $sendService->sendMediaToContact($accountId, $contact, $imagePath, $imageMime ?: 'image/jpeg', $message, null, 'funnel_stage', $stage->id);
-                    } else {
-                        $sendService->sendTextToContact($accountId, $contact, $message, null, 'funnel_stage', $stage->id);
-                    }
-                    $sent++;
-                } catch (\Throwable $e) {
-                    // continue
-                }
+        $scheduledAt = null;
+        if (! empty($validated['scheduled_date']) && ! empty($validated['scheduled_time'])) {
+            $tz          = config('app.timezone', 'America/Sao_Paulo');
+            $scheduledAt = \Carbon\Carbon::parse($validated['scheduled_date'] . ' ' . $validated['scheduled_time'] . ':00', $tz);
+            if ($scheduledAt->isPast()) {
+                return response()->json(['error' => __('A data e hora devem ser no futuro.')], 422);
             }
-            return back()->with('success', __('Mensagem enviada para :n de :total contato(s).', ['n' => $sent, 'total' => $contacts->count()]));
         }
 
-        $tz = config('app.timezone', 'America/Sao_Paulo');
-        $scheduledAt = \Carbon\Carbon::parse($validated['scheduled_date'] . ' ' . $validated['scheduled_time'] . ':00', $tz);
-        if ($scheduledAt->isPast()) {
-            return back()->withInput()->withErrors(['scheduled_time' => __('A data e hora devem ser no futuro.')]);
-        }
-
-        ScheduledPost::create([
-            'user_id' => $accountId,
-            'scheduled_at' => $scheduledAt,
-            'target_type' => 'funnel_stage',
-            'target_id' => $stage->id,
-            'message' => $message,
-            'image_path' => $imagePath,
-            'image_mime' => $imageMime,
+        $disparo = $disparoService->createFromStage($accountId, $stage->id, $contactIds, [
+            'message'       => $message ?: null,
+            'image_path'    => $imagePath,
+            'image_mime'    => $imageMime,
+            'mode'          => $validated['mode'] ?? 'sequential',
+            'delay_seconds' => (int) ($validated['delay_seconds'] ?? 0),
+            'scheduled_at'  => $scheduledAt,
         ]);
 
-        return back()->with('success', __('Mensagem agendada para :date às :time. Será enviada para :n contato(s) desta coluna.', [
-            'date' => $scheduledAt->format('d/m/Y'),
-            'time' => $scheduledAt->format('H:i'),
-            'n' => $contacts->count(),
-        ]));
+        // If no delay and no schedule, process first message immediately
+        if (! $scheduledAt && $disparo->delay_seconds === 0) {
+            $disparoService->processNext($disparo->fresh());
+        }
+
+        return response()->json([
+            'success'         => true,
+            'disparo_id'      => $disparo->id,
+            'total'           => $disparo->total_contacts,
+            'scheduled'       => $scheduledAt?->toIso8601String(),
+            'delay_seconds'   => $disparo->delay_seconds,
+            'message'         => $scheduledAt
+                ? __('Disparo agendado para :date às :time (:n contato(s)).', [
+                    'date' => $scheduledAt->format('d/m/Y'),
+                    'time' => $scheduledAt->format('H:i'),
+                    'n'    => count($contactIds),
+                ])
+                : __('Disparo iniciado para :n contato(s).', ['n' => count($contactIds)]),
+        ]);
+    }
+
+    public function disparoStatus(Funnel $funnel, FunnelStage $stage): JsonResponse
+    {
+        $this->authorize('view', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id) abort(404);
+
+        $disparo = FunnelDisparo::query()
+            ->where('funnel_stage_id', $stage->id)
+            ->where('user_id', auth()->user()->accountId())
+            ->whereIn('status', ['pending', 'running'])
+            ->latest()
+            ->first();
+
+        if (! $disparo) {
+            return response()->json(['active' => false]);
+        }
+
+        return response()->json([
+            'active'    => true,
+            'id'        => $disparo->id,
+            'status'    => $disparo->status,
+            'sent'      => $disparo->sent_count,
+            'failed'    => $disparo->failed_count,
+            'total'     => $disparo->total_contacts,
+            'percent'   => $disparo->progressPercent(),
+            'mode'      => $disparo->mode,
+            'delay'     => $disparo->delay_seconds,
+        ]);
+    }
+
+    public function disparoCancel(Funnel $funnel, FunnelStage $stage, FunnelDisparo $disparo): JsonResponse
+    {
+        $this->authorize('update', $funnel);
+        if ((int) $stage->funnel_id !== (int) $funnel->id) abort(404);
+        if ((int) $disparo->funnel_stage_id !== (int) $stage->id) abort(404);
+
+        $disparo->update(['status' => 'cancelled']);
+
+        return response()->json(['success' => true]);
     }
 
     public function storeStageRule(Request $request, Funnel $funnel, FunnelStage $stage): RedirectResponse
@@ -553,20 +594,33 @@ class FunnelController extends Controller
             abort(404);
         }
 
+        $actionType = $request->input('action_type', 'move');
+
         $validated = $request->validate([
-            'trigger_type' => ['required', 'string', 'in:message_status,whatsapp_replied,tag_added,list_added'],
-            'target_stage_id' => ['required', 'integer', 'exists:funnel_stages,id'],
-            'tag_id' => ['nullable', 'required_if:trigger_type,tag_added', 'integer', 'exists:tags,id'],
-            'lista_id' => ['nullable', 'required_if:trigger_type,list_added', 'integer', 'exists:listas,id'],
-            'status' => ['nullable', 'required_if:trigger_type,message_status', 'string', 'in:sent,delivered,read,failed,responded'],
+            'trigger_type'   => ['required', 'string', 'in:message_status,whatsapp_replied,specific_reply,tag_added,list_added'],
+            'target_stage_id'=> ['nullable', 'integer', 'exists:funnel_stages,id'],
+            'tag_id'         => ['nullable', 'required_if:trigger_type,tag_added', 'integer', 'exists:tags,id'],
+            'lista_id'       => ['nullable', 'required_if:trigger_type,list_added', 'integer', 'exists:listas,id'],
+            'status'         => ['nullable', 'required_if:trigger_type,message_status', 'string', 'in:sent,delivered,read,failed,responded'],
+            'keyword'        => ['nullable', 'required_if:trigger_type,specific_reply', 'string', 'max:255'],
+            'action_type'    => ['nullable', 'string', 'in:move,send,move_and_send'],
+            'action_message' => ['nullable', 'required_if:action_type,send', 'required_if:action_type,move_and_send', 'string', 'max:65535'],
         ]);
 
-        $targetStage = FunnelStage::where('funnel_id', $funnel->id)->find($validated['target_stage_id']);
-        if (! $targetStage) {
-            return back()->with('error', __('Estágio de destino inválido.'));
+        // action_type "move" and "move_and_send" require a target_stage
+        if (in_array($actionType, ['move', 'move_and_send'], true) && empty($validated['target_stage_id'])) {
+            return back()->with('error', __('Escolha a etapa de destino.'));
         }
-        if ((int) $targetStage->id === (int) $stage->id) {
-            return back()->with('error', __('Escolha uma etapa diferente da atual.'));
+
+        $targetStage = null;
+        if (! empty($validated['target_stage_id'])) {
+            $targetStage = FunnelStage::where('funnel_id', $funnel->id)->find($validated['target_stage_id']);
+            if (! $targetStage) {
+                return back()->with('error', __('Estágio de destino inválido.'));
+            }
+            if (in_array($actionType, ['move', 'move_and_send'], true) && (int) $targetStage->id === (int) $stage->id) {
+                return back()->with('error', __('Escolha uma etapa diferente da atual.'));
+            }
         }
 
         $config = [];
@@ -582,12 +636,15 @@ class FunnelController extends Controller
 
         FunnelStageRule::create([
             'funnel_stage_id' => $stage->id,
-            'trigger_type' => $validated['trigger_type'],
-            'trigger_config' => $config ?: null,
-            'target_stage_id' => $targetStage->id,
+            'trigger_type'    => $validated['trigger_type'],
+            'trigger_config'  => $config ?: null,
+            'target_stage_id' => $targetStage?->id,
+            'keyword'         => $validated['keyword'] ?? null,
+            'action_type'     => $actionType,
+            'action_message'  => $validated['action_message'] ?? null,
         ]);
 
-        return back()->with('success', __('Regra adicionada: ao atender a condição, o lead será movido automaticamente.'));
+        return back()->with('success', __('Regra adicionada com sucesso.'));
     }
 
     public function destroyStageRule(Funnel $funnel, FunnelStage $stage, FunnelStageRule $rule): RedirectResponse

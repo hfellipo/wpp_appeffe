@@ -12,6 +12,9 @@ class FunnelStageRule extends Model
         'trigger_type',
         'trigger_config',
         'target_stage_id',
+        'keyword',
+        'action_type',
+        'action_message',
     ];
 
     protected $casts = [
@@ -21,10 +24,20 @@ class FunnelStageRule extends Model
     public static function triggerTypes(): array
     {
         return [
-            'message_status' => __('Status da mensagem enviada'),
-            'whatsapp_replied' => __('Resposta após mensagem do funil'),
-            'tag_added' => __('Recebeu a tag'),
-            'list_added' => __('Foi adicionado à lista'),
+            'message_status'   => __('Status da mensagem enviada'),
+            'whatsapp_replied' => __('Qualquer resposta após mensagem do funil'),
+            'specific_reply'   => __('Resposta com palavra-chave específica'),
+            'tag_added'        => __('Recebeu a tag'),
+            'list_added'       => __('Foi adicionado à lista'),
+        ];
+    }
+
+    public static function actionTypes(): array
+    {
+        return [
+            'move'          => __('Mover para etapa'),
+            'send'          => __('Enviar mensagem'),
+            'move_and_send' => __('Mover + Enviar mensagem'),
         ];
     }
 

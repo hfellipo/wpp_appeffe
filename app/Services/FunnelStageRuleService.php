@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Contact;
 use App\Models\FunnelLead;
 use App\Models\FunnelStage;
 use App\Models\FunnelStageRule;
@@ -10,23 +11,18 @@ use Illuminate\Support\Facades\Log;
 
 class FunnelStageRuleService
 {
+    public function __construct(private ?WhatsAppSendService $sender = null) {}
+
     /**
-     * When a sent message (from a funnel stage) reaches a given status, apply "message_status" rules:
-     * move leads in that stage to the target stage.
+     * When a sent message (from a funnel stage) reaches a given status, apply "message_status" rules.
      */
     public static function applyMessageStatusRules(WhatsAppMessage $message, string $newStatus): void
     {
-        if ($message->direction !== 'out') {
-            return;
-        }
-        if ($message->source_type !== 'funnel_stage' || ! $message->source_id) {
-            return;
-        }
+        if ($message->direction !== 'out') return;
+        if ($message->source_type !== 'funnel_stage' || ! $message->source_id) return;
 
         $stage = FunnelStage::query()->find($message->source_id);
-        if (! $stage) {
-            return;
-        }
+        if (! $stage) return;
 
         $rules = FunnelStageRule::query()
             ->where('funnel_stage_id', $stage->id)
@@ -35,18 +31,10 @@ class FunnelStageRuleService
             ->with('targetStage')
             ->get();
 
-        if ($rules->isEmpty()) {
-            return;
-        }
+        if ($rules->isEmpty()) return;
 
-        $contactId = $message->conversation->contact_id ?? null;
-        if (! $contactId) {
-            $conv = $message->relationLoaded('conversation') ? $message->conversation : $message->conversation()->first(['contact_id']);
-            $contactId = $conv->contact_id ?? null;
-        }
-        if (! $contactId) {
-            return;
-        }
+        $contactId = static::resolveContactId($message);
+        if (! $contactId) return;
 
         $leads = FunnelLead::query()
             ->where('funnel_stage_id', $stage->id)
@@ -55,97 +43,174 @@ class FunnelStageRuleService
 
         foreach ($leads as $lead) {
             foreach ($rules as $rule) {
-                if (! $rule->targetStage || (int) $rule->target_stage_id === (int) $stage->id) {
-                    continue;
-                }
-                $maxPos = FunnelLead::query()
-                    ->where('funnel_stage_id', $rule->target_stage_id)
-                    ->max('position') ?? 0;
-                $lead->update([
-                    'funnel_stage_id' => $rule->target_stage_id,
-                    'position' => $maxPos + 1,
-                ]);
-                Log::channel('single')->info('FunnelStageRuleService: lead moved by message_status rule', [
-                    'lead_id' => $lead->id,
-                    'from_stage' => $stage->id,
-                    'to_stage' => $rule->target_stage_id,
-                    'status' => $newStatus,
-                ]);
+                static::executeRuleAction($rule, $lead, $stage, $contactId, $message->user_id ?? null);
                 break;
             }
         }
     }
 
     /**
-     * When an incoming message is a reply (in_reply_to_message_id set), check if the quoted message
-     * was from a funnel stage and apply "whatsapp_replied" rules: move the lead to the target stage.
-     * Also applies "message_status" rules with status=responded.
+     * When an incoming message is a quoted reply to a funnel stage message, apply "whatsapp_replied" rules.
+     * Also checks "specific_reply" rules against message text.
      */
     public static function applyReplyRules(WhatsAppMessage $incomingMessage): void
     {
-        if (! $incomingMessage->in_reply_to_message_id) {
-            return;
+        $conversationContactId = null;
+        $conv = $incomingMessage->conversation ?? $incomingMessage->conversation()->first(['contact_id', 'user_id']);
+        if ($conv) {
+            $conversationContactId = $conv->contact_id;
         }
 
-        $quoted = WhatsAppMessage::query()
-            ->with('conversation')
-            ->find($incomingMessage->in_reply_to_message_id);
+        // --- whatsapp_replied (quoted reply to a funnel message) ---
+        if ($incomingMessage->in_reply_to_message_id) {
+            $quoted = WhatsAppMessage::query()
+                ->with('conversation')
+                ->find($incomingMessage->in_reply_to_message_id);
 
-        if (! $quoted || $quoted->direction !== 'out') {
-            return;
-        }
+            if ($quoted && $quoted->direction === 'out'
+                && $quoted->source_type === 'funnel_stage' && $quoted->source_id) {
 
-        if ($quoted->source_type !== 'funnel_stage' || ! $quoted->source_id) {
-            return;
-        }
+                $stage = FunnelStage::query()->find($quoted->source_id);
+                if ($stage) {
+                    $contactId = static::resolveContactId($quoted) ?? $conversationContactId;
+                    if ($contactId) {
+                        $rules = FunnelStageRule::query()
+                            ->where('funnel_stage_id', $stage->id)
+                            ->where('trigger_type', 'whatsapp_replied')
+                            ->with('targetStage')
+                            ->get();
 
-        $stage = FunnelStage::query()->find($quoted->source_id);
-        if (! $stage) {
-            return;
-        }
+                        $leads = FunnelLead::query()
+                            ->where('funnel_stage_id', $stage->id)
+                            ->where('contact_id', $contactId)
+                            ->get();
 
-        $rules = FunnelStageRule::query()
-            ->where('funnel_stage_id', $stage->id)
-            ->where('trigger_type', 'whatsapp_replied')
-            ->with('targetStage')
-            ->get();
+                        foreach ($leads as $lead) {
+                            foreach ($rules as $rule) {
+                                static::executeRuleAction($rule, $lead, $stage, $contactId, $conv->user_id ?? null);
+                                break;
+                            }
+                        }
 
-        if ($rules->isEmpty()) {
-            return;
-        }
-
-        $contactId = $quoted->conversation->contact_id ?? null;
-        if (! $contactId) {
-            return;
-        }
-
-        $leads = FunnelLead::query()
-            ->where('funnel_stage_id', $stage->id)
-            ->where('contact_id', $contactId)
-            ->get();
-
-        foreach ($leads as $lead) {
-            foreach ($rules as $rule) {
-                if (! $rule->targetStage || (int) $rule->target_stage_id === (int) $stage->id) {
-                    continue;
+                        // Also mark original message as "responded"
+                        self::applyMessageStatusRules($quoted, 'responded');
+                    }
                 }
-                $maxPos = FunnelLead::query()
-                    ->where('funnel_stage_id', $rule->target_stage_id)
-                    ->max('position') ?? 0;
-                $lead->update([
-                    'funnel_stage_id' => $rule->target_stage_id,
-                    'position' => $maxPos + 1,
-                ]);
-                Log::channel('single')->info('FunnelStageRuleService: lead moved by whatsapp_replied rule', [
-                    'lead_id' => $lead->id,
-                    'from_stage' => $stage->id,
-                    'to_stage' => $rule->target_stage_id,
-                ]);
-                break; // one move per lead
             }
         }
 
-        // Also apply message_status rules with status=responded (same event: contact replied)
-        self::applyMessageStatusRules($quoted, 'responded');
+        // --- specific_reply (keyword match on any incoming message) ---
+        static::applySpecificReplyRules($incomingMessage, $conversationContactId);
+    }
+
+    /**
+     * Check if this incoming message matches any "specific_reply" keyword rule
+     * for stages where the contact has a lead.
+     */
+    public static function applySpecificReplyRules(WhatsAppMessage $incomingMessage, ?int $contactId = null): void
+    {
+        if ($incomingMessage->direction !== 'in') return;
+
+        $body = trim((string) ($incomingMessage->body ?? ''));
+        if ($body === '') return;
+
+        if (! $contactId) {
+            $conv = $incomingMessage->conversation ?? $incomingMessage->conversation()->first(['contact_id', 'user_id']);
+            $contactId = $conv->contact_id ?? null;
+        }
+        if (! $contactId) return;
+
+        // Find all leads for this contact that have specific_reply rules
+        $leads = FunnelLead::query()
+            ->where('contact_id', $contactId)
+            ->with(['stage.stageRules' => fn ($q) => $q->where('trigger_type', 'specific_reply')->with('targetStage')])
+            ->get();
+
+        $accountId = null;
+        $conv = $incomingMessage->relationLoaded('conversation')
+            ? $incomingMessage->conversation
+            : $incomingMessage->conversation()->first(['user_id']);
+        if ($conv) $accountId = $conv->user_id;
+
+        foreach ($leads as $lead) {
+            $stage = $lead->stage;
+            if (! $stage) continue;
+
+            foreach ($stage->stageRules as $rule) {
+                if ($rule->trigger_type !== 'specific_reply') continue;
+                $keyword = trim((string) ($rule->keyword ?? ''));
+                if ($keyword === '') continue;
+
+                if (mb_stripos($body, $keyword) !== false) {
+                    static::executeRuleAction($rule, $lead, $stage, $contactId, $accountId);
+                    break; // first matching rule per lead
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+
+    private static function executeRuleAction(
+        FunnelStageRule $rule,
+        FunnelLead      $lead,
+        FunnelStage     $stage,
+        int             $contactId,
+        ?int            $accountId
+    ): void {
+        $actionType = $rule->action_type ?? 'move';
+
+        // Move lead
+        if (in_array($actionType, ['move', 'move_and_send'], true)) {
+            if ($rule->targetStage && (int) $rule->target_stage_id !== (int) $stage->id) {
+                $maxPos = FunnelLead::query()
+                    ->where('funnel_stage_id', $rule->target_stage_id)
+                    ->max('position') ?? 0;
+
+                $lead->update([
+                    'funnel_stage_id' => $rule->target_stage_id,
+                    'position'        => $maxPos + 1,
+                ]);
+
+                Log::channel('single')->info('FunnelStageRuleService: lead moved', [
+                    'lead_id'    => $lead->id,
+                    'from_stage' => $stage->id,
+                    'to_stage'   => $rule->target_stage_id,
+                    'trigger'    => $rule->trigger_type,
+                ]);
+            }
+        }
+
+        // Send action message
+        if (in_array($actionType, ['send', 'move_and_send'], true)
+            && $rule->action_message
+            && $accountId) {
+
+            $contact = Contact::find($contactId);
+            if ($contact) {
+                try {
+                    $sender = app(WhatsAppSendService::class);
+                    $sender->sendTextToContact(
+                        $accountId, $contact,
+                        $rule->action_message,
+                        null, 'funnel_stage', $stage->id
+                    );
+                } catch (\Throwable $e) {
+                    Log::channel('single')->warning('FunnelStageRuleService: action_message send failed', [
+                        'rule_id' => $rule->id,
+                        'error'   => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+    }
+
+    private static function resolveContactId(WhatsAppMessage $message): ?int
+    {
+        if ($message->relationLoaded('conversation')) {
+            return $message->conversation->contact_id ?? null;
+        }
+        $conv = $message->conversation()->first(['contact_id']);
+        return $conv->contact_id ?? null;
     }
 }

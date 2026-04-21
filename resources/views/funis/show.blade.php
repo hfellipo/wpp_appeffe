@@ -204,10 +204,54 @@
                                 <div class="flex items-center justify-between gap-1 mb-1.5">
                                     <div class="h-0.5 w-8 rounded-full {{ $sc['bar'] }}"></div>
                                     <div class="flex items-center gap-0.5">
-                                    <button type="button" class="stage-automation-btn p-1 rounded {{ $stage->automation_id ? 'text-blue-600 hover:bg-blue-50' : 'text-red-500 hover:bg-red-50' }}" title="{{ $stage->automation_id ? __('Automação configurada') : __('Sem automação') }}" data-stage-id="{{ $stage->id }}" data-stage-name="{{ e($stage->name) }}" data-automation-id="{{ $stage->automation_id ?? '' }}" data-update-url="{{ route('funis.stages.automation.update', [$funnel, $stage]) }}" data-run-url="{{ route('funis.stages.automation.run', [$funnel, $stage]) }}" data-contacts-url="{{ route('funis.stages.contacts', [$funnel, $stage]) }}" data-send-message-url="{{ route('funis.stages.send-message', [$funnel, $stage]) }}" data-automation-name="{{ $stage->automation ? e($stage->automation->name) : '' }}" data-automation-actions-count="{{ $stage->automation ? $stage->automation->actions->count() : 0 }}" data-automation-trigger-label="{{ $stage->automation && $stage->automation->trigger ? (\App\Models\Automation::triggerTypes()[$stage->automation->trigger->type] ?? $stage->automation->trigger->type) : '' }}" data-automation-edit-url="{{ $stage->automation ? route('automacao.edit', $stage->automation) : '' }}">
+                                    @php
+                                        $funnelId = $funnel->id;
+                                        $stageRulesData = $stage->stageRules->map(function ($r) use ($funnelId, $stage) {
+                                            $extra = '';
+                                            if ($r->trigger_type === 'tag_added' && isset($r->trigger_config['tag_id'])) {
+                                                $extra = optional(\App\Models\Tag::find($r->trigger_config['tag_id']))->name ?? '';
+                                            } elseif ($r->trigger_type === 'list_added' && isset($r->trigger_config['lista_id'])) {
+                                                $extra = optional(\App\Models\Lista::find($r->trigger_config['lista_id']))->name ?? '';
+                                            } elseif ($r->trigger_type === 'message_status' && isset($r->trigger_config['status'])) {
+                                                $extra = \App\Models\FunnelStageRule::messageStatusOptions()[$r->trigger_config['status']] ?? $r->trigger_config['status'];
+                                            }
+                                            return [
+                                                'id'                => $r->id,
+                                                'trigger_type'      => $r->trigger_type,
+                                                'trigger_label'     => \App\Models\FunnelStageRule::triggerTypes()[$r->trigger_type] ?? $r->trigger_type,
+                                                'trigger_extra'     => $extra,
+                                                'keyword'           => $r->keyword,
+                                                'action_type'       => $r->action_type ?? 'move',
+                                                'action_message'    => $r->action_message,
+                                                'target_stage_name' => $r->targetStage?->name ?? '',
+                                                'destroy_url'       => route('funis.stages.rules.destroy', [$funnelId, $stage->id, $r->id]),
+                                            ];
+                                        })->values();
+                                    @endphp
+                                    <button type="button"
+                                            class="stage-automation-btn p-1 rounded {{ $stage->automation_id ? 'text-blue-600 hover:bg-blue-50' : 'text-red-500 hover:bg-red-50' }}"
+                                            title="{{ $stage->automation_id ? __('Automação configurada') : __('Sem automação') }}"
+                                            data-stage-id="{{ $stage->id }}"
+                                            data-stage-name="{{ e($stage->name) }}"
+                                            data-automation-id="{{ $stage->automation_id ?? '' }}"
+                                            data-update-url="{{ route('funis.stages.automation.update', [$funnel, $stage]) }}"
+                                            data-run-url="{{ route('funis.stages.automation.run', [$funnel, $stage]) }}"
+                                            data-contacts-url="{{ route('funis.stages.contacts', [$funnel, $stage]) }}"
+                                            data-send-message-url="{{ route('funis.stages.send-message', [$funnel, $stage]) }}"
+                                            data-disparo-status-url="{{ route('funis.stages.disparo.status', [$funnel, $stage]) }}"
+                                            data-automation-name="{{ $stage->automation ? e($stage->automation->name) : '' }}"
+                                            data-automation-actions-count="{{ $stage->automation ? $stage->automation->actions->count() : 0 }}"
+                                            data-automation-trigger-label="{{ $stage->automation && $stage->automation->trigger ? (\App\Models\Automation::triggerTypes()[$stage->automation->trigger->type] ?? $stage->automation->trigger->type) : '' }}"
+                                            data-automation-edit-url="{{ $stage->automation ? route('automacao.edit', $stage->automation) : '' }}">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                     </button>
-                                    <button type="button" class="stage-rules-btn p-1 rounded {{ $stage->stageRules->isEmpty() ? 'text-gray-400 hover:bg-gray-100' : 'text-violet-600 hover:bg-violet-50' }}" title="{{ __('Mover etapa automaticamente') }}" data-stage-id="{{ $stage->id }}" data-stage-name="{{ e($stage->name) }}" data-store-url="{{ route('funis.stages.rules.store', [$funnel, $stage]) }}" data-rules="{{ json_encode($stage->stageRules->map(fn ($r) => ['id' => $r->id, 'trigger_type' => $r->trigger_type, 'trigger_label' => \App\Models\FunnelStageRule::triggerTypes()[$r->trigger_type] ?? $r->trigger_type, 'trigger_extra' => $r->trigger_type === 'tag_added' && isset($r->trigger_config['tag_id']) ? (optional(\App\Models\Tag::find($r->trigger_config['tag_id']))->name ?? '') : ($r->trigger_type === 'list_added' && isset($r->trigger_config['lista_id']) ? (optional(\App\Models\Lista::find($r->trigger_config['lista_id']))->name ?? '') : ($r->trigger_type === 'message_status' && isset($r->trigger_config['status']) ? (\App\Models\FunnelStageRule::messageStatusOptions()[$r->trigger_config['status']] ?? $r->trigger_config['status']) : '')), 'target_stage_name' => $r->targetStage ? $r->targetStage->name : '', 'destroy_url' => route('funis.stages.rules.destroy', [$funnel, $stage, $r])])->values()) }}">
+                                    <button type="button"
+                                            class="stage-rules-btn p-1 rounded {{ $stage->stageRules->isEmpty() ? 'text-gray-400 hover:bg-gray-100' : 'text-violet-600 hover:bg-violet-50' }}"
+                                            title="{{ __('Regras de automação') }}"
+                                            data-stage-id="{{ $stage->id }}"
+                                            data-stage-name="{{ e($stage->name) }}"
+                                            data-store-url="{{ route('funis.stages.rules.store', [$funnel, $stage]) }}"
+                                            data-rules="{{ json_encode($stageRulesData) }}">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
                                     </button>
                                     </div>
@@ -364,162 +408,319 @@
     </x-modal>
 
     {{-- Modal Regras: mover etapa automaticamente --}}
-    <x-modal name="stage-rules-modal" :show="false" maxWidth="md">
+    {{-- ===== Modal: Regras de automação da etapa ===== --}}
+    <x-modal name="stage-rules-modal" :show="false" maxWidth="lg">
         <div class="p-6">
-            <h3 class="text-sm font-semibold text-gray-800 mb-1" id="stage-rules-modal-title">{{ __('Regras de etapa') }}</h3>
-            <p class="text-xs text-gray-500 mb-4">{{ __('Quando a condição for atendida, o lead será movido automaticamente para a etapa escolhida.') }}</p>
-            <div id="stage-rules-list" class="mb-4 space-y-2 max-h-40 overflow-y-auto"></div>
+            <h3 class="text-sm font-semibold text-gray-800 mb-0.5" id="stage-rules-modal-title">Regras de automação</h3>
+            <p class="text-xs text-gray-500 mb-4">Defina o que acontece quando um evento ocorre nesta coluna.</p>
+
+            {{-- Lista de regras existentes --}}
+            <div id="stage-rules-list" class="mb-4 space-y-2 max-h-48 overflow-y-auto"></div>
+
+            {{-- Formulário nova regra --}}
             <form id="form-stage-rule" method="POST" action="">
                 @csrf
-                <input type="hidden" name="trigger_type" id="rule-trigger-type" value="message_status">
-                <div class="grid grid-cols-1 gap-3 mb-3">
+                <div class="space-y-3">
+
+                    {{-- QUANDO --}}
                     <div>
-                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Quando') }}</label>
-                        <select id="rule-trigger-select" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Quando ocorrer</label>
+                        <select id="rule-trigger-select" name="trigger_type"
+                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
                             @foreach(\App\Models\FunnelStageRule::triggerTypes() as $value => $label)
                                 <option value="{{ $value }}">{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
+
+                    {{-- Extras por tipo de trigger --}}
+                    <div id="rule-status-wrap" class="hidden">
+                        <label class="block text-xs text-gray-500 mb-0.5">Status da mensagem</label>
+                        <select name="status" id="rule-status-select"
+                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                            <option value="">— Selecione —</option>
+                            @foreach(\App\Models\FunnelStageRule::messageStatusOptions() as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div id="rule-keyword-wrap" class="hidden">
+                        <label class="block text-xs text-gray-500 mb-0.5">Palavra-chave (contém)</label>
+                        <input type="text" name="keyword" id="rule-keyword"
+                               placeholder='Ex: "sim", "quero", "confirmar"'
+                               class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                    </div>
                     <div id="rule-tag-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Tag') }}</label>
-                        <select name="tag_id" id="rule-tag-id" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
-                            <option value="">{{ __('— Selecione —') }}</option>
+                        <label class="block text-xs text-gray-500 mb-0.5">Tag</label>
+                        <select name="tag_id" id="rule-tag-id"
+                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                            <option value="">— Selecione —</option>
                             @foreach($tags as $t)
                                 <option value="{{ $t->id }}">{{ $t->name }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div id="rule-list-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Lista') }}</label>
-                        <select name="lista_id" id="rule-lista-id" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
-                            <option value="">{{ __('— Selecione —') }}</option>
+                        <label class="block text-xs text-gray-500 mb-0.5">Lista</label>
+                        <select name="lista_id" id="rule-lista-id"
+                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                            <option value="">— Selecione —</option>
                             @foreach($listas as $l)
                                 <option value="{{ $l->id }}">{{ $l->name }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div id="rule-status-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Status da mensagem') }}</label>
-                        <select name="status" id="rule-status-select" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
-                            <option value="">{{ __('— Selecione —') }}</option>
-                            @foreach(\App\Models\FunnelStageRule::messageStatusOptions() as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+
+                    {{-- ENTÃO --}}
                     <div>
-                        <label class="block text-xs text-gray-500 mb-0.5">{{ __('Mover para a etapa') }}</label>
-                        <select name="target_stage_id" id="rule-target-stage" required class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
-                            <option value="">{{ __('— Selecione —') }}</option>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Então</label>
+                        <div class="grid grid-cols-3 gap-2" id="rule-action-btns">
+                            @foreach(\App\Models\FunnelStageRule::actionTypes() as $val => $lbl)
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="action_type" value="{{ $val }}"
+                                           class="peer sr-only" {{ $val === 'move' ? 'checked' : '' }}>
+                                    <span class="block text-center text-xs py-1.5 px-2 border border-gray-200 rounded-md
+                                                 peer-checked:border-violet-500 peer-checked:bg-violet-50 peer-checked:text-violet-700
+                                                 hover:bg-gray-50 transition-colors">
+                                        {{ $lbl }}
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div id="rule-target-stage-wrap">
+                        <label class="block text-xs text-gray-500 mb-0.5">Mover para a coluna</label>
+                        <select name="target_stage_id" id="rule-target-stage"
+                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
+                            <option value="">— Selecione —</option>
                             @foreach($funnel->stages as $s)
-                                <option value="{{ $s->id }}" data-stage-id="{{ $s->id }}">{{ $s->name }}</option>
+                                <option value="{{ $s->id }}">{{ $s->name }}</option>
                             @endforeach
                         </select>
                     </div>
+
+                    <div id="rule-action-message-wrap" class="hidden">
+                        <label class="block text-xs text-gray-500 mb-0.5">Mensagem a enviar automaticamente</label>
+                        <textarea name="action_message" id="rule-action-message" rows="3"
+                                  placeholder="Mensagem que será enviada ao contato quando a regra disparar..."
+                                  class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30"></textarea>
+                    </div>
+
                 </div>
-                <button type="submit" class="w-full py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700">{{ __('Adicionar regra') }}</button>
+
+                <button type="submit"
+                        class="mt-4 w-full py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700">
+                    Adicionar regra
+                </button>
             </form>
         </div>
     </x-modal>
 
-    {{-- Modal Automação da coluna --}}
+    {{-- ===== Modal: Disparo + Automação da coluna ===== --}}
     <x-modal name="stage-automation-modal" :show="false" maxWidth="5xl">
-        <div class="flex flex-col max-h-[85vh]">
+        <div class="flex flex-col max-h-[90vh]">
             <input type="hidden" id="stage-automation-edit-url" value="">
             <input type="hidden" id="stage-contacts-url" value="">
             <input type="hidden" id="stage-send-message-url" value="">
-            {{-- Painel resumo: mensagem para coluna + vincular automação + configurado --}}
-            <div id="stage-automation-resumo" class="p-6 overflow-y-auto">
-                <h3 class="text-sm font-semibold text-gray-800 mb-1" id="stage-automation-modal-title">{{ __('Automação da coluna') }}</h3>
-                <p class="text-xs text-gray-500 mb-4" id="stage-automation-modal-subtitle"></p>
+            <input type="hidden" id="stage-disparo-status-url" value="">
 
-                {{-- Mensagem para a coluna (imagem + texto + agendar) --}}
-                <div class="mb-6 pb-4 border-b border-gray-200">
-                    <p class="text-xs font-medium text-gray-700 mb-3">{{ __('Mensagem para a coluna') }}</p>
-                    <p class="text-xs text-gray-500 mb-3">{{ __('Só os contatos desta coluna receberão. Ao disparar ou agendar, você verá a lista de destinatários.') }}</p>
-                    <form id="form-stage-send-message" method="POST" action="" enctype="multipart/form-data">
+            {{-- Painel principal --}}
+            <div id="stage-automation-resumo" class="overflow-y-auto">
+
+                {{-- Header com abas --}}
+                <div class="flex border-b border-gray-200 bg-gray-50 px-6 pt-4 gap-4">
+                    <button type="button" id="tab-disparo"
+                            class="tab-btn text-sm font-medium pb-3 border-b-2 border-blue-600 text-blue-700 -mb-px">
+                        Disparo
+                    </button>
+                    <button type="button" id="tab-automacao"
+                            class="tab-btn text-sm font-medium pb-3 border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px">
+                        Automação
+                    </button>
+                </div>
+
+                {{-- ---- ABA DISPARO ---- --}}
+                <div id="panel-disparo" class="p-6">
+                    <p class="text-xs text-gray-500 mb-4" id="stage-automation-modal-subtitle"></p>
+
+                    {{-- Progresso de disparo ativo --}}
+                    <div id="disparo-progress-wrap" class="hidden mb-5 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold text-blue-800">Disparo em andamento</span>
+                            <button type="button" id="btn-disparo-cancel"
+                                    class="text-xs text-red-600 hover:text-red-700 font-medium">Cancelar</button>
+                        </div>
+                        <div class="w-full bg-blue-200 rounded-full h-2 mb-1.5">
+                            <div id="disparo-progress-bar" class="h-2 rounded-full bg-blue-600 transition-all" style="width:0%"></div>
+                        </div>
+                        <p class="text-xs text-blue-700" id="disparo-progress-text"></p>
+                    </div>
+
+                    {{-- Formulário de disparo --}}
+                    <form id="form-stage-send-message" enctype="multipart/form-data">
                         @csrf
-                        <input type="hidden" name="send_now" id="stage-send-now-value" value="0">
-                        <div class="grid grid-cols-2 gap-3 mb-3">
+
+                        {{-- Mensagem --}}
+                        <div class="grid grid-cols-1 gap-4 mb-4">
+
                             <div>
-                                <label class="block text-xs text-gray-500 mb-0.5">{{ __('Data (para agendar)') }}</label>
-                                <input type="date" name="scheduled_date" id="stage-scheduled-date" min="{{ date('Y-m-d') }}" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Mensagem</label>
+                                <textarea name="message" id="stage-message-text" rows="4"
+                                          class="block w-full text-sm rounded-md border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30"
+                                          placeholder="Digite a mensagem. Com imagem, será usada como legenda."></textarea>
                             </div>
+
                             <div>
-                                <label class="block text-xs text-gray-500 mb-0.5">{{ __('Horário') }}</label>
-                                <input type="time" name="scheduled_time" id="stage-scheduled-time" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">
+                                    Imagem
+                                    <span class="font-normal text-gray-400">(opcional)</span>
+                                </label>
+                                <div class="flex items-center gap-3">
+                                    <label for="stage-message-image"
+                                           class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md hover:bg-gray-50 text-gray-600">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                        Selecionar imagem
+                                    </label>
+                                    <span id="stage-image-name" class="text-xs text-gray-400 italic">Nenhuma selecionada</span>
+                                    <input type="file" name="image" id="stage-message-image" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden">
+                                </div>
+                                <div id="stage-image-preview-wrap" class="hidden mt-2">
+                                    <img id="stage-image-preview" src="" alt="" class="h-24 rounded border border-gray-200 object-cover">
+                                    <button type="button" id="stage-image-remove" class="ml-2 text-xs text-red-500 hover:text-red-700">Remover</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="mb-3">
-                            <label class="block text-xs text-gray-500 mb-0.5">{{ __('Imagem (opcional)') }}</label>
-                            <input type="file" name="image" id="stage-message-image" accept="image/jpeg,image/png,image/gif,image/webp" class="block w-full text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-brand-50 file:text-brand-700 file:text-xs">
+
+                        {{-- Config cluster --}}
+                        <div class="bg-gray-50 rounded-lg border border-gray-200 p-4 mb-4 space-y-3">
+                            <p class="text-xs font-semibold text-gray-700">Configurações de disparo</p>
+
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1.5">Modo de envio</label>
+                                <div class="grid grid-cols-3 gap-2">
+                                    @foreach(['sequential' => ['Sequencial', 'Um por vez na ordem'], 'round_robin' => ['Distribuído', 'Rotaciona entre instâncias'], 'random' => ['Aleatório', 'Ordem e instância aleatórios']] as $val => [$lbl, $hint])
+                                        <label class="cursor-pointer">
+                                            <input type="radio" name="mode" value="{{ $val }}"
+                                                   class="peer sr-only" {{ $val === 'sequential' ? 'checked' : '' }}>
+                                            <span class="block border border-gray-200 rounded-lg p-2.5
+                                                         peer-checked:border-blue-500 peer-checked:bg-blue-50
+                                                         hover:bg-gray-100 transition-colors">
+                                                <span class="block text-xs font-semibold text-gray-800 peer-checked:text-blue-700">{{ $lbl }}</span>
+                                                <span class="block text-[10px] text-gray-400 mt-0.5">{{ $hint }}</span>
+                                            </span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">
+                                    Intervalo entre mensagens:
+                                    <span id="delay-display" class="font-semibold text-gray-800">0s (imediato)</span>
+                                </label>
+                                <input type="range" name="delay_seconds" id="stage-delay-slider"
+                                       min="0" max="300" step="5" value="0"
+                                       class="w-full h-1.5 rounded-full accent-blue-600">
+                                <div class="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                                    <span>0s</span><span>30s</span><span>1min</span><span>2min</span><span>5min</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label class="block text-xs text-gray-500 mb-0.5">{{ __('Texto da mensagem') }}</label>
-                            <textarea name="message" id="stage-message-text" rows="4" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30" placeholder="{{ __('Digite o texto. Com imagem, vira legenda.') }}"></textarea>
+
+                        {{-- Agendamento --}}
+                        <div class="mb-4">
+                            <button type="button" id="toggle-schedule"
+                                    class="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
+                                <svg id="toggle-schedule-icon" class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                                Agendar para data específica
+                            </button>
+                            <div id="schedule-wrap" class="hidden mt-3 grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-0.5">Data</label>
+                                    <input type="date" name="scheduled_date" id="stage-scheduled-date" min="{{ date('Y-m-d') }}"
+                                           class="block w-full text-sm rounded-md border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-0.5">Horário</label>
+                                    <input type="time" name="scheduled_time" id="stage-scheduled-time"
+                                           class="block w-full text-sm rounded-md border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30">
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" id="stage-btn-disparar" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">{{ __('Disparar agora') }}</button>
-                            <button type="button" id="stage-btn-agendar" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Agendar') }}</button>
-                        </div>
+
+                        {{-- Feedback --}}
+                        <div id="disparo-feedback" class="hidden mb-3 text-xs rounded-md px-3 py-2"></div>
+
+                        <button type="submit" id="stage-btn-disparar"
+                                class="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                            Disparar para esta coluna
+                        </button>
                     </form>
                 </div>
 
-                {{-- Preview: contatos que receberão (mostrado antes de confirmar) --}}
-                <div id="stage-automation-preview" class="hidden mb-6 pb-4 border-b border-gray-200">
-                    <div class="flex items-center justify-between mb-2">
-                        <p class="text-xs font-medium text-gray-700">{{ __('Estes contatos receberão a mensagem') }}<span id="stage-preview-when" class="text-gray-500 font-normal"></span></p>
-                        <button type="button" id="stage-preview-back" class="text-xs text-gray-500 hover:text-gray-700">{{ __('← Voltar') }}</button>
-                    </div>
-                    <ul id="stage-preview-contacts" class="max-h-40 overflow-y-auto rounded border border-gray-100 bg-gray-50/50 p-2 space-y-1 text-xs text-gray-700"></ul>
-                    <p class="text-xs text-gray-500 mt-1" id="stage-preview-count"></p>
-                    <div class="mt-2">
-                        <button type="button" id="stage-preview-confirm-btn" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded"></button>
-                    </div>
-                </div>
-
-                {{-- Vincular automação existente --}}
-                <form id="form-stage-automation-assign" method="POST" action="">
-                    @csrf
-                    @method('PUT')
-                    <div class="flex gap-2 items-end mb-4">
-                        <div class="flex-1">
-                            <label class="block text-xs text-gray-500 mb-0.5">{{ __('Vincular automação') }}</label>
-                            <select name="automation_id" id="stage-automation-select" class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
-                                <option value="">{{ __('— Nenhuma —') }}</option>
-                                @foreach($automations as $a)
-                                    <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (' . __('pausada') . ')' }}</option>
-                                @endforeach
-                            </select>
+                {{-- ---- ABA AUTOMAÇÃO ---- --}}
+                <div id="panel-automacao" class="p-6 hidden">
+                    <p class="text-xs text-gray-500 mb-4" id="stage-automation-modal-subtitle-auto"></p>
+                    <form id="form-stage-automation-assign" method="POST" action="">
+                        @csrf
+                        @method('PUT')
+                        <div class="flex gap-2 items-end mb-4">
+                            <div class="flex-1">
+                                <label class="block text-xs text-gray-500 mb-0.5">Vincular automação a esta coluna</label>
+                                <select name="automation_id" id="stage-automation-select"
+                                        class="block w-full text-sm rounded-md border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30">
+                                    <option value="">— Nenhuma —</option>
+                                    @foreach($automations as $a)
+                                        <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (pausada)' }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <button type="submit" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">Salvar</button>
                         </div>
-                        <button type="submit" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Salvar') }}</button>
-                    </div>
-                </form>
-                <div id="stage-automation-configured" class="hidden border-t border-gray-100 pt-4">
-                    <p class="text-xs font-medium text-gray-700 mb-1">{{ __('Configurado') }}</p>
-                    <p class="text-xs text-gray-600 mb-2" id="stage-automation-config-summary"></p>
-                    <div class="flex flex-wrap gap-2 items-center">
-                        <button type="button" id="stage-automation-config-btn" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">{{ __('Configurar automação') }}</button>
-                        <a id="stage-automation-edit-link" href="#" target="_blank" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 rounded">{{ __('Abrir em nova aba') }}</a>
-                        <form id="form-stage-automation-run" method="POST" action="" class="inline">
-                            @csrf
-                            <button type="submit" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">{{ __('Disparar agora') }}</button>
-                        </form>
-                        <a href="{{ route('automacao.agendamentos.index') }}" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded">{{ __('Agendar') }}</a>
+                    </form>
+                    <div id="stage-automation-configured" class="hidden border-t border-gray-100 pt-4">
+                        <p class="text-xs font-medium text-gray-700 mb-1">Automação configurada</p>
+                        <p class="text-xs text-gray-600 mb-2" id="stage-automation-config-summary"></p>
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <button type="button" id="stage-automation-config-btn"
+                                    class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700">
+                                Configurar automação
+                            </button>
+                            <a id="stage-automation-edit-link" href="#" target="_blank"
+                               class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 rounded">
+                                Abrir em nova aba
+                            </a>
+                            <form id="form-stage-automation-run" method="POST" action="" class="inline">
+                                @csrf
+                                <button type="submit"
+                                        class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">
+                                    Disparar agora
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-            {{-- Painel configurar: iframe com a edição da automação --}}
+
+            {{-- Painel configurar automação (iframe) --}}
             <div id="stage-automation-configurar" class="hidden flex-1 flex flex-col min-h-0 border-t border-gray-200">
                 <div class="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200">
-                    <button type="button" id="stage-automation-back-resumo" class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                        {{ __('Voltar ao resumo') }}
+                    <button type="button" id="stage-automation-back-resumo"
+                            class="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                        </svg>
+                        Voltar
                     </button>
                 </div>
                 <div class="flex-1 min-h-0 p-2">
-                    <iframe id="stage-automation-iframe" class="w-full border border-gray-200 rounded-lg bg-white" style="height: 65vh;" title="{{ __('Configurar automação') }}"></iframe>
+                    <iframe id="stage-automation-iframe" class="w-full border border-gray-200 rounded-lg bg-white"
+                            style="height: 65vh;" title="Configurar automação"></iframe>
                 </div>
             </div>
         </div>
@@ -603,6 +804,8 @@
         var sendMessageUrlEl = document.getElementById('stage-send-message-url');
         if (contactsUrlEl) contactsUrlEl.value = el.dataset.contactsUrl || '';
         if (sendMessageUrlEl) sendMessageUrlEl.value = el.dataset.sendMessageUrl || '';
+        var disparoStatusUrlEl = document.getElementById('stage-disparo-status-url');
+        if (disparoStatusUrlEl) disparoStatusUrlEl.value = el.dataset.disparoStatusUrl || '';
         if (titleEl) titleEl.textContent = '{{ __("Automação") }}: ' + (el.dataset.stageName || '');
         if (subtitleEl) subtitleEl.textContent = '{{ __("Só os contatos desta coluna serão considerados ao disparar.") }}';
         if (selectEl) selectEl.value = el.dataset.automationId || '';
@@ -741,57 +944,83 @@
         document.querySelectorAll('.stage-automation-btn').forEach(function(btn) {
             btn.addEventListener('click', openStageAutomationModal);
         });
+        // ---- REGRAS DE ETAPA ----
         (function() {
             var ruleModalTitle = document.getElementById('stage-rules-modal-title');
-            var ruleList = document.getElementById('stage-rules-list');
-            var ruleForm = document.getElementById('form-stage-rule');
-            var ruleTriggerSelect = document.getElementById('rule-trigger-select');
-            var ruleTriggerType = document.getElementById('rule-trigger-type');
-            var ruleTagWrap = document.getElementById('rule-tag-wrap');
-            var ruleListWrap = document.getElementById('rule-list-wrap');
-            var ruleTargetStage = document.getElementById('rule-target-stage');
-            var currentRulesStageId = null;
-            var ruleStatusWrap = document.getElementById('rule-status-wrap');
-            function updateRuleTriggerVisibility() {
-                var v = ruleTriggerSelect && ruleTriggerSelect.value;
-                if (ruleTriggerType) ruleTriggerType.value = v || 'message_status';
-                if (ruleTagWrap) ruleTagWrap.classList.toggle('hidden', v !== 'tag_added');
-                if (ruleListWrap) ruleListWrap.classList.toggle('hidden', v !== 'list_added');
-                if (ruleStatusWrap) ruleStatusWrap.classList.toggle('hidden', v !== 'message_status');
+            var ruleList       = document.getElementById('stage-rules-list');
+            var ruleForm       = document.getElementById('form-stage-rule');
+            var triggerSelect  = document.getElementById('rule-trigger-select');
+            var currentStageId = null;
+
+            function updateTriggerVisibility() {
+                var v = triggerSelect ? triggerSelect.value : '';
+                document.getElementById('rule-status-wrap').classList.toggle('hidden',  v !== 'message_status');
+                document.getElementById('rule-keyword-wrap').classList.toggle('hidden', v !== 'specific_reply');
+                document.getElementById('rule-tag-wrap').classList.toggle('hidden',     v !== 'tag_added');
+                document.getElementById('rule-list-wrap').classList.toggle('hidden',    v !== 'list_added');
             }
+
+            function updateActionVisibility() {
+                var v = (document.querySelector('input[name="action_type"]:checked') || {}).value || 'move';
+                var needTarget  = (v === 'move' || v === 'move_and_send');
+                var needMessage = (v === 'send' || v === 'move_and_send');
+                document.getElementById('rule-target-stage-wrap').classList.toggle('hidden',   !needTarget);
+                document.getElementById('rule-action-message-wrap').classList.toggle('hidden', !needMessage);
+            }
+
+            function renderRules(rules) {
+                if (!ruleList) return;
+                if (!rules || rules.length === 0) {
+                    ruleList.innerHTML = '<p class="text-xs text-gray-400 italic">Nenhuma regra configurada.</p>';
+                    return;
+                }
+                ruleList.innerHTML = rules.map(function(r) {
+                    var extra   = r.trigger_extra ? ' <span class="text-gray-400">(' + r.trigger_extra + ')</span>' : '';
+                    var keyword = r.keyword ? ' <span class="text-violet-600 font-medium">"' + r.keyword + '"</span>' : '';
+                    var action  = r.action_type === 'move' ? '→ ' + (r.target_stage_name || '?') :
+                                  r.action_type === 'send' ? '✉ mensagem automática' :
+                                  '→ ' + (r.target_stage_name || '?') + ' + ✉';
+                    return '<div class="flex items-start justify-between gap-2 py-2 px-3 bg-violet-50 border border-violet-100 rounded-lg text-xs">'
+                         + '<div><span class="font-medium text-violet-800">' + (r.trigger_label || '') + '</span>'
+                         + extra + keyword
+                         + '<span class="ml-1 text-gray-600">' + action + '</span></div>'
+                         + '<form method="POST" action="' + (r.destroy_url || '') + '" class="inline shrink-0" onsubmit="return confirm(\'Remover esta regra?\');">'
+                         + '<input type="hidden" name="_token" value="{{ csrf_token() }}">'
+                         + '<input type="hidden" name="_method" value="DELETE">'
+                         + '<button type="submit" class="text-red-400 hover:text-red-700 text-base leading-none">×</button>'
+                         + '</form></div>';
+                }).join('');
+            }
+
             function openStageRulesModal(btn) {
                 var el = btn.target && btn.target.closest ? btn.target.closest('.stage-rules-btn') : btn;
                 if (!el || !el.dataset.storeUrl) return;
-                currentRulesStageId = el.dataset.stageId ? parseInt(el.dataset.stageId, 10) : null;
-                if (ruleModalTitle) ruleModalTitle.textContent = '{{ __("Regras") }}: ' + (el.dataset.stageName || '');
-                if (ruleForm) ruleForm.action = el.dataset.storeUrl || '';
+                currentStageId = parseInt(el.dataset.stageId, 10) || null;
+                if (ruleModalTitle) ruleModalTitle.textContent = 'Regras: ' + (el.dataset.stageName || '');
+                if (ruleForm) ruleForm.action = el.dataset.storeUrl;
                 var rules = [];
-                try { rules = JSON.parse(el.dataset.rules || '[]'); } catch (e) {}
-                if (ruleList) {
-                    if (rules.length === 0) {
-                        ruleList.innerHTML = '<p class="text-xs text-gray-500">{{ __("Nenhuma regra. Adicione abaixo.") }}</p>';
-                    } else {
-                        ruleList.innerHTML = rules.map(function(r) {
-                            var extra = r.trigger_extra ? ' (' + r.trigger_extra + ')' : '';
-                            return '<div class="flex items-center justify-between gap-2 py-2 px-3 bg-gray-50 rounded text-xs"><span>' + (r.trigger_label || '') + extra + ' → ' + (r.target_stage_name || '') + '</span><form method="POST" action="' + (r.destroy_url || '') + '" class="inline" onsubmit="return confirm(\'{{ __("Remover esta regra?") }}\');"><input type="hidden" name="_token" value="{{ csrf_token() }}"><input type="hidden" name="_method" value="DELETE"><button type="submit" class="text-red-600 hover:text-red-800">×</button></form></div>';
-                        }).join('');
-                    }
-                }
+                try { rules = JSON.parse(el.dataset.rules || '[]'); } catch(e) {}
+                renderRules(rules);
+                // Disable current stage in target dropdown
+                var ruleTargetStage = document.getElementById('rule-target-stage');
                 if (ruleTargetStage) {
                     ruleTargetStage.value = '';
-                    [].slice.call(ruleTargetStage.options).forEach(function(opt) {
-                        var id = opt.getAttribute('data-stage-id') || opt.value;
-                        var isCurrent = id && currentRulesStageId && parseInt(id, 10) === currentRulesStageId;
-                        opt.disabled = isCurrent;
+                    Array.from(ruleTargetStage.options).forEach(function(opt) {
+                        opt.disabled = opt.value && parseInt(opt.value, 10) === currentStageId;
                     });
                 }
-                updateRuleTriggerVisibility();
+                updateTriggerVisibility();
+                updateActionVisibility();
                 window.dispatchEvent(new CustomEvent('open-modal', { detail: 'stage-rules-modal' }));
             }
+
             document.querySelectorAll('.stage-rules-btn').forEach(function(btn) {
                 btn.addEventListener('click', openStageRulesModal);
             });
-            if (ruleTriggerSelect) ruleTriggerSelect.addEventListener('change', updateRuleTriggerVisibility);
+            if (triggerSelect) triggerSelect.addEventListener('change', updateTriggerVisibility);
+            document.querySelectorAll('input[name="action_type"]').forEach(function(r) {
+                r.addEventListener('change', updateActionVisibility);
+            });
         })();
         document.querySelectorAll('.wa-chat-btn').forEach(function(btn) {
             btn.addEventListener('click', openWaChatModal);
@@ -807,92 +1036,160 @@
         var backResumoBtn = document.getElementById('stage-automation-back-resumo');
         if (backResumoBtn) backResumoBtn.addEventListener('click', showStageAutomationResumo);
 
+        // ---- DISPARO + ABAS ----
         (function() {
-            var formSend = document.getElementById('form-stage-send-message');
-            var contactsUrlInput = document.getElementById('stage-contacts-url');
-            var sendMessageUrlInput = document.getElementById('stage-send-message-url');
-            var sendNowInput = document.getElementById('stage-send-now-value');
-            var previewPanel = document.getElementById('stage-automation-preview');
-            var previewContacts = document.getElementById('stage-preview-contacts');
-            var previewWhen = document.getElementById('stage-preview-when');
-            var previewCount = document.getElementById('stage-preview-count');
-            var previewBack = document.getElementById('stage-preview-back');
-            var previewConfirmBtn = document.getElementById('stage-preview-confirm-btn');
-            var msgSection = formSend && formSend.closest('.border-b');
-            var isDispararMode = false;
+            var csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            var activeStageCancelUrl = null;
+            var progressTimer = null;
 
-            function showPreview(contacts, whenText, confirmLabel) {
-                if (!previewPanel || !previewContacts) return;
-                previewContacts.innerHTML = '';
-                contacts.forEach(function(c) {
-                    var li = document.createElement('li');
-                    li.className = 'flex items-center gap-2';
-                    li.textContent = (c.name || c.phone || __('Contato')) + (c.phone ? ' — ' + c.phone : '');
-                    previewContacts.appendChild(li);
+            // Abas
+            var tabDisparo   = document.getElementById('tab-disparo');
+            var tabAutomacao = document.getElementById('tab-automacao');
+            var panelDisparo = document.getElementById('panel-disparo');
+            var panelAutomacao = document.getElementById('panel-automacao');
+
+            function switchTab(tab) {
+                var isDisparo = tab === 'disparo';
+                tabDisparo.classList.toggle('border-blue-600', isDisparo);
+                tabDisparo.classList.toggle('text-blue-700', isDisparo);
+                tabDisparo.classList.toggle('border-transparent', !isDisparo);
+                tabDisparo.classList.toggle('text-gray-500', !isDisparo);
+                tabAutomacao.classList.toggle('border-blue-600', !isDisparo);
+                tabAutomacao.classList.toggle('text-blue-700', !isDisparo);
+                tabAutomacao.classList.toggle('border-transparent', isDisparo);
+                tabAutomacao.classList.toggle('text-gray-500', isDisparo);
+                panelDisparo.classList.toggle('hidden', !isDisparo);
+                panelAutomacao.classList.toggle('hidden', isDisparo);
+            }
+            if (tabDisparo) tabDisparo.addEventListener('click', function() { switchTab('disparo'); });
+            if (tabAutomacao) tabAutomacao.addEventListener('click', function() { switchTab('automacao'); });
+
+            // Delay slider label
+            var slider = document.getElementById('stage-delay-slider');
+            var delayDisplay = document.getElementById('delay-display');
+            if (slider) slider.addEventListener('input', function() {
+                var s = parseInt(slider.value, 10);
+                var txt = s === 0 ? '0s (imediato)' : s < 60 ? s + 's' : Math.round(s/60*10)/10 + 'min';
+                if (delayDisplay) delayDisplay.textContent = txt;
+            });
+
+            // Agendamento toggle
+            var toggleSchedule = document.getElementById('toggle-schedule');
+            var scheduleWrap   = document.getElementById('schedule-wrap');
+            var toggleIcon     = document.getElementById('toggle-schedule-icon');
+            if (toggleSchedule) toggleSchedule.addEventListener('click', function() {
+                var hidden = scheduleWrap.classList.toggle('hidden');
+                if (toggleIcon) toggleIcon.style.transform = hidden ? '' : 'rotate(180deg)';
+            });
+
+            // Imagem preview
+            var imgInput   = document.getElementById('stage-message-image');
+            var imgPreview = document.getElementById('stage-image-preview');
+            var imgWrap    = document.getElementById('stage-image-preview-wrap');
+            var imgName    = document.getElementById('stage-image-name');
+            var imgRemove  = document.getElementById('stage-image-remove');
+            if (imgInput) imgInput.addEventListener('change', function() {
+                var f = imgInput.files[0];
+                if (!f) return;
+                if (imgName) imgName.textContent = f.name;
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    if (imgPreview) imgPreview.src = e.target.result;
+                    if (imgWrap) imgWrap.classList.remove('hidden');
+                };
+                reader.readAsDataURL(f);
+            });
+            if (imgRemove) imgRemove.addEventListener('click', function() {
+                if (imgInput) imgInput.value = '';
+                if (imgWrap) imgWrap.classList.add('hidden');
+                if (imgName) imgName.textContent = 'Nenhuma selecionada';
+            });
+
+            // Feedback
+            function showFeedback(msg, ok) {
+                var el = document.getElementById('disparo-feedback');
+                if (!el) return;
+                el.textContent = msg;
+                el.className = 'mb-3 text-xs rounded-md px-3 py-2 ' + (ok ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200');
+                el.classList.remove('hidden');
+                setTimeout(function() { el.classList.add('hidden'); }, 5000);
+            }
+
+            // Progress bar
+            function updateProgressBar(data) {
+                var wrap = document.getElementById('disparo-progress-wrap');
+                var bar  = document.getElementById('disparo-progress-bar');
+                var txt  = document.getElementById('disparo-progress-text');
+                if (!wrap) return;
+                if (!data || !data.active) { wrap.classList.add('hidden'); return; }
+                wrap.classList.remove('hidden');
+                var pct = data.percent || 0;
+                if (bar) bar.style.width = pct + '%';
+                var modeLabel = {sequential:'Sequencial', round_robin:'Distribuído', random:'Aleatório'}[data.mode] || '';
+                if (txt) txt.textContent = data.sent + '/' + data.total + ' enviadas · ' + data.failed + ' falhas · ' + modeLabel + (data.delay > 0 ? ' · ' + data.delay + 's intervalo' : '');
+                activeStageCancelUrl = null; // will be set by caller
+            }
+
+            function startPolling(statusUrl, cancelUrl) {
+                activeStageCancelUrl = cancelUrl;
+                clearInterval(progressTimer);
+                progressTimer = setInterval(function() {
+                    fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            updateProgressBar(data);
+                            if (!data.active) clearInterval(progressTimer);
+                            else activeStageCancelUrl = cancelUrl;
+                        })
+                        .catch(function() { clearInterval(progressTimer); });
+                }, 3000);
+            }
+
+            // Cancel button
+            var cancelBtn = document.getElementById('btn-disparo-cancel');
+            if (cancelBtn) cancelBtn.addEventListener('click', function() {
+                if (!activeStageCancelUrl) return;
+                if (!confirm('Cancelar o disparo em andamento?')) return;
+                fetch(activeStageCancelUrl, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf }
+                }).then(function() {
+                    clearInterval(progressTimer);
+                    var wrap = document.getElementById('disparo-progress-wrap');
+                    if (wrap) wrap.classList.add('hidden');
                 });
-                if (previewWhen) previewWhen.textContent = whenText;
-                if (previewCount) previewCount.textContent = contacts.length === 1 ? '1 {{ __("contato") }}' : contacts.length + ' {{ __("contatos") }}';
-                if (previewConfirmBtn) previewConfirmBtn.textContent = confirmLabel;
-                if (msgSection) msgSection.classList.add('hidden');
-                previewPanel.classList.remove('hidden');
-            }
-            function hidePreview() {
-                if (previewPanel) previewPanel.classList.add('hidden');
-                if (msgSection) msgSection.classList.remove('hidden');
-            }
-            function validateMessage() {
-                var text = (document.getElementById('stage-message-text') && document.getElementById('stage-message-text').value || '').trim();
-                var file = document.getElementById('stage-message-image');
-                var hasFile = file && file.files && file.files.length > 0;
-                return text !== '' || hasFile;
-            }
-            function validateSchedule() {
-                var d = document.getElementById('stage-scheduled-date') && document.getElementById('stage-scheduled-date').value;
-                var t = document.getElementById('stage-scheduled-time') && document.getElementById('stage-scheduled-time').value;
-                return d && t;
-            }
-
-            document.getElementById('stage-btn-disparar') && document.getElementById('stage-btn-disparar').addEventListener('click', function() {
-                if (!validateMessage()) { alert('{{ __("Informe o texto da mensagem ou envie uma imagem.") }}'); return; }
-                var url = contactsUrlInput && contactsUrlInput.value;
-                if (!url) return;
-                isDispararMode = true;
-                fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        var contacts = data.contacts || [];
-                        if (contacts.length === 0) { alert('{{ __("Nenhum lead desta coluna tem contato vinculado.") }}'); return; }
-                        showPreview(contacts, '', '{{ __("Confirmar e disparar") }}');
-                    })
-                    .catch(function() { alert('{{ __("Erro ao carregar contatos.") }}'); });
             });
 
-            document.getElementById('stage-btn-agendar') && document.getElementById('stage-btn-agendar').addEventListener('click', function() {
-                if (!validateMessage()) { alert('{{ __("Informe o texto da mensagem ou envie uma imagem.") }}'); return; }
-                if (!validateSchedule()) { alert('{{ __("Informe data e horário para agendar.") }}'); return; }
-                var url = contactsUrlInput && contactsUrlInput.value;
+            // Form submit
+            var formSend = document.getElementById('form-stage-send-message');
+            var sendBtn  = document.getElementById('stage-btn-disparar');
+            if (formSend) formSend.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var url = document.getElementById('stage-send-message-url')?.value;
                 if (!url) return;
-                isDispararMode = false;
-                var d = document.getElementById('stage-scheduled-date').value;
-                var t = document.getElementById('stage-scheduled-time').value;
-                var whenStr = ' {{ __("em") }} ' + d + ' ' + t;
-                fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        var contacts = data.contacts || [];
-                        if (contacts.length === 0) { alert('{{ __("Nenhum lead desta coluna tem contato vinculado.") }}'); return; }
-                        showPreview(contacts, whenStr, '{{ __("Confirmar agendamento") }}');
-                    })
-                    .catch(function() { alert('{{ __("Erro ao carregar contatos.") }}'); });
-            });
-
-            previewBack && previewBack.addEventListener('click', hidePreview);
-
-            previewConfirmBtn && previewConfirmBtn.addEventListener('click', function() {
-                if (!formSend || !sendMessageUrlInput) return;
-                formSend.action = sendMessageUrlInput.value;
-                sendNowInput.value = isDispararMode ? '1' : '0';
-                formSend.submit();
+                var fd = new FormData(formSend);
+                if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Enviando...'; }
+                fetch(url, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                    body: fd
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success) {
+                        showFeedback(data.message || 'Disparo iniciado!', true);
+                        var statusUrl = document.getElementById('stage-disparo-status-url')?.value;
+                        if (statusUrl && data.delay_seconds > 0) {
+                            startPolling(statusUrl, null);
+                        }
+                    } else {
+                        showFeedback(data.error || 'Erro ao disparar.', false);
+                    }
+                })
+                .catch(function() { showFeedback('Erro de rede.', false); })
+                .finally(function() {
+                    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Disparar para esta coluna'; }
+                });
             });
         })();
 

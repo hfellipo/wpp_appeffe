@@ -542,7 +542,7 @@ class EvolutionWebhookProcessor
                 'raw_payload' => $m,
             ]);
 
-            if (! $fromMe && $inReplyToMessageId) {
+            if (! $fromMe) {
                 try {
                     FunnelStageRuleService::applyReplyRules($msg);
                 } catch (\Throwable $e) {
