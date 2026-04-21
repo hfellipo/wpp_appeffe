@@ -46,22 +46,22 @@ class WhatsAppSendService
             $number = str_starts_with($waNumber, '55') ? substr($waNumber, 2) : $waNumber;
         }
 
-        $connectedStates = ['open', 'connected', 'online', 'ready'];
-        $wa = WhatsAppInstance::query()
-            ->where('user_id', $accountId)
-            ->whereIn('status', $connectedStates)
-            ->orderByDesc('updated_at')
-            ->first(['id', 'instance_name']);
+        // Round-robin: escolhe a instância ativa menos recentemente usada
+        $wa = WhatsAppInstance::nextForUser($accountId);
 
+        // Fallback: qualquer instância do usuário (mesmo desconectada)
         if (! $wa) {
             $wa = WhatsAppInstance::query()
                 ->where('user_id', $accountId)
                 ->orderByDesc('updated_at')
-                ->first(['id', 'instance_name']);
+                ->first(['id', 'instance_name', 'last_used_at']);
         }
         if (! $wa) {
             return null;
         }
+
+        // Marca como usada agora para manter o round-robin
+        $wa->markUsed();
 
         $instance = trim((string) $wa->instance_name) ?: preg_replace('/\D/', '', (string) $wa->instance_name);
         if ($instance === '') {

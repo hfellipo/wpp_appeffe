@@ -6,7 +6,13 @@
                 <p class="text-sm text-gray-500 mt-1">Gerencie os números WhatsApp conectados.</p>
             </div>
             <div class="flex items-center gap-3">
-                <a href="{{ route('whatsapp.index') }}" class="btn-secondary">Conectar número</a>
+                <a href="{{ route('whatsapp.index') }}"
+                   class="btn-primary inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 focus:ring-green-500">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    Adicionar instância
+                </a>
                 <a href="{{ route('settings.index') }}" class="btn-secondary">Voltar</a>
             </div>
         </div>
@@ -92,44 +98,60 @@
 
             @if ($instances->isNotEmpty())
             @php
-                $total        = $instances->count();
-                $ativos       = $instances->where('active', true)->count();
-                $desativados  = $instances->where('active', false)->count();
-                $totalMsg     = $instances->sum('msg_count');
-                $totalChats   = $instances->sum('chat_count');
-                $totalContatos= $instances->sum('contact_count');
-                $semVinculo   = $instances->where('in_db', false)->count();
+                $total         = $instances->count();
+                $ativos        = $instances->where('active', true)->count();
+                $desativados   = $instances->where('active', false)->count();
+                $totalMsg      = $instances->sum('msg_count');
+                $totalChats    = $instances->sum('chat_count');
+                $totalContatos = $instances->sum('contact_count');
+                $pctAtivos     = $total > 0 ? round($ativos / $total * 100) : 0;
             @endphp
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <div class="wi-card text-center py-4 px-3">
-                    <div class="text-2xl font-bold text-gray-900">{{ $total }}</div>
-                    <div class="text-xs text-gray-500 mt-0.5">Total</div>
-                </div>
-                <div class="wi-card text-center py-4 px-3">
-                    <div class="flex items-center justify-center gap-1.5">
-                        <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span>
-                        <span class="text-2xl font-bold text-green-700">{{ $ativos }}</span>
+            <div class="wi-card p-4">
+                <div class="flex flex-wrap items-center gap-6">
+
+                    <!-- Barra de saúde do cluster -->
+                    <div class="flex-1 min-w-[200px]">
+                        <div class="flex justify-between text-xs text-gray-500 mb-1">
+                            <span class="font-medium text-gray-700">Saúde do cluster</span>
+                            <span>{{ $ativos }}/{{ $total }} ativas</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="h-2.5 rounded-full transition-all {{ $pctAtivos === 100 ? 'bg-green-500' : ($pctAtivos >= 50 ? 'bg-yellow-400' : 'bg-red-400') }}"
+                                 style="width: {{ $pctAtivos }}%"></div>
+                        </div>
+                        @if ($nextInstanceName)
+                            <p class="text-xs text-gray-500 mt-1.5">
+                                Próximo disparo via
+                                <span class="font-semibold text-gray-700">{{ $nextInstanceName }}</span>
+                                <span class="text-gray-400">(round-robin)</span>
+                            </p>
+                        @elseif ($ativos === 0)
+                            <p class="text-xs text-red-500 mt-1.5">Nenhuma instância ativa — disparos pausados.</p>
+                        @endif
                     </div>
-                    <div class="text-xs text-gray-500 mt-0.5">Ativo{{ $ativos !== 1 ? 's' : '' }}</div>
-                </div>
-                <div class="wi-card text-center py-4 px-3">
-                    <div class="flex items-center justify-center gap-1.5">
-                        <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
-                        <span class="text-2xl font-bold text-red-600">{{ $desativados }}</span>
+
+                    <div class="flex flex-wrap gap-6 text-center shrink-0">
+                        <div>
+                            <div class="text-xl font-bold text-green-700">{{ $ativos }}</div>
+                            <div class="text-xs text-gray-500">Ativas</div>
+                        </div>
+                        <div>
+                            <div class="text-xl font-bold text-red-500">{{ $desativados }}</div>
+                            <div class="text-xs text-gray-500">Desconectadas</div>
+                        </div>
+                        <div>
+                            <div class="text-xl font-bold text-gray-800">{{ number_format($totalChats) }}</div>
+                            <div class="text-xs text-gray-500">Conversas</div>
+                        </div>
+                        <div>
+                            <div class="text-xl font-bold text-gray-800">{{ number_format($totalContatos) }}</div>
+                            <div class="text-xs text-gray-500">Contatos</div>
+                        </div>
+                        <div>
+                            <div class="text-xl font-bold text-gray-800">{{ number_format($totalMsg) }}</div>
+                            <div class="text-xs text-gray-500">Mensagens</div>
+                        </div>
                     </div>
-                    <div class="text-xs text-gray-500 mt-0.5">Desconectado{{ $desativados !== 1 ? 's' : '' }}</div>
-                </div>
-                <div class="wi-card text-center py-4 px-3">
-                    <div class="text-2xl font-bold text-gray-900">{{ number_format($totalChats) }}</div>
-                    <div class="text-xs text-gray-500 mt-0.5">Conversas</div>
-                </div>
-                <div class="wi-card text-center py-4 px-3">
-                    <div class="text-2xl font-bold text-gray-900">{{ number_format($totalContatos) }}</div>
-                    <div class="text-xs text-gray-500 mt-0.5">Contatos</div>
-                </div>
-                <div class="wi-card text-center py-4 px-3">
-                    <div class="text-2xl font-bold text-gray-900">{{ number_format($totalMsg) }}</div>
-                    <div class="text-xs text-gray-500 mt-0.5">Mensagens</div>
                 </div>
             </div>
             @endif
@@ -154,10 +176,11 @@
                 <div class="space-y-4">
                     @foreach ($instances as $inst)
                     @php
-                        $active     = $inst['active'];
-                        $status     = $inst['status'];
-                        $connecting = $status === 'connecting';
-                        $token      = $inst['token'];
+                        $active      = $inst['active'];
+                        $status      = $inst['status'];
+                        $connecting  = $status === 'connecting';
+                        $token       = $inst['token'];
+                        $isNext      = $nextInstanceName && $inst['instance_name'] === $nextInstanceName;
 
                         $badgeClass = match(true) {
                             $active      => 'wi-badge--active',
@@ -203,6 +226,12 @@
                                         <span class="wi-dot {{ $dotClass }}"></span>
                                         {{ $statusLabel }}
                                     </span>
+                                    @if ($isNext)
+                                        <span class="wi-badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe"
+                                              title="Esta instância será usada no próximo disparo">
+                                            ⟳ Próxima na fila
+                                        </span>
+                                    @endif
                                     @if (!$inst['in_db'])
                                         <span class="wi-badge wi-badge--no-db" title="Esta instância está na Evolution mas não tem registro no banco local">
                                             Sem vínculo local

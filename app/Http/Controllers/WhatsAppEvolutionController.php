@@ -572,10 +572,13 @@ class WhatsAppEvolutionController extends Controller
             })
             ->values();
 
+        $nextInstance = WhatsAppInstance::nextForUser($accountId);
+
         return view('settings.whatsapp-instances', [
-            'instances'  => $rows,
-            'configured' => $this->client->isConfigured(),
-            'apiUrl'     => $this->client->baseUrl(),
+            'instances'        => $rows,
+            'configured'       => $this->client->isConfigured(),
+            'apiUrl'           => $this->client->baseUrl(),
+            'nextInstanceName' => $nextInstance?->instance_name,
         ]);
     }
 
