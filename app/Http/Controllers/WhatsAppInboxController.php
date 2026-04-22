@@ -1174,7 +1174,7 @@ class WhatsAppInboxController extends Controller
      * Serve attachment file (image/document) for the authenticated user.
      * Verifies ownership via message -> conversation -> user_id.
      */
-    public function showAttachment(WhatsAppAttachment $attachment): JsonResponse|StreamedResponse|\Illuminate\Http\RedirectResponse
+    public function showAttachment(WhatsAppAttachment $attachment): JsonResponse|StreamedResponse|\Illuminate\Http\RedirectResponse|\Symfony\Component\HttpFoundation\BinaryFileResponse
     {
         $accountId = auth()->user()->accountId();
         $attachment->load('message.conversation');
@@ -1191,9 +1191,7 @@ class WhatsAppInboxController extends Controller
             $mime = $this->attachmentMime($attachment);
             $filename = $this->attachmentDownloadFilename($attachment);
             $disposition = $this->attachmentDisposition($mime, $attachment->type);
-            return $disk->response($attachment->storage_path, $filename, [
-                'Content-Type' => $mime,
-            ], $disposition);
+            return $this->serveAttachmentFile($disk, $attachment->storage_path, $mime, $filename, $disposition, $attachment->type);
         }
 
         if ($attachment->remote_url) {
@@ -1209,14 +1207,39 @@ class WhatsAppInboxController extends Controller
                     $mime = $this->attachmentMime($attachment);
                     $filename = $this->attachmentDownloadFilename($attachment);
                     $disposition = $this->attachmentDisposition($mime, $attachment->type);
-                    return $disk->response($attachment->storage_path, $filename, [
-                        'Content-Type' => $mime,
-                    ], $disposition);
+                    return $this->serveAttachmentFile($disk, $attachment->storage_path, $mime, $filename, $disposition, $attachment->type);
                 }
             }
         }
 
         return $this->attachmentNotFoundResponse();
+    }
+
+    /**
+     * Serve a stored attachment file. For audio/video, uses BinaryFileResponse so browsers
+     * can send Range requests (needed for duration detection and seeking).
+     */
+    private function serveAttachmentFile(
+        \Illuminate\Contracts\Filesystem\Filesystem $disk,
+        string $storagePath,
+        string $mime,
+        string $filename,
+        string $disposition,
+        ?string $attachmentType
+    ): StreamedResponse|\Symfony\Component\HttpFoundation\BinaryFileResponse {
+        $t = strtolower((string) $attachmentType);
+        if ($t === 'audio' || str_starts_with(strtolower($mime), 'audio/')) {
+            // BinaryFileResponse supports HTTP Range — required for audio duration/seek in browsers.
+            $absolutePath = $disk->path($storagePath);
+            $response = response()->file($absolutePath, [
+                'Content-Type'        => $mime,
+                'Content-Disposition' => $disposition . '; filename="' . addslashes($filename) . '"',
+                'Accept-Ranges'       => 'bytes',
+                'Cache-Control'       => 'no-store',
+            ]);
+            return $response;
+        }
+        return $disk->response($storagePath, $filename, ['Content-Type' => $mime], $disposition);
     }
 
     /**

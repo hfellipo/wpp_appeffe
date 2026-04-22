@@ -199,12 +199,23 @@
             }
             .wa-emoji-trigger.wa-attach-trigger { margin-left: 0; }
 
-            /* Audio player */
-            .wa-audio-player { display: flex; align-items: center; gap: 8px; min-width: 200px; max-width: 280px; padding: 6px 4px; }
-            .wa-audio-player audio { flex: 1; height: 32px; min-width: 0; accent-color: #25D366; }
-            .wa-audio-player audio::-webkit-media-controls-panel { background: transparent; }
-            .wa-audio-dur { font-size: 11px; color: #667781; white-space: nowrap; }
-            .message-card.mc-sender .wa-audio-dur { color: rgba(255,255,255,0.8); }
+            /* Custom WhatsApp-style audio player */
+            .wa-audio-player { display: flex; align-items: center; gap: 8px; min-width: 220px; max-width: 300px; padding: 8px 6px; }
+            .wa-play-btn { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.10); transition: background .15s; padding: 0; }
+            .wa-play-btn:hover { background: rgba(0,0,0,0.18); }
+            .message-card.mc-sender .wa-play-btn { background: rgba(255,255,255,0.25); }
+            .message-card.mc-sender .wa-play-btn:hover { background: rgba(255,255,255,0.35); }
+            .wa-play-btn svg { width: 18px; height: 18px; fill: #54656f; }
+            .message-card.mc-sender .wa-play-btn svg { fill: #fff; }
+            .wa-waveform-wrap { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; cursor: pointer; }
+            .wa-waveform { display: flex; align-items: center; gap: 2px; height: 28px; }
+            .wa-bar { border-radius: 2px; flex-shrink: 0; width: 3px; transition: background .1s; }
+            .wa-bar--filled { background: #25D366; }
+            .wa-bar--empty { background: rgba(0,0,0,0.18); }
+            .message-card.mc-sender .wa-bar--filled { background: #fff; }
+            .message-card.mc-sender .wa-bar--empty { background: rgba(255,255,255,0.35); }
+            .wa-audio-time { font-size: 11px; color: #667781; white-space: nowrap; font-variant-numeric: tabular-nums; }
+            .message-card.mc-sender .wa-audio-time { color: rgba(255,255,255,0.8); }
 
             /* Mic recording button & states */
             .wa-mic-btn { background: none; border: none; padding: 4px 8px; cursor: pointer; color: #54656f; display: flex; align-items: center; font-size: 1.1rem; transition: color .15s; }
@@ -776,11 +787,21 @@
                                                 'wa-sender-media': m.direction === 'out' && (m.attachment && (['image','video','document'].includes(m.attachment.type)) || ['image','video','document'].includes(m.message_type)),
                                                 'wa-received-media': m.direction === 'in' && (m.attachment && (['image','video','document'].includes(m.attachment.type)) || ['image','video','document'].includes(m.message_type))
                                             }">
-                                                <!-- Áudio: player nativo -->
+                                                <!-- Áudio: player estilo WhatsApp -->
                                                 <template x-if="m.attachment && m.attachment.type === 'audio' && m.attachment.url">
-                                                    <div class="wa-audio-player">
-                                                        <audio :src="m.attachment.url" controls preload="metadata" style="flex:1;min-width:0;max-width:220px;height:32px;"></audio>
-                                                        <span class="wa-audio-dur" x-show="m.attachment.size" x-text="m.attachment.size ? formatFileSize(m.attachment.size) : ''"></span>
+                                                    <div class="wa-audio-player" x-data="waAudioPlayer({id: m.id, url: m.attachment.url, direction: m.direction})">
+                                                        <button class="wa-play-btn" @click.stop="toggle()" type="button" :aria-label="playing ? 'Pausar' : 'Reproduzir'">
+                                                            <svg x-show="!playing" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                            <svg x-show="playing" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                                                        </button>
+                                                        <div class="wa-waveform-wrap" @click.stop="seek($event)">
+                                                            <div class="wa-waveform">
+                                                                <template x-for="(h, i) in bars" :key="i">
+                                                                    <div class="wa-bar" :class="i / bars.length < prog ? 'wa-bar--filled' : 'wa-bar--empty'" :style="`height:${Math.round(h*24+4)}px`"></div>
+                                                                </template>
+                                                            </div>
+                                                        </div>
+                                                        <span class="wa-audio-time" x-text="fmtTime(playing || currentTime > 0 ? currentTime : duration)"></span>
                                                     </div>
                                                 </template>
                                                 <!-- Áudio sem URL (enviando / indisponível) -->
@@ -1184,6 +1205,82 @@
 
     @push('scripts')
         <script src="{{ asset('js/chatify/font.awesome.min.js') }}"></script>
+        <script>
+        window.waAudioPlayer = function({ id, url, direction }) {
+            return {
+                playing: false,
+                currentTime: 0,
+                duration: 0,
+                prog: 0,
+                bars: [],
+                _audio: null,
+
+                init() {
+                    this.bars = this._genBars(id, 40);
+                    if (!url) return;
+                    const a = new Audio();
+                    this._audio = a;
+                    a.preload = 'metadata';
+                    a.addEventListener('loadedmetadata', () => { this.duration = isFinite(a.duration) ? a.duration : 0; });
+                    a.addEventListener('durationchange', () => { this.duration = isFinite(a.duration) ? a.duration : 0; });
+                    a.addEventListener('timeupdate', () => {
+                        this.currentTime = a.currentTime;
+                        this.prog = this.duration > 0 ? a.currentTime / this.duration : 0;
+                    });
+                    a.addEventListener('ended', () => {
+                        this.playing = false;
+                        this.currentTime = 0;
+                        this.prog = 0;
+                        a.currentTime = 0;
+                    });
+                    a.src = url;
+                },
+
+                toggle() {
+                    if (!this._audio) return;
+                    if (this.playing) {
+                        this._audio.pause();
+                        this.playing = false;
+                    } else {
+                        this._audio.play().then(() => { this.playing = true; }).catch(() => {});
+                    }
+                },
+
+                seek(e) {
+                    if (!this._audio) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    if (this.duration > 0) {
+                        this._audio.currentTime = ratio * this.duration;
+                        this.prog = ratio;
+                    }
+                },
+
+                fmtTime(s) {
+                    if (!s || !isFinite(s) || s < 0) return '0:00';
+                    const m = Math.floor(s / 60);
+                    const sec = Math.floor(s % 60);
+                    return `${m}:${sec.toString().padStart(2, '0')}`;
+                },
+
+                _genBars(seed, count) {
+                    let h = 0;
+                    const str = String(seed || 'x');
+                    for (let i = 0; i < str.length; i++) h = ((h * 31) + str.charCodeAt(i)) >>> 0;
+                    const out = [];
+                    for (let i = 0; i < count; i++) {
+                        h = ((h * 1664525) + 1013904223) >>> 0;
+                        out.push(0.15 + 0.85 * (h / 0xffffffff));
+                    }
+                    return out;
+                },
+
+                destroy() {
+                    if (this._audio) { this._audio.pause(); this._audio.src = ''; this._audio = null; }
+                }
+            };
+        };
+        </script>
     @endpush
 </x-app-layout>
 
