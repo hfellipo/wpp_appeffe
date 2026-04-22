@@ -70,8 +70,35 @@
 
             /* Message media (image / video / document) */
             .wa-message-media { margin-bottom: 4px; }
-            .wa-message-media__link { display: block; border-radius: 8px; overflow: hidden; max-width: 280px; }
-            .wa-message-media__img-wrap { position: relative; min-height: 120px; display: block; }
+            .wa-message-media__link { display: block; }
+            .wa-message-media__img-wrap { position: relative; min-height: 120px; display: block; border-radius: 8px; overflow: hidden; max-width: 280px; }
+            /* Image/video download overlay */
+            .wa-message-media__actions {
+                position: absolute;
+                bottom: 6px;
+                right: 6px;
+                display: flex;
+                gap: 4px;
+                opacity: 0;
+                transition: opacity 0.15s;
+                z-index: 2;
+                pointer-events: none;
+            }
+            .wa-message-media--img:hover .wa-message-media__actions { opacity: 1; pointer-events: auto; }
+            .wa-message-media__action-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 30px;
+                height: 30px;
+                background: rgba(0,0,0,0.55);
+                border-radius: 50%;
+                color: #fff;
+                font-size: 0.8rem;
+                text-decoration: none;
+                transition: background 0.15s;
+            }
+            .wa-message-media__action-btn:hover { background: rgba(0,0,0,0.8); color: #fff; }
             /* Overlay "Carregando imagem..." sobre o preview até a imagem carregar */
             .wa-message-media__loading {
                 position: absolute;
@@ -883,19 +910,26 @@
                                                         <span style="font-size:12px;color:#667781;" x-text="m.status === 'sending' ? 'Enviando áudio...' : 'Áudio'"></span>
                                                     </div>
                                                 </template>
-                                                <!-- Imagem: preview + feedback "Carregando..." até abrir; fallback se falhar. -->
+                                                <!-- Imagem: preview + download overlay -->
                                                 <template x-if="m.attachment && m.attachment.type === 'image' && m.attachment.url && !imageLoadFail[m.id]">
                                                     <div class="wa-message-media wa-message-media--img">
-                                                        <a :href="m.attachment.url" target="_blank" rel="noopener" class="wa-message-media__link wa-message-media__img-wrap" :title="'Clique para abrir'">
-                                                            <div class="wa-message-media__loading" x-show="imageLoading[m.id] !== false">
-                                                                <span class="wa-message-media__loading-spinner"></span>
-                                                                <span class="wa-message-media__loading-text">Carregando imagem...</span>
+                                                        <div class="wa-message-media__img-wrap">
+                                                            <a :href="m.attachment.url" target="_blank" rel="noopener" class="wa-message-media__link" :title="'Clique para abrir'">
+                                                                <div class="wa-message-media__loading" x-show="imageLoading[m.id] !== false">
+                                                                    <span class="wa-message-media__loading-spinner"></span>
+                                                                    <span class="wa-message-media__loading-text">Carregando imagem...</span>
+                                                                </div>
+                                                                <img class="wa-message-media__img" :src="m.attachment.url" :alt="m.attachment.caption_preview || 'Imagem'" loading="lazy"
+                                                                    @@load="setImageLoaded(m.id)"
+                                                                    @@error="setImageLoadFail(m.id)"
+                                                                />
+                                                            </a>
+                                                            <div class="wa-message-media__actions">
+                                                                <a :href="m.attachment.url + '?download=1'" download class="wa-message-media__action-btn" title="Baixar imagem" @click.stop>
+                                                                    <i class="fas fa-download"></i>
+                                                                </a>
                                                             </div>
-                                                            <img class="wa-message-media__img" :src="m.attachment.url" :alt="m.attachment.caption_preview || 'Imagem'" loading="lazy"
-                                                                @@load="setImageLoaded(m.id)"
-                                                                @@error="setImageLoadFail(m.id)"
-                                                            />
-                                                        </a>
+                                                        </div>
                                                         <p x-show="m.body && !['[Imagem]','[Vídeo]','[Documento]','[image]','[video]','[document]'].includes(m.body)" class="wa-message-media__caption" x-text="m.body"></p>
                                                     </div>
                                                 </template>

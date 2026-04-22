@@ -1296,33 +1296,37 @@ class WhatsAppInboxController extends Controller
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
-        if ($attachment->storage_path && $attachment->storage_disk) {
-            $disk = Storage::disk($attachment->storage_disk);
-            if (!$disk->exists($attachment->storage_path)) {
-                return $this->attachmentNotFoundResponse();
+        $serveStored = function (WhatsAppAttachment $att) {
+            $disk = Storage::disk($att->storage_disk);
+            if (!$disk->exists($att->storage_path)) {
+                return null;
             }
-            $mime = $this->attachmentMime($attachment);
-            $filename = $this->attachmentDownloadFilename($attachment);
-            $disposition = $this->attachmentDisposition($mime, $attachment->type);
-            return $this->serveAttachmentFile($disk, $attachment->storage_path, $mime, $filename, $disposition, $attachment->type);
+            $mime        = $this->attachmentMime($att);
+            $filename    = $this->attachmentDownloadFilename($att);
+            $forceDownload = (bool) request()->query('download', false);
+            $disposition = $forceDownload ? 'attachment' : $this->attachmentDisposition($mime, $att->type);
+            return $this->serveAttachmentFile($disk, $att->storage_path, $mime, $filename, $disposition, $att->type);
+        };
+
+        // 1. Already on local disk → serve immediately
+        if ($attachment->storage_path && $attachment->storage_disk) {
+            $r = $serveStored($attachment);
+            if ($r) return $r;
+            return $this->attachmentNotFoundResponse();
         }
 
-        if ($attachment->remote_url) {
-            return redirect()->away($attachment->remote_url);
-        }
-
-        // Imagem/vídeo/documento recebido sem URL: buscar na Evolution sob demanda (preview + clique para abrir)
+        // 2. Try fetching from Evolution API (downloads and stores to disk for all future requests)
         if ($this->resolveAttachmentFromEvolution($attachment)) {
             $attachment->refresh();
             if ($attachment->storage_path && $attachment->storage_disk) {
-                $disk = Storage::disk($attachment->storage_disk);
-                if ($disk->exists($attachment->storage_path)) {
-                    $mime = $this->attachmentMime($attachment);
-                    $filename = $this->attachmentDownloadFilename($attachment);
-                    $disposition = $this->attachmentDisposition($mime, $attachment->type);
-                    return $this->serveAttachmentFile($disk, $attachment->storage_path, $mime, $filename, $disposition, $attachment->type);
-                }
+                $r = $serveStored($attachment);
+                if ($r) return $r;
             }
+        }
+
+        // 3. Last resort: redirect to raw CDN URL (may expire, but better than 404)
+        if ($attachment->remote_url) {
+            return redirect()->away($attachment->remote_url);
         }
 
         return $this->attachmentNotFoundResponse();
@@ -2244,13 +2248,8 @@ class WhatsAppInboxController extends Controller
      */
     private function attachmentUrl(WhatsAppAttachment $a): ?string
     {
-        if ($a->storage_path && $a->storage_disk) {
-            return route('whatsapp.inbox.attachments.show', ['attachment' => $a->public_id]);
-        }
-        if ($a->remote_url) {
-            return $a->remote_url;
-        }
-        // Anexo sem arquivo ainda (ex.: imagem recebida): retorna nossa rota para resolver sob demanda
+        // Always proxy through our server — WhatsApp CDN URLs are signed/private,
+        // the browser cannot load them directly. Our endpoint handles download on-demand.
         return route('whatsapp.inbox.attachments.show', ['attachment' => $a->public_id]);
     }
 
