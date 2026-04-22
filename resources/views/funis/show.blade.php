@@ -233,8 +233,8 @@
                                         })->values();
                                     @endphp
                                     <button type="button"
-                                            class="stage-automation-btn p-1 rounded {{ $stage->automation_id ? 'text-blue-600 hover:bg-blue-50' : 'text-red-500 hover:bg-red-50' }}"
-                                            title="{{ $stage->automation_id ? __('Automação configurada') : __('Sem automação') }}"
+                                            class="stage-automation-btn p-1 rounded {{ $stage->automation_id ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:bg-gray-100' }}"
+                                            title="{{ $stage->automation_id ? __('Automação configurada') : __('Disparo / Eventos / Automação') }}"
                                             data-stage-id="{{ $stage->id }}"
                                             data-stage-name="{{ e($stage->name) }}"
                                             data-automation-id="{{ $stage->automation_id ?? '' }}"
@@ -250,15 +250,6 @@
                                             data-rules-store-url="{{ route('funis.stages.rules.store', [$funnel, $stage]) }}"
                                             data-rules="{{ json_encode($stageRulesData) }}">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                    </button>
-                                    <button type="button"
-                                            class="stage-rules-btn p-1 rounded {{ $stage->stageRules->isEmpty() ? 'text-gray-400 hover:bg-gray-100' : 'text-violet-600 hover:bg-violet-50' }}"
-                                            title="{{ __('Regras de automação') }}"
-                                            data-stage-id="{{ $stage->id }}"
-                                            data-stage-name="{{ e($stage->name) }}"
-                                            data-store-url="{{ route('funis.stages.rules.store', [$funnel, $stage]) }}"
-                                            data-rules="{{ json_encode($stageRulesData) }}">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
                                     </button>
                                     </div>
                                 </div>
@@ -410,116 +401,6 @@
                     <button type="button" id="wa-chat-send-btn" class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 shrink-0">{{ __('Enviar') }}</button>
                 </div>
             </div>
-        </div>
-    </x-modal>
-
-    {{-- Modal Regras: mover etapa automaticamente --}}
-    {{-- ===== Modal: Regras de automação da etapa ===== --}}
-    <x-modal name="stage-rules-modal" :show="false" maxWidth="lg">
-        <div class="p-6">
-            <h3 class="text-sm font-semibold text-gray-800 mb-0.5" id="stage-rules-modal-title">Regras de automação</h3>
-            <p class="text-xs text-gray-500 mb-4">Defina o que acontece quando um evento ocorre nesta coluna.</p>
-
-            {{-- Lista de regras existentes --}}
-            <div id="stage-rules-list" class="mb-4 space-y-2 max-h-48 overflow-y-auto"></div>
-
-            {{-- Formulário nova regra --}}
-            <form id="form-stage-rule" method="POST" action="">
-                @csrf
-                <div class="space-y-3">
-
-                    {{-- QUANDO --}}
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Quando ocorrer</label>
-                        <select id="rule-trigger-select" name="trigger_type"
-                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
-                            @foreach(\App\Models\FunnelStageRule::triggerTypes() as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    {{-- Extras por tipo de trigger --}}
-                    <div id="rule-status-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">Status da mensagem</label>
-                        <select name="status" id="rule-status-select"
-                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
-                            <option value="">— Selecione —</option>
-                            @foreach(\App\Models\FunnelStageRule::messageStatusOptions() as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div id="rule-keyword-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">Palavra-chave (contém)</label>
-                        <input type="text" name="keyword" id="rule-keyword"
-                               placeholder='Ex: "sim", "quero", "confirmar"'
-                               class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
-                    </div>
-                    <div id="rule-tag-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">Tag</label>
-                        <select name="tag_id" id="rule-tag-id"
-                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
-                            <option value="">— Selecione —</option>
-                            @foreach($tags as $t)
-                                <option value="{{ $t->id }}">{{ $t->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div id="rule-list-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">Lista</label>
-                        <select name="lista_id" id="rule-lista-id"
-                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
-                            <option value="">— Selecione —</option>
-                            @foreach($listas as $l)
-                                <option value="{{ $l->id }}">{{ $l->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    {{-- ENTÃO --}}
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Então</label>
-                        <div class="grid grid-cols-3 gap-2" id="rule-action-btns">
-                            @foreach(\App\Models\FunnelStageRule::actionTypes() as $val => $lbl)
-                                <label class="cursor-pointer">
-                                    <input type="radio" name="action_type" value="{{ $val }}"
-                                           class="peer sr-only" {{ $val === 'move' ? 'checked' : '' }}>
-                                    <span class="block text-center text-xs py-1.5 px-2 border border-gray-200 rounded-md
-                                                 peer-checked:border-violet-500 peer-checked:bg-violet-50 peer-checked:text-violet-700
-                                                 hover:bg-gray-50 transition-colors">
-                                        {{ $lbl }}
-                                    </span>
-                                </label>
-                            @endforeach
-                        </div>
-                    </div>
-
-                    <div id="rule-target-stage-wrap">
-                        <label class="block text-xs text-gray-500 mb-0.5">Mover para a coluna</label>
-                        <select name="target_stage_id" id="rule-target-stage"
-                                class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30">
-                            <option value="">— Selecione —</option>
-                            @foreach($funnel->stages as $s)
-                                <option value="{{ $s->id }}">{{ $s->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div id="rule-action-message-wrap" class="hidden">
-                        <label class="block text-xs text-gray-500 mb-0.5">Mensagem a enviar automaticamente</label>
-                        <textarea name="action_message" id="rule-action-message" rows="3"
-                                  placeholder="Mensagem que será enviada ao contato quando a regra disparar..."
-                                  class="block w-full text-sm rounded-md border-gray-200 focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30"></textarea>
-                    </div>
-
-                </div>
-
-                <button type="submit"
-                        class="mt-4 w-full py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700">
-                    Adicionar regra
-                </button>
-            </form>
         </div>
     </x-modal>
 
@@ -1066,84 +947,6 @@
         document.querySelectorAll('.stage-automation-btn').forEach(function(btn) {
             btn.addEventListener('click', openStageAutomationModal);
         });
-        // ---- REGRAS DE ETAPA ----
-        (function() {
-            var ruleModalTitle = document.getElementById('stage-rules-modal-title');
-            var ruleList       = document.getElementById('stage-rules-list');
-            var ruleForm       = document.getElementById('form-stage-rule');
-            var triggerSelect  = document.getElementById('rule-trigger-select');
-            var currentStageId = null;
-
-            function updateTriggerVisibility() {
-                var v = triggerSelect ? triggerSelect.value : '';
-                document.getElementById('rule-status-wrap').classList.toggle('hidden',  v !== 'message_status');
-                document.getElementById('rule-keyword-wrap').classList.toggle('hidden', v !== 'specific_reply');
-                document.getElementById('rule-tag-wrap').classList.toggle('hidden',     v !== 'tag_added');
-                document.getElementById('rule-list-wrap').classList.toggle('hidden',    v !== 'list_added');
-            }
-
-            function updateActionVisibility() {
-                var v = (document.querySelector('input[name="action_type"]:checked') || {}).value || 'move';
-                var needTarget  = (v === 'move' || v === 'move_and_send');
-                var needMessage = (v === 'send' || v === 'move_and_send');
-                document.getElementById('rule-target-stage-wrap').classList.toggle('hidden',   !needTarget);
-                document.getElementById('rule-action-message-wrap').classList.toggle('hidden', !needMessage);
-            }
-
-            function renderRules(rules) {
-                if (!ruleList) return;
-                if (!rules || rules.length === 0) {
-                    ruleList.innerHTML = '<p class="text-xs text-gray-400 italic">Nenhuma regra configurada.</p>';
-                    return;
-                }
-                ruleList.innerHTML = rules.map(function(r) {
-                    var extra   = r.trigger_extra ? ' <span class="text-gray-400">(' + r.trigger_extra + ')</span>' : '';
-                    var keyword = r.keyword ? ' <span class="text-violet-600 font-medium">"' + r.keyword + '"</span>' : '';
-                    var action  = r.action_type === 'move' ? '→ ' + (r.target_stage_name || '?') :
-                                  r.action_type === 'send' ? '✉ mensagem automática' :
-                                  '→ ' + (r.target_stage_name || '?') + ' + ✉';
-                    return '<div class="flex items-start justify-between gap-2 py-2 px-3 bg-violet-50 border border-violet-100 rounded-lg text-xs">'
-                         + '<div><span class="font-medium text-violet-800">' + (r.trigger_label || '') + '</span>'
-                         + extra + keyword
-                         + '<span class="ml-1 text-gray-600">' + action + '</span></div>'
-                         + '<form method="POST" action="' + (r.destroy_url || '') + '" class="inline shrink-0" onsubmit="return confirm(\'Remover esta regra?\');">'
-                         + '<input type="hidden" name="_token" value="{{ csrf_token() }}">'
-                         + '<input type="hidden" name="_method" value="DELETE">'
-                         + '<button type="submit" class="text-red-400 hover:text-red-700 text-base leading-none">×</button>'
-                         + '</form></div>';
-                }).join('');
-            }
-
-            function openStageRulesModal(btn) {
-                var el = btn.target && btn.target.closest ? btn.target.closest('.stage-rules-btn') : btn;
-                if (!el || !el.dataset.storeUrl) return;
-                currentStageId = parseInt(el.dataset.stageId, 10) || null;
-                if (ruleModalTitle) ruleModalTitle.textContent = 'Regras: ' + (el.dataset.stageName || '');
-                if (ruleForm) ruleForm.action = el.dataset.storeUrl;
-                var rules = [];
-                try { rules = JSON.parse(el.dataset.rules || '[]'); } catch(e) {}
-                renderRules(rules);
-                // Disable current stage in target dropdown
-                var ruleTargetStage = document.getElementById('rule-target-stage');
-                if (ruleTargetStage) {
-                    ruleTargetStage.value = '';
-                    Array.from(ruleTargetStage.options).forEach(function(opt) {
-                        opt.disabled = opt.value && parseInt(opt.value, 10) === currentStageId;
-                    });
-                }
-                updateTriggerVisibility();
-                updateActionVisibility();
-                window.dispatchEvent(new CustomEvent('open-modal', { detail: 'stage-rules-modal' }));
-            }
-
-            document.querySelectorAll('.stage-rules-btn').forEach(function(btn) {
-                btn.addEventListener('click', openStageRulesModal);
-            });
-            if (triggerSelect) triggerSelect.addEventListener('change', updateTriggerVisibility);
-            document.querySelectorAll('input[name="action_type"]').forEach(function(r) {
-                r.addEventListener('change', updateActionVisibility);
-            });
-        })();
         document.querySelectorAll('.wa-chat-btn').forEach(function(btn) {
             btn.addEventListener('click', openWaChatModal);
         });
