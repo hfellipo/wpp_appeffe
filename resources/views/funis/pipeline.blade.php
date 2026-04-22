@@ -590,26 +590,25 @@ function pipelineStage(opts) {
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             try {
                 const res = await fetch(rule.destroy_url, {
-                    method: 'POST',
+                    method: 'DELETE',
                     headers: {
                         'X-CSRF-TOKEN': csrf,
-                        'Content-Type': 'application/x-www-form-urlencoded',
                         'Accept': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: '_method=DELETE&_token=' + encodeURIComponent(csrf)
+                    }
                 });
                 if (res.ok) {
                     this.rules = this.rules.filter(r => r.id !== rule.id);
+                    this.ruleFeedback = '✅ Evento removido.';
+                    this.ruleFeedbackOk = true;
+                    setTimeout(() => { if (this.ruleFeedback.startsWith('✅')) this.ruleFeedback = ''; }, 2500);
                 } else {
                     let errMsg = 'HTTP ' + res.status;
                     try { const d = await res.json(); errMsg = d.message || d.error || errMsg; } catch(_) {}
-                    console.error('[deleteRule]', res.status, errMsg, rule.destroy_url);
                     this.ruleFeedback = '❌ ' + errMsg;
                     this.ruleFeedbackOk = false;
                 }
             } catch(e) {
-                console.error('[deleteRule] network error', e);
                 this.ruleFeedback = '❌ Erro de conexão.';
                 this.ruleFeedbackOk = false;
             }

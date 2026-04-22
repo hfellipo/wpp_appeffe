@@ -50,50 +50,64 @@ class FunnelStageRuleService
     }
 
     /**
-     * When an incoming message is a quoted reply to a funnel stage message, apply "whatsapp_replied" rules.
-     * Also checks "specific_reply" rules against message text.
+     * When an incoming message arrives, apply "whatsapp_replied" rules (any reply after a funnel
+     * stage message) and "specific_reply" rules (keyword match).
+     *
+     * "whatsapp_replied" fires whenever there is a preceding outgoing funnel_stage message in
+     * the same conversation — not just quoted/cited replies — because most users just type a
+     * new message without quoting.
+     *
+     * Pass $contactId and $accountId directly when calling from the webhook processor to avoid
+     * reading from DB a conversation that hasn't been saved yet.
      */
-    public static function applyReplyRules(WhatsAppMessage $incomingMessage): void
-    {
-        $conversationContactId = null;
-        $conv = $incomingMessage->conversation ?? $incomingMessage->conversation()->first(['contact_id', 'user_id']);
-        if ($conv) {
-            $conversationContactId = $conv->contact_id;
+    public static function applyReplyRules(
+        WhatsAppMessage $incomingMessage,
+        ?int $contactId = null,
+        ?int $accountId = null,
+    ): void {
+        $conv = null;
+        if ($contactId === null || $accountId === null) {
+            $conv = $incomingMessage->conversation
+                ?? $incomingMessage->conversation()->first(['id', 'contact_id', 'user_id']);
+            $contactId  ??= $conv?->contact_id;
+            $accountId  ??= $conv?->user_id;
         }
+        $conversationContactId = $contactId;
 
-        // --- whatsapp_replied (quoted reply to a funnel message) ---
-        if ($incomingMessage->in_reply_to_message_id) {
-            $quoted = WhatsAppMessage::query()
-                ->with('conversation')
-                ->find($incomingMessage->in_reply_to_message_id);
+        // --- whatsapp_replied: any incoming message when the last funnel outgoing msg exists ---
+        if ($conversationContactId && $incomingMessage->conversation_id) {
+            $lastFunnelMsg = WhatsAppMessage::query()
+                ->where('conversation_id', $incomingMessage->conversation_id)
+                ->where('direction', 'out')
+                ->where('source_type', 'funnel_stage')
+                ->whereNotNull('source_id')
+                ->orderByDesc('id')
+                ->first(['id', 'source_id', 'conversation_id']);
 
-            if ($quoted && $quoted->direction === 'out'
-                && $quoted->source_type === 'funnel_stage' && $quoted->source_id) {
-
-                $stage = FunnelStage::query()->find($quoted->source_id);
+            if ($lastFunnelMsg && $lastFunnelMsg->source_id) {
+                $stage = FunnelStage::query()->find($lastFunnelMsg->source_id);
                 if ($stage) {
-                    $contactId = static::resolveContactId($quoted) ?? $conversationContactId;
-                    if ($contactId) {
-                        $rules = FunnelStageRule::query()
-                            ->where('funnel_stage_id', $stage->id)
-                            ->where('trigger_type', 'whatsapp_replied')
-                            ->with('targetStage')
-                            ->get();
+                    $rules = FunnelStageRule::query()
+                        ->where('funnel_stage_id', $stage->id)
+                        ->where('trigger_type', 'whatsapp_replied')
+                        ->with('targetStage')
+                        ->get();
 
+                    if ($rules->isNotEmpty()) {
                         $leads = FunnelLead::query()
                             ->where('funnel_stage_id', $stage->id)
-                            ->where('contact_id', $contactId)
+                            ->where('contact_id', $conversationContactId)
                             ->get();
 
                         foreach ($leads as $lead) {
                             foreach ($rules as $rule) {
-                                static::executeRuleAction($rule, $lead, $stage, $contactId, $conv->user_id ?? null);
+                                static::executeRuleAction($rule, $lead, $stage, $conversationContactId, $accountId);
                                 break;
                             }
                         }
 
-                        // Also mark original message as "responded"
-                        self::applyMessageStatusRules($quoted, 'responded');
+                        // Mark the funnel message as "responded"
+                        self::applyMessageStatusRules($lastFunnelMsg, 'responded');
                     }
                 }
             }

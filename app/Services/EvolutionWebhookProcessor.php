@@ -568,7 +568,9 @@ class EvolutionWebhookProcessor
 
             if (! $fromMe) {
                 try {
-                    FunnelStageRuleService::applyReplyRules($msg);
+                    // Pass contact_id and user_id directly — $conversation->save() happens after this
+                    // call, so lazy-loading the conversation from DB would see contact_id as NULL.
+                    FunnelStageRuleService::applyReplyRules($msg, $conversation->contact_id, $accountId);
                 } catch (\Throwable $e) {
                     Log::channel('single')->warning('EvolutionWebhookProcessor: FunnelStageRuleService::applyReplyRules failed', [
                         'message' => $e->getMessage(),
