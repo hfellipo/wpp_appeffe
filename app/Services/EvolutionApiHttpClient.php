@@ -133,6 +133,24 @@ class EvolutionApiHttpClient
     }
 
     /**
+     * Send audio as a WhatsApp voice note (PTT) via Evolution API.
+     * Evolution handles OGG/Opus encoding when encoding=true.
+     * POST /message/sendWhatsAppAudio/{instance}
+     * Body: { number, audio (base64), encoding (bool) }
+     *
+     * @param  array{number: string, audio: string, encoding: bool}  $payload
+     * @return array{status:int, json:array|null, text:string, headers:array}
+     */
+    public function sendWhatsAppAudio(string $instance, array $payload): array
+    {
+        $instance = trim($instance);
+        if ($instance === '') {
+            return ['status' => 0, 'json' => null, 'text' => 'Empty instance', 'headers' => []];
+        }
+        return $this->post("/message/sendWhatsAppAudio/{$instance}", $payload);
+    }
+
+    /**
      * Fetch all groups from the WhatsApp instance (Evolution API).
      * GET /group/fetchAllGroups/{instance}?getParticipants=true
      * Use getParticipants=true to get owner info for "groups I created".

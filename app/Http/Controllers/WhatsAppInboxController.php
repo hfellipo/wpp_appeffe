@@ -1254,7 +1254,10 @@ class WhatsAppInboxController extends Controller
     {
         $m = strtolower($mime);
         $t = strtolower((string) $attachmentType);
-        if (str_starts_with($m, 'image/') || str_starts_with($m, 'video/') || $t === 'image' || $t === 'video') {
+        if (
+            str_starts_with($m, 'image/') || str_starts_with($m, 'video/') || str_starts_with($m, 'audio/') ||
+            $t === 'image' || $t === 'video' || $t === 'audio'
+        ) {
             return 'inline';
         }
         if (str_contains($m, 'pdf')) {
@@ -1663,25 +1666,33 @@ class WhatsAppInboxController extends Controller
             }
 
             $contents = $disk->get($storedPath);
-            $base64 = base64_encode($contents);
-            // Evolution API expects raw base64 string, not data URL
-            $mediaValue = $base64;
+            $base64   = base64_encode($contents);
 
-            $payload = [
-                'number' => $numberForPayload,
-                'mediatype' => $mediatype,
-                'mimetype' => $mime,
-                'media' => $mediaValue,
-                'fileName' => $originalName,
-            ];
-            if ($caption !== '') {
-                $payload['caption'] = mb_substr($caption, 0, 1024);
+            // Audio: use dedicated sendWhatsAppAudio endpoint so Evolution
+            // converts to OGG/Opus PTT — avoids webm being treated as video.
+            if ($mediatype === 'audio') {
+                $audioPayload = [
+                    'number'   => $numberForPayload,
+                    'audio'    => $base64,
+                    'encoding' => true,
+                ];
+                $resp = $this->client->sendWhatsAppAudio($instanceForApi, $audioPayload);
+            } else {
+                $payload = [
+                    'number'    => $numberForPayload,
+                    'mediatype' => $mediatype,
+                    'mimetype'  => $mime,
+                    'media'     => $base64,
+                    'fileName'  => $originalName,
+                ];
+                if ($caption !== '') {
+                    $payload['caption'] = mb_substr($caption, 0, 1024);
+                }
+                $resp = $this->client->sendMedia($instanceForApi, $payload);
             }
 
-            $resp = $this->client->sendMedia($instanceForApi, $payload);
-
             if ($resp['status'] < 200 || $resp['status'] >= 300) {
-                Log::channel('single')->warning('Evolution sendMedia falhou', [
+                Log::channel('single')->warning('Evolution send' . ($mediatype === 'audio' ? 'WhatsAppAudio' : 'Media') . ' falhou', [
                     'conversation_id' => $conversation->public_id,
                     'http_status' => $resp['status'],
                     'response' => $resp['json'] ?? $resp['text'],
@@ -2044,6 +2055,17 @@ class WhatsAppInboxController extends Controller
         }
         if (str_starts_with($m, 'video/')) {
             return str_contains($m, 'mp4') ? 'mp4' : (str_contains($m, 'webm') ? 'webm' : 'mp4');
+        }
+        if (str_starts_with($m, 'audio/')) {
+            return match (true) {
+                str_contains($m, 'ogg')  => 'ogg',
+                str_contains($m, 'mpeg') => 'mp3',
+                str_contains($m, 'mp4')  => 'mp4',
+                str_contains($m, 'webm') => 'webm',
+                str_contains($m, 'wav')  => 'wav',
+                str_contains($m, 'aac')  => 'aac',
+                default => 'ogg',
+            };
         }
         return match (true) {
             str_contains($m, 'pdf') => 'pdf',

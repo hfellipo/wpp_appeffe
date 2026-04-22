@@ -1042,9 +1042,14 @@ window.waInboxChatify = function waInboxChatify() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 this._audioChunks = [];
-                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? 'audio/webm;codecs=opus'
-                    : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+                // Prefer mp4/aac (unambiguously audio on all platforms), fallback to ogg/webm
+                const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
+                    ? 'audio/mp4'
+                    : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+                        ? 'audio/ogg;codecs=opus'
+                        : MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                            ? 'audio/webm;codecs=opus'
+                            : 'audio/webm';
                 this._mediaRecorder = new MediaRecorder(stream, { mimeType });
                 this._mediaRecorder.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) this._audioChunks.push(e.data);
@@ -1052,7 +1057,8 @@ window.waInboxChatify = function waInboxChatify() {
                 this._mediaRecorder.onstop = () => {
                     stream.getTracks().forEach(t => t.stop());
                     const blob = new Blob(this._audioChunks, { type: mimeType });
-                    const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+                    const ext = mimeType.includes('mp4') ? 'm4a'
+                              : mimeType.includes('ogg') ? 'ogg' : 'webm';
                     const file = new File([blob], `audio_${Date.now()}.${ext}`, { type: mimeType });
                     this.sendMediaFile(file);
                 };
