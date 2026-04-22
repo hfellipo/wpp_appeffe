@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Contact;
 use App\Models\WhatsAppAttachment;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppConversation;
@@ -212,6 +213,18 @@ class EvolutionWebhookProcessor
                 ],
                 $attrs
             );
+
+            // Mirror to the canonical contacts table so the number is always searchable.
+            $contact = $this->ensureContactRecord($accountId, $number, $syncName);
+            if ($contact) {
+                // Link any existing conversation that doesn't have a contact_id yet.
+                WhatsAppConversation::query()
+                    ->where('user_id', $accountId)
+                    ->where('instance_name', $wa->instance_name)
+                    ->where('contact_number', $number)
+                    ->whereNull('contact_id')
+                    ->update(['contact_id' => $contact->id]);
+            }
         }
     }
 
@@ -469,6 +482,17 @@ class EvolutionWebhookProcessor
                 ]);
             }
 
+            // For direct conversations: ensure a Contact record exists and link it.
+            if ($kind === 'direct' && empty($conversation->contact_id)) {
+                $convNumber = $this->normalizeNumber($peerJidCanonical) ?: $this->normalizeNumber($remoteJid);
+                if ($convNumber !== '') {
+                    $contact = $this->ensureContactRecord($accountId, $convNumber, $contactDisplayName);
+                    if ($contact) {
+                        $conversation->contact_id = $contact->id;
+                    }
+                }
+            }
+
             // Guardar nome ao carregar (direct): ao enviar nossa mensagem sempre restaurar este valor antes de save e no evento (evita piscar nome errado).
             $contactNameAtLoad = $kind === 'direct' ? (string) ($conversation->contact_name ?? '') : '';
 
@@ -657,6 +681,14 @@ class EvolutionWebhookProcessor
                         ],
                         $attrs
                     );
+
+                    // Ensure contact record and keep conversation linked.
+                    if (empty($conversation->contact_id)) {
+                        $contact = $this->ensureContactRecord($accountId, $num, $contactDisplayName);
+                        if ($contact) {
+                            $conversation->contact_id = $contact->id;
+                        }
+                    }
                 }
             }
         }
@@ -899,6 +931,64 @@ class EvolutionWebhookProcessor
         if (str_contains($t, 'conversation') || str_contains($t, 'text')) return 'text';
         if (str_contains($t, 'sticker')) return 'sticker';
         return 'unknown';
+    }
+
+    /**
+     * Ensures a Contact record exists for the given WhatsApp number.
+     * - Strips Brazil +55 prefix so local numbers are stored consistently.
+     * - Uses Contact::normalizePhoneForStorage() for canonical format.
+     * - Restores soft-deleted contacts instead of creating duplicates.
+     * - Never overwrites a name already set by the user.
+     * Returns the Contact, or null if the number is invalid.
+     */
+    private function ensureContactRecord(int $accountId, string $waNumber, string $displayName = ''): ?Contact
+    {
+        // Strip Brazil country code for local-format storage.
+        $local = $waNumber;
+        if (strlen($local) >= 12 && str_starts_with($local, '55')) {
+            $candidate = substr($local, 2);
+            if (strlen($candidate) === 10 || strlen($candidate) === 11) {
+                $local = $candidate;
+            }
+        }
+        $normalized = Contact::normalizePhoneForStorage($local);
+        if (!$normalized || preg_replace('/\D/', '', $normalized) === '') {
+            return null;
+        }
+
+        $name = $displayName !== '' ? $displayName : ('WhatsApp ' . substr($waNumber, -8));
+
+        // Include soft-deleted to avoid unique constraint violations.
+        $contact = Contact::withTrashed()
+            ->where('user_id', $accountId)
+            ->where('phone', $normalized)
+            ->first();
+
+        if (!$contact) {
+            try {
+                $contact = Contact::create(['user_id' => $accountId, 'phone' => $normalized, 'name' => $name]);
+            } catch (\Throwable) {
+                // Race condition: another request created it; re-fetch.
+                $contact = Contact::withTrashed()
+                    ->where('user_id', $accountId)
+                    ->where('phone', $normalized)
+                    ->first();
+            }
+        } elseif ($contact->trashed()) {
+            $contact->restore();
+        }
+
+        if (!$contact) {
+            return null;
+        }
+
+        // Fill name only when still empty (never overwrite user's custom name).
+        if (($contact->name === null || trim($contact->name) === '') && $name !== '') {
+            $contact->name = $name;
+            $contact->saveQuietly();
+        }
+
+        return $contact;
     }
 
     private function normalizeInstance(string $s): string
