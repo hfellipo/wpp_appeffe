@@ -613,6 +613,22 @@
                                 </template>
                             </template>
 
+                            {{-- Botão "Carregar mais conversas" (paginação da lista) --}}
+                            <template x-if="!loadingConversations && !search && _hasMoreConversations && conversationTab === 'direct'">
+                                <div style="text-align:center; padding:10px 8px 4px;">
+                                    <button
+                                        @click="loadMoreConversations()"
+                                        :disabled="_loadingMoreConversations"
+                                        style="width:100%; padding:8px 12px; font-size:0.8rem; color:#6b7280; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;"
+                                        :style="_loadingMoreConversations ? 'opacity:0.6;cursor:not-allowed;' : 'opacity:1;'"
+                                    >
+                                        <i class="fas fa-chevron-down" x-show="!_loadingMoreConversations"></i>
+                                        <i class="fas fa-circle-notch fa-spin" x-show="_loadingMoreConversations" style="display:none"></i>
+                                        <span x-text="_loadingMoreConversations ? 'Carregando...' : 'Carregar conversas anteriores'"></span>
+                                    </button>
+                                </div>
+                            </template>
+
                             <template x-if="!loadingConversations && conversationTab === 'group'">
                                 <div class="wa-groups-sections">
                                     <template x-if="filteredGroupConversationsOwned.length > 0">
@@ -775,6 +791,14 @@
 
                         <template x-if="activeConversation && !loadingMessages">
                             <div class="messages-list">
+                                {{-- Indicador de "carregando mensagens anteriores" --}}
+                                <div
+                                    x-show="_loadingOlder"
+                                    style="display:none; text-align:center; padding:8px 0; color:#6b7280; font-size:0.78rem;"
+                                >
+                                    <i class="fas fa-circle-notch fa-spin" style="margin-right:4px;"></i>
+                                    Carregando mensagens anteriores…
+                                </div>
                                 <template x-for="m in messages" :key="m.id">
                                     <div class="message-card-wrapper" :class="m.direction === 'out' ? 'mc-sender' : ''">
                                         <template x-if="activeConversation && (activeConversation.kind || '') === 'group'">

@@ -48,9 +48,14 @@ window.waInboxChatify = function waInboxChatify() {
         _esRetryMs: 1000,
         _esRetryTimer: null,
 
-        // infinite scroll
+        // infinite scroll (messages)
         _loadingOlder: false,
         _hasOlder: true,
+
+        // conversation list pagination
+        _hasMoreConversations: false,
+        _loadingMoreConversations: false,
+        _conversationsOffset: 0,
 
         // contacts picker
         showContactPicker: false,
@@ -703,7 +708,10 @@ window.waInboxChatify = function waInboxChatify() {
         },
 
         async refreshConversations(silent = false) {
-            if (!silent) this.loadingConversations = true;
+            if (!silent) {
+                this.loadingConversations = true;
+                this._conversationsOffset = 0;
+            }
             const ctrl = new AbortController();
             const t = setTimeout(() => ctrl.abort(), 10000);
             try {
@@ -713,15 +721,75 @@ window.waInboxChatify = function waInboxChatify() {
                 });
                 const data = await resp.json().catch(() => ({}));
                 const items = Array.isArray(data.items) ? data.items : [];
-                this.conversations = this.deduplicateConversations(items);
-                this.directConversations = this.conversations.filter((c) => String(c.kind || 'direct') === 'direct');
-                this.groupConversations = this.conversations.filter((c) => String(c.kind) === 'group');
-                this.fetchAvatarsForList();
+
+                if (!silent) {
+                    // Full reset: replace list and update pagination state
+                    this.conversations = this.deduplicateConversations(items);
+                    this._hasMoreConversations = data.has_more || false;
+                    this.fetchAvatarsForList();
+                } else {
+                    // Silent poll: merge incoming items into existing list without resetting
+                    let changed = false;
+                    const existingMap = new Map(this.conversations.map((c) => [String(c.id), c]));
+                    for (const item of items) {
+                        if (existingMap.has(String(item.id))) {
+                            const ex = existingMap.get(String(item.id));
+                            if (ex.last_message_at !== item.last_message_at ||
+                                ex.unread_count !== item.unread_count ||
+                                ex.last_message_preview !== item.last_message_preview) {
+                                Object.assign(ex, item);
+                                changed = true;
+                            }
+                        } else {
+                            // New conversation discovered: prepend it
+                            this.conversations.unshift(item);
+                            existingMap.set(String(item.id), item);
+                            changed = true;
+                        }
+                    }
+                    if (changed) {
+                        // Re-sort by recency so newly updated conversations rise to top
+                        this.conversations.sort((a, b) => {
+                            const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+                            const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+                            return tb - ta;
+                        });
+                    }
+                }
+                this.syncConversationLists();
             } catch (e) {
                 // timeout ou erro de rede: não travar o spinner
             } finally {
                 clearTimeout(t);
                 if (!silent) this.loadingConversations = false;
+            }
+        },
+
+        async loadMoreConversations() {
+            if (this._loadingMoreConversations || !this._hasMoreConversations) return;
+            const nextOffset = this._conversationsOffset + 50;
+            this._loadingMoreConversations = true;
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 10000);
+            try {
+                const resp = await fetch(`/whatsapp/api/conversations?offset=${nextOffset}`, {
+                    headers: { 'Accept': 'application/json' },
+                    signal: ctrl.signal,
+                });
+                const data = await resp.json().catch(() => ({}));
+                const items = Array.isArray(data.items) ? data.items : [];
+                const existingIds = new Set(this.conversations.map((c) => String(c.id)));
+                const newOnes = items.filter((c) => !existingIds.has(String(c.id)));
+                if (newOnes.length > 0) {
+                    this.conversations = this.deduplicateConversations([...this.conversations, ...newOnes]);
+                    this.syncConversationLists();
+                }
+                this._conversationsOffset = nextOffset;
+                this._hasMoreConversations = data.has_more || false;
+            } catch (e) {}
+            finally {
+                clearTimeout(t);
+                this._loadingMoreConversations = false;
             }
         },
 

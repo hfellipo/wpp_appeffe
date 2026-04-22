@@ -75,9 +75,13 @@ class WhatsAppInboxController extends Controller
             });
         }
 
+        $perPage = 50;
+        $offset  = max(0, (int) $request->query('offset', 0));
+
         $items = $q->orderByDesc('last_message_at')
             ->orderByDesc('updated_at')
-            ->limit(150)
+            ->offset($offset)
+            ->limit($perPage + 1)
             ->get([
                 'public_id',
                 'instance_name',
@@ -92,6 +96,12 @@ class WhatsAppInboxController extends Controller
                 'last_message_sender',
                 'unread_count',
             ]);
+
+        // Detecta se há mais páginas antes da deduplicação
+        $hasMore = $items->count() > $perPage;
+        if ($hasMore) {
+            $items = $items->take($perPage);
+        }
 
         // Deduplicar: mesmo número/grupo = uma única conversa (mantém a mais recente)
         $seen = [];
@@ -205,7 +215,8 @@ class WhatsAppInboxController extends Controller
         }
 
         return response()->json([
-            'success' => true,
+            'success'  => true,
+            'has_more' => $hasMore,
             // Do not expose internal numeric IDs
             'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid, $appContactNamesByKey) {
                 $digits = preg_replace('/\D/', '', (string) ($c->contact_number ?? ''));
