@@ -269,7 +269,10 @@ class EvolutionWebhookProcessor
                 continue;
             }
 
-            $groups = Arr::get($json, 'groups') ?? Arr::get($json, 'data') ?? Arr::get($json, 'data.groups') ?? [];
+            $groups = Arr::get($json, 'groups')
+                ?? Arr::get($json, 'data')
+                ?? Arr::get($json, 'data.groups')
+                ?? (is_array($json) && isset($json[0]) ? $json : []);
             if (!is_array($groups)) {
                 continue;
             }
@@ -307,8 +310,8 @@ class EvolutionWebhookProcessor
                     'unread_count' => 0,
                 ]
             );
-            // Fixar nome do grupo quando estava vazio (ex.: conversa veio de mensagem antes do sync)
-            if ($g->subject !== '' && ($conv->contact_name === null || trim((string) $conv->contact_name) === '')) {
+            // Always sync the real group subject (fixes conversations that got raw JID as name before sync)
+            if ($g->subject !== '' && $conv->contact_name !== $g->subject) {
                 $conv->contact_name = $g->subject;
                 $conv->saveQuietly();
             }
