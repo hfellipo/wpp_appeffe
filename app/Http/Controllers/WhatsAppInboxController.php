@@ -244,9 +244,27 @@ class WhatsAppInboxController extends Controller
             if ($maxMsgByConv->isNotEmpty()) {
                 WhatsAppMessage::query()
                     ->whereIn('id', $maxMsgByConv->values())
-                    ->get(['id', 'conversation_id', 'status'])
+                    ->get(['id', 'conversation_id', 'status', 'delivered_at', 'read_at'])
                     ->each(function ($m) use (&$lastMsgStatusByConv) {
-                        $lastMsgStatusByConv[(int) $m->conversation_id] = $m->status;
+                        // Mirror tickForMessage() JS logic: timestamps take priority over status string
+                        $raw = strtolower((string) ($m->status ?? ''));
+                        $hasRead = $m->read_at !== null
+                            || in_array($raw, ['read', 'seen', 'read_ack', '3'])
+                            || str_contains($raw, 'read')
+                            || str_contains($raw, 'seen');
+                        $hasDelivered = $m->delivered_at !== null
+                            || in_array($raw, ['delivered', 'delivery_ack', 'delivered_ack', 'received', '2'])
+                            || str_contains($raw, 'deliver');
+                        if ($hasRead) {
+                            $effective = 'read';
+                        } elseif ($hasDelivered) {
+                            $effective = 'delivered';
+                        } elseif ($raw !== '') {
+                            $effective = $raw;
+                        } else {
+                            $effective = 'sent';
+                        }
+                        $lastMsgStatusByConv[(int) $m->conversation_id] = $effective;
                     });
             }
         }
