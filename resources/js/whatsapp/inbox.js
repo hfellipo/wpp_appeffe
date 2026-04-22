@@ -856,7 +856,13 @@ window.waInboxChatify = function waInboxChatify() {
                 this.waConfigured = data.configured !== false;
                 this.hasInstance = data.hasInstance === true;
                 this.instanceName = inst ? String(inst) : '';
-                this.connected = ['open', 'connected', 'online', 'ready'].includes(String(state || '').toLowerCase());
+                // Trust the backend's computed `connected` field (which verifies with Evolution
+                // when the DB status is stale). Fall back to checking state string.
+                if (typeof data.connected === 'boolean') {
+                    this.connected = data.connected;
+                } else {
+                    this.connected = ['open', 'connected', 'online', 'ready'].includes(String(state || '').toLowerCase());
+                }
 
                 window.dispatchEvent(new CustomEvent('whatsapp-connection-changed', {
                     detail: { connected: this.connected },

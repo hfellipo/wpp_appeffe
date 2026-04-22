@@ -6,6 +6,7 @@ use App\Models\WhatsAppInstance;
 use App\Services\EvolutionApiHttpClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\View\View;
 
 class WhatsAppEvolutionController extends Controller
@@ -140,7 +141,7 @@ class WhatsAppEvolutionController extends Controller
      */
     public function status(): JsonResponse
     {
-        $build = 'wa-api-status-2026-01-30-01';
+        $build = 'wa-api-status-2026-04-22-01';
 
         $accountId = auth()->user()->accountId();
         $connectedStates = ['open', 'connected', 'online', 'ready'];
@@ -162,9 +163,29 @@ class WhatsAppEvolutionController extends Controller
             ]);
         }
 
-        $instance = preg_replace('/\D/', '', (string) $latest->instance_name);
-        $state = (string) ($latest->status ?? '');
-        $connected = $instance !== '' && in_array(strtolower(trim($state)), $connectedStates, true);
+        $instanceName = trim((string) $latest->instance_name);
+        $state = trim((string) ($latest->status ?? ''));
+        $connected = $instanceName !== '' && in_array(strtolower($state), $connectedStates, true);
+
+        // If DB says not connected, verify live with Evolution API — status may be stale
+        // (e.g. instance connected before webhook was configured, or webhook missed the event)
+        if (!$connected && $instanceName !== '' && $this->client->isConfigured()) {
+            $resp = $this->client->get("/instance/connectionState/{$instanceName}", [], 4);
+            if ($resp['status'] >= 200 && $resp['status'] < 300 && is_array($resp['json'])) {
+                $realState = trim((string) (
+                    Arr::get($resp['json'], 'instance.state')
+                    ?? Arr::get($resp['json'], 'state')
+                    ?? Arr::get($resp['json'], 'connectionState')
+                    ?? ''
+                ));
+                if ($realState !== '' && strtolower($realState) !== strtolower($state)) {
+                    $latest->status = $realState;
+                    $latest->saveQuietly();
+                    $state = $realState;
+                }
+            }
+            $connected = $instanceName !== '' && in_array(strtolower($state), $connectedStates, true);
+        }
 
         return response()->json([
             'success' => true,
@@ -172,7 +193,7 @@ class WhatsAppEvolutionController extends Controller
             'configured' => $this->client->isConfigured(),
             'hasInstance' => true,
             'connected' => $connected,
-            'instanceName' => $instance,
+            'instanceName' => $instanceName,
             'state' => $state !== '' ? $state : null,
         ]);
     }
