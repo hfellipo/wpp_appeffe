@@ -623,7 +623,14 @@
                                                 <span class="wa-conversation-item__time" x-text="formatTimeAgo(c.last_message_at)"></span>
                                             </div>
                                             <div class="wa-conversation-item__bottom">
-                                                <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
+                                                <div style="flex:1;min-width:0;display:flex;align-items:center;gap:3px;overflow:hidden;">
+                                                    <template x-if="c.last_message_status && tickForStatus(c.last_message_status) && (c.unread_count || 0) === 0">
+                                                        <span class="wa-tick" :class="tickForStatus(c.last_message_status).colorClass" style="flex-shrink:0;font-size:0.7rem;">
+                                                            <i :class="tickForStatus(c.last_message_status).iconClass"></i>
+                                                        </span>
+                                                    </template>
+                                                    <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                                                </div>
                                                 <div class="wa-conversation-item__right">
                                                     <template x-if="(c.unread_count || 0) > 0">
                                                         <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
@@ -691,7 +698,14 @@
                                                             </span>
                                                         </div>
                                                         <div class="wa-conversation-item__bottom">
-                                                            <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
+                                                            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:3px;overflow:hidden;">
+                                                                <template x-if="c.last_message_status && tickForStatus(c.last_message_status) && (c.unread_count || 0) === 0">
+                                                                    <span class="wa-tick" :class="tickForStatus(c.last_message_status).colorClass" style="flex-shrink:0;font-size:0.7rem;">
+                                                                        <i :class="tickForStatus(c.last_message_status).iconClass"></i>
+                                                                    </span>
+                                                                </template>
+                                                                <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                                                            </div>
                                                             <div class="wa-conversation-item__right">
                                                                 <template x-if="(c.unread_count || 0) > 0">
                                                                     <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
@@ -741,7 +755,14 @@
                                                             </span>
                                                         </div>
                                                         <div class="wa-conversation-item__bottom">
-                                                            <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '"></span>
+                                                            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:3px;overflow:hidden;">
+                                                                <template x-if="c.last_message_status && tickForStatus(c.last_message_status) && (c.unread_count || 0) === 0">
+                                                                    <span class="wa-tick" :class="tickForStatus(c.last_message_status).colorClass" style="flex-shrink:0;font-size:0.7rem;">
+                                                                        <i :class="tickForStatus(c.last_message_status).iconClass"></i>
+                                                                    </span>
+                                                                </template>
+                                                                <span class="wa-conversation-item__preview" x-text="c.last_message_preview || ' '" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                                                            </div>
                                                             <div class="wa-conversation-item__right">
                                                                 <template x-if="(c.unread_count || 0) > 0">
                                                                     <span class="wa-conversation-item__unread" x-text="c.unread_count"></span>
@@ -785,11 +806,16 @@
                             </div>
                             <div class="chatify-d-flex chatify-align-items-center" style="flex: 1; min-width: 0; flex-direction: column; align-items: flex-start;">
                                 <a href="#" class="user-name" x-text="activeConversation ? ((activeConversation.contact_name && String(activeConversation.contact_name).trim()) ? activeConversation.contact_name : formatNumber(activeConversation.contact_number)) : 'WhatsApp'"></a>
-                                <span
-                                    x-show="activeConversation && isConversationTyping(activeConversation.id)"
-                                    class="wa-typing-label"
-                                    x-text="'digitando...'"
-                                ></span>
+                                <template x-if="activeConversation && isConversationTyping(activeConversation.id)">
+                                    <span class="wa-typing-label">digitando...</span>
+                                </template>
+                                <template x-if="activeConversation && !isConversationTyping(activeConversation.id)">
+                                    <span style="font-size:0.72rem;color:var(--wa-list-meta-color,#667781);line-height:1.2;"
+                                          x-text="(activeConversation.kind || '') === 'group'
+                                              ? (activeConversation.participant_count ? activeConversation.participant_count + ' membros' : (activeConversation.group_description || ''))
+                                              : (activeConversation.contact_number ? formatNumber(activeConversation.contact_number) : '')">
+                                    </span>
+                                </template>
                             </div>
                         </div>
                         <nav class="m-header-right">
@@ -910,6 +936,17 @@
                                                         </div>
                                                     </div>
                                                 </template>
+                                                <!-- Sticker -->
+                                                <template x-if="m.message_type === 'sticker'">
+                                                    <div class="wa-message-media">
+                                                        <template x-if="m.attachment && m.attachment.url">
+                                                            <img :src="m.attachment.url" alt="Sticker" style="max-width:140px;max-height:140px;border-radius:8px;display:block;" loading="lazy" />
+                                                        </template>
+                                                        <template x-if="!m.attachment || !m.attachment.url">
+                                                            <span style="font-size:2rem;" title="Sticker">🏷️</span>
+                                                        </template>
+                                                    </div>
+                                                </template>
                                                 <!-- Placeholder quando imagem/vídeo/documento sem preview (sem URL ou imagem falhou ao carregar) -->
                                                 <template x-if="(['image','video'].includes(m.message_type) && (!m.attachment || !m.attachment.url || (m.attachment.type === 'image' && imageLoadFail[m.id]))) || (m.message_type === 'document' && !m.attachment)">
                                                     <div class="wa-message-media-placeholder">
@@ -919,10 +956,10 @@
                                                         <span class="wa-message-media-placeholder__label" x-text="m.message_type === 'image' ? (m.attachment && !m.attachment.url ? 'Carregando imagem...' : (imageLoadFail[m.id] ? 'Imagem indisponível' : 'Imagem')) : (m.message_type === 'video' ? 'Vídeo' : 'Documento')"></span>
                                                     </div>
                                                 </template>
-                                                <div class="message" :class="{ 'wa-message--has-media': (m.attachment && (['image','video','document'].includes(m.attachment.type))) || ['image','video','document'].includes(m.message_type) }">
+                                                <div class="message" :class="{ 'wa-message--has-media': (m.attachment && (['image','video','document'].includes(m.attachment.type))) || ['image','video','document','sticker'].includes(m.message_type) }">
                                                     <!-- Texto só quando não for mídia (evita exibir [image] / [Áudio] etc.) -->
-                                                    <template x-if="!['image','video','document','audio'].includes(m.message_type) || (m.body && !['[Imagem]','[Vídeo]','[Documento]','[Áudio]','[audio]','[image]','[video]','[document]'].includes(m.body))">
-                                                        <span x-text="m.body || (m.message_type && !['image','video','document','audio'].includes(m.message_type) ? '['+m.message_type+']' : '')"></span>
+                                                    <template x-if="!['image','video','document','audio','sticker'].includes(m.message_type) || (m.body && !['[Imagem]','[Vídeo]','[Documento]','[Áudio]','[audio]','[image]','[video]','[document]','[sticker]'].includes(m.body))">
+                                                        <span x-text="m.body || (m.message_type && !['image','video','document','audio','sticker'].includes(m.message_type) ? '['+m.message_type+']' : '')"></span>
                                                     </template>
                                                     <span class="message-time">
                                                         <span class="time" x-text="formatTimeShort(m.created_at)"></span>
@@ -1078,6 +1115,31 @@
 
                 <template x-if="activeConversation && !detailsLoading">
                     <div>
+
+                        {{-- Seção: Grupo info (somente para grupos) --}}
+                        <template x-if="activeConversation && (activeConversation.kind || '') === 'group'">
+                            <div style="border-top:1px solid var(--border-color,#e9edef);padding:0.75rem 1rem 0.5rem;">
+                                <dl style="margin:0;font-size:0.83rem;display:flex;flex-direction:column;gap:0.4rem;">
+                                    <template x-if="activeConversation.participant_count">
+                                        <div>
+                                            <dt style="font-size:0.72rem;font-weight:600;color:var(--wa-list-meta-color,#667781);margin-bottom:1px;"><i class="fas fa-users" style="margin-right:3px;"></i>Membros</dt>
+                                            <dd style="margin:0;" x-text="activeConversation.participant_count + ' participantes'"></dd>
+                                        </div>
+                                    </template>
+                                    <template x-if="activeConversation.group_description">
+                                        <div>
+                                            <dt style="font-size:0.72rem;font-weight:600;color:var(--wa-list-meta-color,#667781);margin-bottom:1px;"><i class="fas fa-info-circle" style="margin-right:3px;"></i>Descrição</dt>
+                                            <dd style="margin:0;white-space:pre-wrap;font-size:0.8rem;color:var(--wa-text-color,#111b21);" x-text="activeConversation.group_description"></dd>
+                                        </div>
+                                    </template>
+                                    <template x-if="activeConversation.is_owner">
+                                        <div>
+                                            <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;color:#d97706;font-weight:500;"><i class="fas fa-crown"></i> Você criou este grupo</span>
+                                        </div>
+                                    </template>
+                                </dl>
+                            </div>
+                        </template>
 
                         {{-- Seção: Info do contato --}}
                         <div style="border-top:1px solid var(--border-color,#e9edef);">

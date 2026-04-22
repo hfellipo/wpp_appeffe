@@ -9,6 +9,7 @@ use App\Models\Tag;
 use App\Models\WhatsAppAttachment;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppConversation;
+use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppInstance;
 use App\Services\AutomationRunnerService;
@@ -85,6 +86,7 @@ class WhatsAppInboxController extends Controller
             ->offset($offset)
             ->limit($perPage + 1)
             ->get([
+                'id',
                 'public_id',
                 'instance_name',
                 'kind',
@@ -124,14 +126,27 @@ class WhatsAppInboxController extends Controller
         $groupsByJid = [];
         if ($groupConversations->isNotEmpty()) {
             $groupJids = $groupConversations->pluck('peer_jid')->filter()->unique()->values()->all();
-            $groups = \App\Models\WhatsAppGroup::query()
+            $groups = WhatsAppGroup::query()
                 ->where('user_id', $accountId)
                 ->whereIn('instance_name', $items->pluck('instance_name')->unique())
                 ->whereIn('group_jid', $groupJids)
-                ->get(['instance_name', 'group_jid', 'subject', 'is_owner']);
+                ->get(['instance_name', 'group_jid', 'subject', 'description', 'is_owner', 'metadata']);
             foreach ($groups as $g) {
                 $key = $g->instance_name . '|' . $g->group_jid;
-                $groupsByJid[$key] = ['subject' => $g->subject, 'is_owner' => (bool) $g->is_owner];
+                $meta = is_array($g->metadata) ? $g->metadata : [];
+                $participantCount = null;
+                if (isset($meta['participants']) && is_array($meta['participants'])) {
+                    $participantCount = count($meta['participants']);
+                } elseif (isset($meta['size']) && is_numeric($meta['size'])) {
+                    $participantCount = (int) $meta['size'];
+                }
+                $groupsByJid[$key] = [
+                    'subject'           => $g->subject,
+                    'description'       => (string) ($g->description ?? ''),
+                    'is_owner'          => (bool) $g->is_owner,
+                    'avatar_url'        => $meta['avatar_url'] ?? null,
+                    'participant_count' => $participantCount,
+                ];
             }
         }
 
@@ -216,11 +231,31 @@ class WhatsAppInboxController extends Controller
             }
         }
 
+        // Batch-fetch last outgoing message status per conversation (delivery checkmarks in list)
+        $convDbIds = $items->pluck('id')->filter()->unique()->values()->toArray();
+        $lastMsgStatusByConv = [];
+        if (!empty($convDbIds)) {
+            $maxMsgByConv = WhatsAppMessage::query()
+                ->selectRaw('conversation_id, MAX(id) as max_id')
+                ->whereIn('conversation_id', $convDbIds)
+                ->where('direction', 'out')
+                ->groupBy('conversation_id')
+                ->pluck('max_id', 'conversation_id');
+            if ($maxMsgByConv->isNotEmpty()) {
+                WhatsAppMessage::query()
+                    ->whereIn('id', $maxMsgByConv->values())
+                    ->get(['id', 'conversation_id', 'status'])
+                    ->each(function ($m) use (&$lastMsgStatusByConv) {
+                        $lastMsgStatusByConv[(int) $m->conversation_id] = $m->status;
+                    });
+            }
+        }
+
         return response()->json([
             'success'  => true,
             'has_more' => $hasMore,
             // Do not expose internal numeric IDs
-            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid, $appContactNamesByKey) {
+            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid, $appContactNamesByKey, $lastMsgStatusByConv) {
                 $digits = preg_replace('/\D/', '', (string) ($c->contact_number ?? ''));
                 $digitsNorm = $digits !== '' ? ltrim($digits, '0') : '';
                 $k = $c->instance_name . '|' . $digits;
@@ -230,16 +265,18 @@ class WhatsAppInboxController extends Controller
                 $isGroup = ($c->kind ?? '') === 'group';
                 $displayName = null;
                 $isOwner = false;
+                $groupInfoFull = [];
                 if ($isGroup && $c->peer_jid) {
+                    $groupKey = $c->instance_name . '|' . $c->peer_jid;
+                    $groupInfoFull = $groupsByJid[$groupKey] ?? [];
                     // Nome: customizado pelo usuário > subject do grupo > contact_name
                     $customName = trim((string) ($c->custom_contact_name ?? ''));
                     if ($customName !== '') {
                         $displayName = $customName;
                     }
-                    $groupKey = $c->instance_name . '|' . $c->peer_jid;
-                    if ($displayName === null && isset($groupsByJid[$groupKey])) {
-                        $groupInfo = $groupsByJid[$groupKey];
-                        $displayName = is_array($groupInfo) ? ($groupInfo['subject'] ?? '') : (string) $groupInfo;
+                    if ($displayName === null && !empty($groupInfoFull)) {
+                        $s = $groupInfoFull['subject'] ?? '';
+                        if ($s !== '') $displayName = $s;
                     }
                     if ($displayName === null) {
                         $displayName = $c->contact_name;
@@ -247,9 +284,8 @@ class WhatsAppInboxController extends Controller
                     // Criado por mim: preferência do usuário > is_owner da API
                     if ($c->user_marked_owner !== null) {
                         $isOwner = (bool) $c->user_marked_owner;
-                    } elseif (isset($groupsByJid[$groupKey])) {
-                        $groupInfo = $groupsByJid[$groupKey];
-                        $isOwner = is_array($groupInfo) ? (bool) ($groupInfo['is_owner'] ?? false) : false;
+                    } elseif (!empty($groupInfoFull)) {
+                        $isOwner = (bool) ($groupInfoFull['is_owner'] ?? false);
                     }
                 }
                 if ($displayName === null && !$isGroup) {
@@ -269,6 +305,12 @@ class WhatsAppInboxController extends Controller
                     $displayName = $c->contact_name;
                 }
 
+                // Avatar: direct → whatsapp_contacts; group → cached in whatsapp_groups.metadata
+                $avatarUrl = is_object($ct) ? ($ct->avatar_url ?: null) : null;
+                if ($avatarUrl === null && $isGroup && !empty($groupInfoFull['avatar_url'])) {
+                    $avatarUrl = $groupInfoFull['avatar_url'];
+                }
+
                 $payload = [
                     'id' => $c->public_id,
                     'instance_name' => $c->instance_name,
@@ -276,14 +318,17 @@ class WhatsAppInboxController extends Controller
                     'peer_jid' => $c->peer_jid,
                     'contact_number' => $c->contact_number,
                     'contact_name' => $displayName,
-                    'avatar_url' => is_object($ct) ? ($ct->avatar_url ?: null) : null,
+                    'avatar_url' => $avatarUrl,
                     'last_message_at' => optional($c->last_message_at)->toIso8601String(),
                     'last_message_preview' => $c->last_message_preview,
                     'last_message_sender' => $c->last_message_sender,
                     'unread_count' => (int) $c->unread_count,
+                    'last_message_status' => $lastMsgStatusByConv[(int) $c->id] ?? null,
                 ];
                 if ($isGroup) {
                     $payload['is_owner'] = $isOwner;
+                    $payload['group_description'] = !empty($groupInfoFull['description']) ? $groupInfoFull['description'] : null;
+                    $payload['participant_count'] = $groupInfoFull['participant_count'] ?? null;
                 }
                 return $payload;
             })->values(),
@@ -932,6 +977,7 @@ class WhatsAppInboxController extends Controller
 
     /**
      * Return avatar URL for a conversation. If not in DB, fetch from Evolution API and cache.
+     * Supports both direct (by contact_number) and group (by peer_jid) conversations.
      */
     public function avatar(WhatsAppConversation $conversation): JsonResponse
     {
@@ -940,7 +986,42 @@ class WhatsAppInboxController extends Controller
             return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
         }
 
-        $instance = preg_replace('/\D/', '', (string) $conversation->instance_name);
+        $instanceName = (string) $conversation->instance_name;
+
+        // Groups: fetch avatar using the group JID, cache in whatsapp_groups.metadata
+        if (($conversation->kind ?? '') === 'group') {
+            $peerJid = (string) ($conversation->peer_jid ?? '');
+            if ($peerJid === '') {
+                return response()->json(['success' => true, 'avatar_url' => null]);
+            }
+            $group = WhatsAppGroup::query()
+                ->where('user_id', $accountId)
+                ->where('instance_name', $instanceName)
+                ->where('group_jid', $peerJid)
+                ->first(['id', 'metadata']);
+            $groupMeta = is_array($group?->metadata) ? $group->metadata : [];
+            if (!empty($groupMeta['avatar_url'])) {
+                return response()->json(['success' => true, 'avatar_url' => $groupMeta['avatar_url']]);
+            }
+            if (!$this->client->isConfigured()) {
+                return response()->json(['success' => true, 'avatar_url' => null]);
+            }
+            $resp = $this->client->fetchProfilePictureUrl($instanceName, $peerJid);
+            $url = null;
+            if (($resp['status'] ?? 0) >= 200 && ($resp['status'] ?? 0) < 300 && is_array($resp['json'] ?? null)) {
+                $url = $resp['json']['profilePictureUrl'] ?? $resp['json']['profilePicture'] ?? $resp['json']['url'] ?? null;
+                $url = is_string($url) ? trim($url) : null;
+                if ($url !== '' && $url !== null && $group) {
+                    $groupMeta['avatar_url'] = $url;
+                    $group->metadata = $groupMeta;
+                    $group->saveQuietly();
+                }
+            }
+            return response()->json(['success' => true, 'avatar_url' => $url]);
+        }
+
+        // Direct conversations: fetch by contact number
+        $instance = preg_replace('/\D/', '', $instanceName);
         $num = preg_replace('/\D/', '', (string) $conversation->contact_number) ?: '';
         if ($instance === '' || $num === '') {
             return response()->json(['success' => true, 'avatar_url' => null]);

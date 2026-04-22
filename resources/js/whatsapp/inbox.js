@@ -915,7 +915,8 @@ window.waInboxChatify = function waInboxChatify() {
                             const ex = existingMap.get(String(item.id));
                             if (ex.last_message_at !== item.last_message_at ||
                                 ex.unread_count !== item.unread_count ||
-                                ex.last_message_preview !== item.last_message_preview) {
+                                ex.last_message_preview !== item.last_message_preview ||
+                                ex.last_message_status !== item.last_message_status) {
                                 Object.assign(ex, item);
                                 changed = true;
                             }
@@ -1448,6 +1449,20 @@ window.waInboxChatify = function waInboxChatify() {
 
             // Default: show single check for outgoing messages once persisted
             return { iconClass: 'fas fa-check', colorClass: 'wa-tick-sent' };
+        },
+
+        /**
+         * Return { iconClass, colorClass } for conversation list checkmarks (last sent message).
+         */
+        tickForStatus(status) {
+            const s = String(status || '').toLowerCase();
+            if (!s) return null;
+            const hasRead = ['read', 'seen', 'read_ack', '3'].includes(s) || s.includes('read') || s.includes('seen');
+            const hasDelivered = ['delivered', 'delivery_ack', 'delivered_ack', 'received', '2'].includes(s) || s.includes('deliver');
+            if (hasRead) return { iconClass: 'fas fa-check-double', colorClass: 'wa-tick-read' };
+            if (hasDelivered) return { iconClass: 'fas fa-check-double', colorClass: 'wa-tick-delivered' };
+            if (['sent', 'server_ack', 'ack', '1'].includes(s)) return { iconClass: 'fas fa-check', colorClass: 'wa-tick-sent' };
+            return null;
         },
     };
 };
