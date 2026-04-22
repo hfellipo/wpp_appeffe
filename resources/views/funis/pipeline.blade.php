@@ -78,7 +78,7 @@
                                 'action_type'       => $r->action_type ?? 'move',
                                 'action_message'    => $r->action_message,
                                 'target_stage_name' => $r->targetStage?->name ?? '',
-                                'destroy_url'       => route('funis.stages.rules.destroy', [$funnel->id, $stage->id, $r->id]),
+                                'destroy_url'       => route('funis.stages.rules.delete', [$funnel->token, $stage->id, $r->id]),
                             ];
                         })->values()->toJson();
                     @endphp
@@ -266,8 +266,8 @@
                                                         <span x-show="r.action_type !== 'send' && r.target_stage_name" class="font-medium" x-text="r.target_stage_name"></span>
                                                     </div>
                                                 </div>
-                                                <button type="button" @click="deleteRule(r)"
-                                                        class="shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 font-bold text-base transition-colors">×</button>
+                                                <button type="button" @click="openDelModal(r)"
+                                                        class="shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 font-bold text-base transition-colors" title="Remover evento">×</button>
                                             </div>
                                         </template>
                                     </div>
@@ -364,6 +364,36 @@
                                             <span x-text="ruleLoading ? 'Salvando...' : '+ Adicionar evento'"></span>
                                         </button>
                                     </div>
+
+                                    {{-- Delete confirmation modal --}}
+                                    <div x-show="delModal.show" x-transition.opacity style="display:none"
+                                         class="fixed inset-0 z-[9999] flex items-center justify-center"
+                                         @keydown.escape.window="closeDelModal()">
+                                        <div class="absolute inset-0 bg-black/40" @click="closeDelModal()"></div>
+                                        <div class="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 z-10" @click.stop>
+                                            <div class="flex items-center gap-3 mb-3">
+                                                <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                                </div>
+                                                <div>
+                                                    <p class="font-semibold text-gray-900 text-sm">Remover evento?</p>
+                                                    <p class="text-xs text-gray-500 mt-0.5" x-text="delModal.rule ? triggerIcon(delModal.rule.trigger_type) + ' ' + delModal.rule.trigger_label : ''"></p>
+                                                </div>
+                                            </div>
+                                            <div x-show="delModal.error" class="mb-3 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2" x-text="delModal.error"></div>
+                                            <div class="flex gap-2 justify-end">
+                                                <button type="button" @click="closeDelModal()" :disabled="delModal.loading"
+                                                        class="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                                                    Cancelar
+                                                </button>
+                                                <button type="button" @click="confirmDelModal()" :disabled="delModal.loading"
+                                                        class="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 flex items-center gap-1.5">
+                                                    <svg x-show="delModal.loading" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+                                                    <span x-text="delModal.loading ? 'Removendo...' : 'Remover'"></span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                             </div>{{-- /card --}}
@@ -444,9 +474,12 @@ function pipelineStage(opts) {
         feedbackOk: true,
 
         newRule: { trigger_type: 'whatsapp_replied', status:'', keyword:'', tag_id:'', lista_id:'', action_type:'move', target_stage_id:'', action_message:'' },
-        ruleLoading:   false,
-        ruleFeedback:  '',
+        ruleLoading:    false,
+        ruleFeedback:   '',
         ruleFeedbackOk: true,
+
+        // Delete confirmation modal
+        delModal: { show: false, rule: null, loading: false, error: '' },
 
         _pollTimer: null,
 
@@ -585,34 +618,53 @@ function pipelineStage(opts) {
             }
         },
 
-        async deleteRule(rule) {
-            if (!confirm('Remover este evento?')) return;
+        openDelModal(rule) {
+            this.delModal = { show: true, rule, loading: false, error: '' };
+        },
+
+        closeDelModal() {
+            this.delModal = { show: false, rule: null, loading: false, error: '' };
+        },
+
+        async confirmDelModal() {
+            if (!this.delModal.rule || this.delModal.loading) return;
+            this.delModal.loading = true;
+            this.delModal.error = '';
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const rule = this.delModal.rule;
             try {
+                const fd = new URLSearchParams();
+                fd.append('_token', csrf);
                 const res = await fetch(rule.destroy_url, {
-                    method: 'DELETE',
+                    method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': csrf,
+                        'Content-Type': 'application/x-www-form-urlencoded',
                         'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: fd.toString(),
                 });
                 if (res.ok) {
                     this.rules = this.rules.filter(r => r.id !== rule.id);
+                    this.closeDelModal();
                     this.ruleFeedback = '✅ Evento removido.';
                     this.ruleFeedbackOk = true;
-                    setTimeout(() => { if (this.ruleFeedback.startsWith('✅')) this.ruleFeedback = ''; }, 2500);
+                    setTimeout(() => { this.ruleFeedback = ''; }, 3000);
                 } else {
-                    let errMsg = 'HTTP ' + res.status;
+                    let errMsg = 'Erro HTTP ' + res.status;
                     try { const d = await res.json(); errMsg = d.message || d.error || errMsg; } catch(_) {}
-                    this.ruleFeedback = '❌ ' + errMsg;
-                    this.ruleFeedbackOk = false;
+                    this.delModal.error = errMsg;
+                    this.delModal.loading = false;
                 }
             } catch(e) {
-                this.ruleFeedback = '❌ Erro de conexão.';
-                this.ruleFeedbackOk = false;
+                this.delModal.error = 'Erro de conexão: ' + e.message;
+                this.delModal.loading = false;
             }
         },
+
+        // kept for backward compat (not used directly anymore)
+        deleteRule(rule) { this.openDelModal(rule); },
 
         // Called by global deploy to dispatch this stage
         async dispatchWithConfig(globalSchedDate, globalSchedTime) {

@@ -716,7 +716,7 @@ class FunnelController extends Controller
                     'action_type'       => $rule->action_type ?? 'move',
                     'action_message'    => $rule->action_message,
                     'target_stage_name' => $targetStage?->name ?? '',
-                    'destroy_url'       => route('funis.stages.rules.destroy', [$funnel->id, $stage->id, $rule->id]),
+                    'destroy_url'       => route('funis.stages.rules.delete', [$funnel->token, $stage->id, $rule->id]),
                 ],
             ]);
         }

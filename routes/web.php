@@ -299,6 +299,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/funis/{funnel}/stages/{stage}/disparo/{disparo}/cancel', [FunnelController::class, 'disparoCancel'])->name('funis.stages.disparo.cancel');
     Route::post('/funis/{funnel}/stages/{stage}/rules', [FunnelController::class, 'storeStageRule'])->name('funis.stages.rules.store');
     Route::delete('/funis/{funnel}/stages/{stage}/rules/{rule}', [FunnelController::class, 'destroyStageRule'])->name('funis.stages.rules.destroy');
+    Route::post('/funis/{funnel}/stages/{stage}/rules/{rule}/delete', [FunnelController::class, 'destroyStageRule'])->name('funis.stages.rules.delete');
     Route::delete('/funis/{funnel}/stages/{stage}', [FunnelController::class, 'destroyStage'])->name('funis.stages.destroy');
 });
 
