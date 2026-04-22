@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Automation;
 use App\Models\Contact;
 use App\Models\Lista;
 use App\Models\Tag;
@@ -10,6 +11,7 @@ use App\Models\WhatsAppContact;
 use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppInstance;
+use App\Services\AutomationRunnerService;
 use App\Services\EvolutionApiHttpClient;
 use App\Services\EvolutionWebhookProcessor;
 use App\Services\WhatsAppEventPublisher;
@@ -2180,6 +2182,261 @@ class WhatsAppInboxController extends Controller
         }
 
         return '';
+    }
+
+    /**
+     * GET /api/conversations/{conversation}/contact-details
+     * Returns contact info + their lists + tags + available automations for the details panel.
+     */
+    public function contactDetails(WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        if (($conversation->kind ?? '') === 'group') {
+            return response()->json(['success' => true, 'is_group' => true, 'found' => false]);
+        }
+
+        $convDigits = preg_replace('/\D/', '', (string) ($conversation->contact_number ?? ''));
+        $contact = $convDigits !== '' ? $this->findContactByConversationPhone($accountId, $convDigits) : null;
+
+        $automations = Automation::forUser($accountId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($a) => ['id' => $a->id, 'name' => $a->name])
+            ->values()
+            ->all();
+
+        if (!$contact) {
+            return response()->json([
+                'success' => true,
+                'found' => false,
+                'automations' => $automations,
+            ]);
+        }
+
+        $contactLists = $contact->listas()
+            ->get(['listas.id', 'listas.name'])
+            ->map(fn ($l) => ['id' => $l->id, 'name' => $l->name])
+            ->values()
+            ->all();
+
+        $contactTags = $contact->tags()
+            ->get(['tags.id', 'tags.name', 'tags.color'])
+            ->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'color' => $t->color])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'success' => true,
+            'found' => true,
+            'contact' => [
+                'id' => $contact->id,
+                'name' => $contact->name,
+                'phone' => $contact->phone,
+                'email' => $contact->email,
+                'notes' => $contact->notes,
+            ],
+            'contact_lists' => $contactLists,
+            'contact_tags' => $contactTags,
+            'automations' => $automations,
+        ]);
+    }
+
+    /**
+     * POST /api/conversations/{conversation}/add-to-list
+     * Body: list_id OR list_name (to create new)
+     */
+    public function addToList(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        $validated = $request->validate([
+            'list_id'   => ['nullable', 'integer', 'exists:listas,id'],
+            'list_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $convDigits = preg_replace('/\D/', '', (string) ($conversation->contact_number ?? ''));
+        $contact = $convDigits !== '' ? $this->findContactByConversationPhone($accountId, $convDigits) : null;
+        if (!$contact) {
+            return response()->json(['success' => false, 'error' => 'Contato não encontrado.'], 404);
+        }
+
+        $listId   = $validated['list_id'] ?? null;
+        $listName = isset($validated['list_name']) ? trim($validated['list_name']) : null;
+
+        if ($listId !== null) {
+            $lista = Lista::forUser($accountId)->find($listId);
+        } elseif ($listName !== '' && $listName !== null) {
+            $lista = Lista::create(['user_id' => $accountId, 'name' => $listName]);
+        } else {
+            return response()->json(['success' => false, 'error' => 'Informe list_id ou list_name.'], 422);
+        }
+
+        if (!$lista) {
+            return response()->json(['success' => false, 'error' => 'Lista não encontrada.'], 404);
+        }
+
+        $lista->contacts()->syncWithoutDetaching([$contact->id]);
+
+        return response()->json([
+            'success' => true,
+            'list' => ['id' => $lista->id, 'name' => $lista->name],
+        ]);
+    }
+
+    /**
+     * POST /api/conversations/{conversation}/remove-from-list
+     * Body: list_id
+     */
+    public function removeFromList(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        $validated = $request->validate([
+            'list_id' => ['required', 'integer', 'exists:listas,id'],
+        ]);
+
+        $convDigits = preg_replace('/\D/', '', (string) ($conversation->contact_number ?? ''));
+        $contact = $convDigits !== '' ? $this->findContactByConversationPhone($accountId, $convDigits) : null;
+        if (!$contact) {
+            return response()->json(['success' => false, 'error' => 'Contato não encontrado.'], 404);
+        }
+
+        $lista = Lista::forUser($accountId)->find($validated['list_id']);
+        if (!$lista) {
+            return response()->json(['success' => false, 'error' => 'Lista não encontrada.'], 404);
+        }
+
+        $lista->contacts()->detach($contact->id);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * POST /api/conversations/{conversation}/add-tag
+     * Body: tag_id OR tag_name (to create new)
+     */
+    public function addTag(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        $validated = $request->validate([
+            'tag_id'   => ['nullable', 'integer', 'exists:tags,id'],
+            'tag_name' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $convDigits = preg_replace('/\D/', '', (string) ($conversation->contact_number ?? ''));
+        $contact = $convDigits !== '' ? $this->findContactByConversationPhone($accountId, $convDigits) : null;
+        if (!$contact) {
+            return response()->json(['success' => false, 'error' => 'Contato não encontrado.'], 404);
+        }
+
+        $tagId   = $validated['tag_id'] ?? null;
+        $tagName = isset($validated['tag_name']) ? trim($validated['tag_name']) : null;
+
+        if ($tagId !== null) {
+            $tag = Tag::forUser($accountId)->find($tagId);
+        } elseif ($tagName !== '' && $tagName !== null) {
+            $tag = Tag::forUser($accountId)->where('name', $tagName)->first()
+                ?? Tag::create(['user_id' => $accountId, 'name' => $tagName, 'color' => '#25D366']);
+        } else {
+            return response()->json(['success' => false, 'error' => 'Informe tag_id ou tag_name.'], 422);
+        }
+
+        if (!$tag) {
+            return response()->json(['success' => false, 'error' => 'Tag não encontrada.'], 404);
+        }
+
+        $tag->contacts()->syncWithoutDetaching([$contact->id]);
+
+        return response()->json([
+            'success' => true,
+            'tag' => ['id' => $tag->id, 'name' => $tag->name, 'color' => $tag->color],
+        ]);
+    }
+
+    /**
+     * POST /api/conversations/{conversation}/remove-tag
+     * Body: tag_id
+     */
+    public function removeTag(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        $validated = $request->validate([
+            'tag_id' => ['required', 'integer', 'exists:tags,id'],
+        ]);
+
+        $convDigits = preg_replace('/\D/', '', (string) ($conversation->contact_number ?? ''));
+        $contact = $convDigits !== '' ? $this->findContactByConversationPhone($accountId, $convDigits) : null;
+        if (!$contact) {
+            return response()->json(['success' => false, 'error' => 'Contato não encontrado.'], 404);
+        }
+
+        $tag = Tag::forUser($accountId)->find($validated['tag_id']);
+        if (!$tag) {
+            return response()->json(['success' => false, 'error' => 'Tag não encontrada.'], 404);
+        }
+
+        $tag->contacts()->detach($contact->id);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * POST /api/conversations/{conversation}/run-automation
+     * Body: automation_id
+     */
+    public function runAutomation(Request $request, WhatsAppConversation $conversation): JsonResponse
+    {
+        $accountId = auth()->user()->accountId();
+        if ((int) $conversation->user_id !== (int) $accountId) {
+            return response()->json(['success' => false, 'error' => 'Forbidden'], 403);
+        }
+
+        $validated = $request->validate([
+            'automation_id' => ['required', 'integer', 'exists:automations,id'],
+        ]);
+
+        $automation = Automation::forUser($accountId)->find($validated['automation_id']);
+        if (!$automation) {
+            return response()->json(['success' => false, 'error' => 'Automação não encontrada.'], 404);
+        }
+
+        $convDigits = preg_replace('/\D/', '', (string) ($conversation->contact_number ?? ''));
+        $contact = $convDigits !== '' ? $this->findContactByConversationPhone($accountId, $convDigits) : null;
+        if (!$contact) {
+            return response()->json(['success' => false, 'error' => 'Contato não encontrado para esta conversa.'], 404);
+        }
+
+        try {
+            $runner = app(AutomationRunnerService::class);
+            $result = $runner->runForContact($automation, $contact);
+            return response()->json(['success' => true, 'result' => $result]);
+        } catch (\Throwable $e) {
+            Log::channel('single')->error('WhatsApp runAutomation failed', [
+                'automation_id' => $automation->id,
+                'contact_id' => $contact->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['success' => false, 'error' => 'Erro ao executar automação: ' . $e->getMessage()], 500);
+        }
     }
 }
 

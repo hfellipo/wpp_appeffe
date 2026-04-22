@@ -73,6 +73,29 @@ window.waInboxChatify = function waInboxChatify() {
         appContact: null,
         appContactMessage: null,
 
+        // detalhes: painel completo (listas, tags, automações)
+        detailsLoading: false,
+        detailsData: null,
+        // listas
+        _detailsListsOpen: true,
+        _detailsListInput: '',
+        _detailsListMode: 'select', // 'select' | 'create'
+        _detailsListSelectedId: '',
+        _detailsListCreating: false,
+        // tags
+        _detailsTagsOpen: true,
+        _detailsTagInput: '',
+        _detailsTagMode: 'select',
+        _detailsTagSelectedId: '',
+        _detailsTagCreating: false,
+        // automações
+        _detailsAutoOpen: true,
+        _detailsAutoSelectedId: '',
+        _detailsAutoRunning: false,
+        _detailsAutoResult: null,
+        // seção info
+        _detailsInfoOpen: true,
+
         // audio recording
         isRecording: false,
         recordingSeconds: 0,
@@ -322,8 +345,15 @@ window.waInboxChatify = function waInboxChatify() {
             if (this.isCompact) this.showInfo = false;
 
             this.$watch('showInfo', (value) => {
-                if (value && this.activeConversation) this.fetchAppContact();
-                if (!value) { this.appContact = null; this.appContactMessage = null; }
+                if (value && this.activeConversation) {
+                    this.fetchAppContact();
+                    this.fetchContactDetails();
+                }
+                if (!value) {
+                    this.appContact = null;
+                    this.appContactMessage = null;
+                    this.detailsData = null;
+                }
             });
             this.$watch('activeConversation', (value) => {
                 if (!value) {
@@ -333,9 +363,13 @@ window.waInboxChatify = function waInboxChatify() {
                     this.imageLoading = {};
                     this.appContact = null;
                     this.appContactMessage = null;
+                    this.detailsData = null;
                     return;
                 }
-                if (this.showInfo) this.fetchAppContact();
+                if (this.showInfo) {
+                    this.fetchAppContact();
+                    this.fetchContactDetails();
+                }
             });
 
             // Start realtime first (so UI updates instantly)
@@ -384,6 +418,139 @@ window.waInboxChatify = function waInboxChatify() {
                 }
             } finally {
                 this.appContactLoading = false;
+            }
+        },
+
+        async fetchContactDetails() {
+            const c = this.activeConversation;
+            if (!c || !c.id) { this.detailsData = null; return; }
+            this.detailsLoading = true;
+            this.detailsData = null;
+            this._detailsAutoResult = null;
+            this._detailsListSelectedId = '';
+            this._detailsListMode = 'select';
+            this._detailsListInput = '';
+            this._detailsTagSelectedId = '';
+            this._detailsTagMode = 'select';
+            this._detailsTagInput = '';
+            this._detailsAutoSelectedId = '';
+            try {
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/contact-details`, { headers: { Accept: 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                if (data.success) this.detailsData = data;
+            } finally {
+                this.detailsLoading = false;
+            }
+        },
+
+        async detailsAddToList() {
+            const c = this.activeConversation;
+            if (!c) return;
+            const listId = this._detailsListSelectedId;
+            const listName = this._detailsListInput.trim();
+            if (!listId && !listName) return;
+            const body = listId === 'new' || listId === ''
+                ? { list_name: listName }
+                : { list_id: parseInt(listId) };
+            this._detailsListCreating = true;
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/add-to-list`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, Accept: 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (data.success && data.list) {
+                    if (!this.detailsData) this.detailsData = { found: true, contact_lists: [], contact_tags: [], automations: [] };
+                    const already = (this.detailsData.contact_lists || []).find((l) => l.id === data.list.id);
+                    if (!already) this.detailsData.contact_lists = [...(this.detailsData.contact_lists || []), data.list];
+                    this._detailsListSelectedId = '';
+                    this._detailsListInput = '';
+                    this._detailsListMode = 'select';
+                }
+            } finally {
+                this._detailsListCreating = false;
+            }
+        },
+
+        async detailsRemoveFromList(listId) {
+            const c = this.activeConversation;
+            if (!c) return;
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const resp = await fetch(`/whatsapp/api/conversations/${c.id}/remove-from-list`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, Accept: 'application/json' },
+                body: JSON.stringify({ list_id: listId }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (data.success && this.detailsData) {
+                this.detailsData.contact_lists = (this.detailsData.contact_lists || []).filter((l) => l.id !== listId);
+            }
+        },
+
+        async detailsAddTag() {
+            const c = this.activeConversation;
+            if (!c) return;
+            const tagId = this._detailsTagSelectedId;
+            const tagName = this._detailsTagInput.trim();
+            if (!tagId && !tagName) return;
+            const body = tagId === 'new' || tagId === ''
+                ? { tag_name: tagName }
+                : { tag_id: parseInt(tagId) };
+            this._detailsTagCreating = true;
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/add-tag`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, Accept: 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (data.success && data.tag) {
+                    if (!this.detailsData) this.detailsData = { found: true, contact_lists: [], contact_tags: [], automations: [] };
+                    const already = (this.detailsData.contact_tags || []).find((t) => t.id === data.tag.id);
+                    if (!already) this.detailsData.contact_tags = [...(this.detailsData.contact_tags || []), data.tag];
+                    this._detailsTagSelectedId = '';
+                    this._detailsTagInput = '';
+                    this._detailsTagMode = 'select';
+                }
+            } finally {
+                this._detailsTagCreating = false;
+            }
+        },
+
+        async detailsRemoveTag(tagId) {
+            const c = this.activeConversation;
+            if (!c) return;
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const resp = await fetch(`/whatsapp/api/conversations/${c.id}/remove-tag`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, Accept: 'application/json' },
+                body: JSON.stringify({ tag_id: tagId }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (data.success && this.detailsData) {
+                this.detailsData.contact_tags = (this.detailsData.contact_tags || []).filter((t) => t.id !== tagId);
+            }
+        },
+
+        async detailsRunAutomation() {
+            const c = this.activeConversation;
+            if (!c || !this._detailsAutoSelectedId) return;
+            this._detailsAutoRunning = true;
+            this._detailsAutoResult = null;
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                const resp = await fetch(`/whatsapp/api/conversations/${c.id}/run-automation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, Accept: 'application/json' },
+                    body: JSON.stringify({ automation_id: parseInt(this._detailsAutoSelectedId) }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                this._detailsAutoResult = data.success ? 'ok' : (data.error || 'Erro');
+            } finally {
+                this._detailsAutoRunning = false;
             }
         },
 

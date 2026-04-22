@@ -1016,11 +1016,14 @@
 
             {{-- Info side --}}
             <div class="messenger-infoView app-scroll" x-show="showInfo && !isCompact" x-ref="infoView">
+                {{-- Header --}}
                 <nav>
                     <p>Detalhes</p>
                     <a href="#" @click.prevent="showInfo = false"><i class="fas fa-times"></i></a>
                 </nav>
-                <div style="text-align:center; padding: 1rem;">
+
+                {{-- Avatar + nome --}}
+                <div style="text-align:center; padding: 1.25rem 1rem 0.75rem;">
                     <div
                         class="avatar av-l wa-avatar"
                         :class="{ 'wa-avatar--fallback': activeConversation && !activeConversation.avatar_url }"
@@ -1031,62 +1034,264 @@
                             <span class="wa-avatar-initial wa-avatar-initial--l" x-text="(activeConversation.contact_name || activeConversation.contact_number || '?').charAt(0).toUpperCase()"></span>
                         </template>
                     </div>
-                    <p class="info-name" style="margin-top: 1rem;" x-text="activeConversation ? ((activeConversation.contact_name && String(activeConversation.contact_name).trim()) ? activeConversation.contact_name : formatNumber(activeConversation.contact_number)) : '-'"></p>
+                    <p class="info-name" style="margin-top: 0.75rem; margin-bottom: 0.25rem;" x-text="activeConversation ? ((activeConversation.contact_name && String(activeConversation.contact_name).trim()) ? activeConversation.contact_name : formatNumber(activeConversation.contact_number)) : '-'"></p>
+                    <template x-if="detailsData && detailsData.found && detailsData.contact && detailsData.contact.id">
+                        <a
+                            :href="'/contacts/' + detailsData.contact.id"
+                            target="_blank"
+                            style="display:inline-flex;align-items:center;gap:4px;font-size:0.78rem;color:#25D366;text-decoration:none;"
+                        >
+                            <i class="fas fa-external-link-alt" style="font-size:0.7rem;"></i> Ver perfil
+                        </a>
+                    </template>
                 </div>
-                {{-- Dados da tabela contacts --}}
-                <div class="wa-info-contact-section" style="border-top: 1px solid var(--border-color, #e9edef); padding: 1rem; text-align: left;">
-                    <p class="wa-info-section-title" style="font-weight: 600; margin-bottom: 0.75rem; font-size: 0.9rem;">Tabela Contacts</p>
-                    <template x-if="!activeConversation">
-                        <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;">Selecione uma conversa.</p>
-                    </template>
-                    <template x-if="activeConversation && appContactLoading">
-                        <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;">Carregando...</p>
-                    </template>
-                    <template x-if="activeConversation && !appContactLoading && appContactMessage">
-                        <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;" x-text="appContactMessage"></p>
-                    </template>
-                    <template x-if="activeConversation && !appContactLoading && appContact && appContact.found">
-                        <div class="wa-info-contact-fields">
-                            <dl style="margin: 0; font-size: 0.85rem;">
-                                <template x-if="appContact.contact.name">
-                                    <div style="margin-bottom: 0.5rem;">
-                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">Nome</dt>
-                                        <dd style="margin: 0;" x-text="appContact.contact.name"></dd>
-                                    </div>
+
+                {{-- Empty state --}}
+                <template x-if="!activeConversation">
+                    <p style="text-align:center;color:var(--wa-list-meta-color,#667781);font-size:0.83rem;padding:1rem;">Selecione uma conversa.</p>
+                </template>
+                <template x-if="activeConversation && detailsLoading">
+                    <p style="text-align:center;color:var(--wa-list-meta-color,#667781);font-size:0.83rem;padding:1rem;"><i class="fas fa-circle-notch fa-spin"></i> Carregando...</p>
+                </template>
+
+                <template x-if="activeConversation && !detailsLoading">
+                    <div>
+
+                        {{-- Seção: Info do contato --}}
+                        <div style="border-top:1px solid var(--border-color,#e9edef);">
+                            <button
+                                @click="_detailsInfoOpen = !_detailsInfoOpen"
+                                style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:none;border:none;cursor:pointer;font-weight:600;font-size:0.85rem;color:var(--wa-text-color,#111b21);"
+                            >
+                                <span><i class="fas fa-user" style="margin-right:6px;color:#25D366;font-size:0.8rem;"></i>Informações</span>
+                                <i class="fas" :class="_detailsInfoOpen ? 'fa-chevron-up' : 'fa-chevron-down'" style="font-size:0.7rem;color:#8696a0;"></i>
+                            </button>
+                            <div x-show="_detailsInfoOpen" style="padding:0 1rem 0.75rem;">
+                                <template x-if="detailsData && detailsData.found && detailsData.contact">
+                                    <dl style="margin:0;font-size:0.83rem;display:flex;flex-direction:column;gap:0.4rem;">
+                                        <template x-if="detailsData.contact.phone">
+                                            <div>
+                                                <dt style="font-size:0.72rem;font-weight:600;color:var(--wa-list-meta-color,#667781);margin-bottom:1px;">Telefone</dt>
+                                                <dd style="margin:0;" x-text="detailsData.contact.phone"></dd>
+                                            </div>
+                                        </template>
+                                        <template x-if="detailsData.contact.email">
+                                            <div>
+                                                <dt style="font-size:0.72rem;font-weight:600;color:var(--wa-list-meta-color,#667781);margin-bottom:1px;">E-mail</dt>
+                                                <dd style="margin:0;" x-text="detailsData.contact.email"></dd>
+                                            </div>
+                                        </template>
+                                        <template x-if="detailsData.contact.notes">
+                                            <div>
+                                                <dt style="font-size:0.72rem;font-weight:600;color:var(--wa-list-meta-color,#667781);margin-bottom:1px;">Notas</dt>
+                                                <dd style="margin:0;white-space:pre-wrap;" x-text="detailsData.contact.notes"></dd>
+                                            </div>
+                                        </template>
+                                    </dl>
                                 </template>
-                                <template x-if="appContact.contact.phone">
-                                    <div style="margin-bottom: 0.5rem;">
-                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">Telefone</dt>
-                                        <dd style="margin: 0;" x-text="appContact.contact.phone"></dd>
-                                    </div>
+                                <template x-if="!detailsData || !detailsData.found">
+                                    <p style="font-size:0.82rem;color:var(--wa-list-meta-color,#667781);margin:0;">Contato não encontrado na base.</p>
                                 </template>
-                                <template x-if="appContact.contact.email">
-                                    <div style="margin-bottom: 0.5rem;">
-                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">E-mail</dt>
-                                        <dd style="margin: 0;" x-text="appContact.contact.email"></dd>
-                                    </div>
-                                </template>
-                                <template x-if="appContact.contact.notes">
-                                    <div style="margin-bottom: 0.5rem;">
-                                        <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;">Notas</dt>
-                                        <dd style="margin: 0; white-space: pre-wrap;" x-text="appContact.contact.notes"></dd>
-                                    </div>
-                                </template>
-                                <template x-if="appContact.contact.custom_fields && appContact.contact.custom_fields.length">
-                                    <template x-for="f in appContact.contact.custom_fields" :key="f.field_name + (f.value || '')">
-                                        <div style="margin-bottom: 0.5rem;">
-                                            <dt style="font-weight: 600; color: var(--wa-list-meta-color, #667781); margin-bottom: 0.15rem;" x-text="f.field_name"></dt>
-                                            <dd style="margin: 0;" x-text="f.formatted_value || f.value || '-'"></dd>
-                                        </div>
-                                    </template>
-                                </template>
-                            </dl>
-                            <template x-if="appContact.contact.name === null && appContact.contact.phone === null && appContact.contact.email === null && appContact.contact.notes === null && (!appContact.contact.custom_fields || !appContact.contact.custom_fields.length)">
-                                <p class="wa-info-muted" style="color: var(--wa-list-meta-color, #667781); font-size: 0.85rem;">Registro encontrado, mas sem dados preenchidos.</p>
-                            </template>
+                            </div>
                         </div>
-                    </template>
-                </div>
+
+                        {{-- Seção: Listas --}}
+                        <div style="border-top:1px solid var(--border-color,#e9edef);">
+                            <button
+                                @click="_detailsListsOpen = !_detailsListsOpen"
+                                style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:none;border:none;cursor:pointer;font-weight:600;font-size:0.85rem;color:var(--wa-text-color,#111b21);"
+                            >
+                                <span><i class="fas fa-list" style="margin-right:6px;color:#25D366;font-size:0.8rem;"></i>Listas</span>
+                                <i class="fas" :class="_detailsListsOpen ? 'fa-chevron-up' : 'fa-chevron-down'" style="font-size:0.7rem;color:#8696a0;"></i>
+                            </button>
+                            <div x-show="_detailsListsOpen" style="padding:0 1rem 0.75rem;">
+                                <template x-if="detailsData && detailsData.found">
+                                    <div>
+                                        {{-- Listas atuais --}}
+                                        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:0.5rem;">
+                                            <template x-if="!detailsData.contact_lists || !detailsData.contact_lists.length">
+                                                <span style="font-size:0.78rem;color:var(--wa-list-meta-color,#667781);">Nenhuma lista.</span>
+                                            </template>
+                                            <template x-for="l in (detailsData.contact_lists || [])" :key="l.id">
+                                                <span style="display:inline-flex;align-items:center;gap:4px;background:#e8f8f0;color:#1f7a4d;border-radius:999px;padding:2px 10px 2px 10px;font-size:0.75rem;font-weight:500;">
+                                                    <span x-text="l.name"></span>
+                                                    <button @click="detailsRemoveFromList(l.id)" style="background:none;border:none;cursor:pointer;color:#667781;padding:0;line-height:1;font-size:0.7rem;" title="Remover">&times;</button>
+                                                </span>
+                                            </template>
+                                        </div>
+                                        {{-- Adicionar a lista --}}
+                                        <template x-if="_detailsListMode === 'select'">
+                                            <div style="display:flex;gap:5px;align-items:center;">
+                                                <select
+                                                    x-model="_detailsListSelectedId"
+                                                    style="flex:1;font-size:0.78rem;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;background:#fff;min-width:0;"
+                                                >
+                                                    <option value="">— Adicionar a lista —</option>
+                                                    <template x-for="l in listas" :key="l.id">
+                                                        <option :value="l.id" x-text="l.name"></option>
+                                                    </template>
+                                                    <option value="new">+ Nova lista</option>
+                                                </select>
+                                                <button
+                                                    @click="_detailsListSelectedId === 'new' ? (_detailsListMode = 'create') : detailsAddToList()"
+                                                    :disabled="_detailsListCreating || !_detailsListSelectedId"
+                                                    style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;white-space:nowrap;"
+                                                >
+                                                    <i class="fas fa-plus" style="font-size:0.7rem;"></i>
+                                                </button>
+                                            </div>
+                                        </template>
+                                        <template x-if="_detailsListMode === 'create'">
+                                            <div style="display:flex;gap:5px;align-items:center;">
+                                                <input
+                                                    type="text"
+                                                    x-model="_detailsListInput"
+                                                    placeholder="Nome da nova lista"
+                                                    @keydown.enter="detailsAddToList()"
+                                                    @keydown.escape="_detailsListMode='select'; _detailsListInput=''"
+                                                    style="flex:1;font-size:0.78rem;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;min-width:0;"
+                                                    x-ref="detailsListInput"
+                                                    x-init="$nextTick(() => $refs.detailsListInput && $refs.detailsListInput.focus())"
+                                                />
+                                                <button @click="detailsAddToList()" :disabled="_detailsListCreating || !_detailsListInput.trim()" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;">
+                                                    <i x-show="!_detailsListCreating" class="fas fa-check" style="font-size:0.7rem;"></i>
+                                                    <i x-show="_detailsListCreating" class="fas fa-circle-notch fa-spin" style="font-size:0.7rem;"></i>
+                                                </button>
+                                                <button @click="_detailsListMode='select'; _detailsListInput=''" style="background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:4px 8px;font-size:0.78rem;cursor:pointer;">&times;</button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="!detailsData || !detailsData.found">
+                                    <p style="font-size:0.78rem;color:var(--wa-list-meta-color,#667781);margin:0;">Crie o contato para gerenciar listas.</p>
+                                </template>
+                            </div>
+                        </div>
+
+                        {{-- Seção: Tags --}}
+                        <div style="border-top:1px solid var(--border-color,#e9edef);">
+                            <button
+                                @click="_detailsTagsOpen = !_detailsTagsOpen"
+                                style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:none;border:none;cursor:pointer;font-weight:600;font-size:0.85rem;color:var(--wa-text-color,#111b21);"
+                            >
+                                <span><i class="fas fa-tag" style="margin-right:6px;color:#25D366;font-size:0.8rem;"></i>Tags</span>
+                                <i class="fas" :class="_detailsTagsOpen ? 'fa-chevron-up' : 'fa-chevron-down'" style="font-size:0.7rem;color:#8696a0;"></i>
+                            </button>
+                            <div x-show="_detailsTagsOpen" style="padding:0 1rem 0.75rem;">
+                                <template x-if="detailsData && detailsData.found">
+                                    <div>
+                                        {{-- Tags atuais --}}
+                                        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:0.5rem;">
+                                            <template x-if="!detailsData.contact_tags || !detailsData.contact_tags.length">
+                                                <span style="font-size:0.78rem;color:var(--wa-list-meta-color,#667781);">Nenhuma tag.</span>
+                                            </template>
+                                            <template x-for="t in (detailsData.contact_tags || [])" :key="t.id">
+                                                <span
+                                                    :style="'display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 10px 2px 8px;font-size:0.75rem;font-weight:500;background:' + (t.color || '#25D366') + '22;color:' + (t.color || '#25D366') + ';border:1px solid ' + (t.color || '#25D366') + '44;'"
+                                                >
+                                                    <span x-text="t.name"></span>
+                                                    <button @click="detailsRemoveTag(t.id)" style="background:none;border:none;cursor:pointer;padding:0;line-height:1;font-size:0.7rem;" :style="'color:' + (t.color || '#667781')" title="Remover">&times;</button>
+                                                </span>
+                                            </template>
+                                        </div>
+                                        {{-- Adicionar tag --}}
+                                        <template x-if="_detailsTagMode === 'select'">
+                                            <div style="display:flex;gap:5px;align-items:center;">
+                                                <select
+                                                    x-model="_detailsTagSelectedId"
+                                                    style="flex:1;font-size:0.78rem;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;background:#fff;min-width:0;"
+                                                >
+                                                    <option value="">— Adicionar tag —</option>
+                                                    <template x-for="t in tags" :key="t.id">
+                                                        <option :value="t.id" x-text="t.name"></option>
+                                                    </template>
+                                                    <option value="new">+ Nova tag</option>
+                                                </select>
+                                                <button
+                                                    @click="_detailsTagSelectedId === 'new' ? (_detailsTagMode = 'create') : detailsAddTag()"
+                                                    :disabled="_detailsTagCreating || !_detailsTagSelectedId"
+                                                    style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;"
+                                                >
+                                                    <i class="fas fa-plus" style="font-size:0.7rem;"></i>
+                                                </button>
+                                            </div>
+                                        </template>
+                                        <template x-if="_detailsTagMode === 'create'">
+                                            <div style="display:flex;gap:5px;align-items:center;">
+                                                <input
+                                                    type="text"
+                                                    x-model="_detailsTagInput"
+                                                    placeholder="Nome da nova tag"
+                                                    @keydown.enter="detailsAddTag()"
+                                                    @keydown.escape="_detailsTagMode='select'; _detailsTagInput=''"
+                                                    style="flex:1;font-size:0.78rem;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;min-width:0;"
+                                                    x-ref="detailsTagInput"
+                                                    x-init="$nextTick(() => $refs.detailsTagInput && $refs.detailsTagInput.focus())"
+                                                />
+                                                <button @click="detailsAddTag()" :disabled="_detailsTagCreating || !_detailsTagInput.trim()" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;">
+                                                    <i x-show="!_detailsTagCreating" class="fas fa-check" style="font-size:0.7rem;"></i>
+                                                    <i x-show="_detailsTagCreating" class="fas fa-circle-notch fa-spin" style="font-size:0.7rem;"></i>
+                                                </button>
+                                                <button @click="_detailsTagMode='select'; _detailsTagInput=''" style="background:#f3f4f6;color:#6b7280;border:none;border-radius:6px;padding:4px 8px;font-size:0.78rem;cursor:pointer;">&times;</button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="!detailsData || !detailsData.found">
+                                    <p style="font-size:0.78rem;color:var(--wa-list-meta-color,#667781);margin:0;">Crie o contato para gerenciar tags.</p>
+                                </template>
+                            </div>
+                        </div>
+
+                        {{-- Seção: Automações --}}
+                        <div style="border-top:1px solid var(--border-color,#e9edef);">
+                            <button
+                                @click="_detailsAutoOpen = !_detailsAutoOpen"
+                                style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:none;border:none;cursor:pointer;font-weight:600;font-size:0.85rem;color:var(--wa-text-color,#111b21);"
+                            >
+                                <span><i class="fas fa-bolt" style="margin-right:6px;color:#25D366;font-size:0.8rem;"></i>Automações</span>
+                                <i class="fas" :class="_detailsAutoOpen ? 'fa-chevron-up' : 'fa-chevron-down'" style="font-size:0.7rem;color:#8696a0;"></i>
+                            </button>
+                            <div x-show="_detailsAutoOpen" style="padding:0 1rem 0.75rem;">
+                                <template x-if="detailsData && detailsData.found && detailsData.automations && detailsData.automations.length">
+                                    <div style="display:flex;flex-direction:column;gap:8px;">
+                                        <select
+                                            x-model="_detailsAutoSelectedId"
+                                            style="width:100%;font-size:0.78rem;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;background:#fff;"
+                                        >
+                                            <option value="">— Selecione um fluxo —</option>
+                                            <template x-for="a in detailsData.automations" :key="a.id">
+                                                <option :value="a.id" x-text="a.name"></option>
+                                            </template>
+                                        </select>
+                                        <button
+                                            @click="detailsRunAutomation()"
+                                            :disabled="_detailsAutoRunning || !_detailsAutoSelectedId"
+                                            style="display:flex;align-items:center;justify-content:center;gap:6px;background:#25D366;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:0.82rem;font-weight:600;cursor:pointer;width:100%;"
+                                        >
+                                            <i x-show="!_detailsAutoRunning" class="fas fa-play" style="font-size:0.7rem;"></i>
+                                            <i x-show="_detailsAutoRunning" class="fas fa-circle-notch fa-spin" style="font-size:0.7rem;"></i>
+                                            <span x-text="_detailsAutoRunning ? 'Executando...' : 'Executar fluxo'"></span>
+                                        </button>
+                                        <template x-if="_detailsAutoResult">
+                                            <p
+                                                :style="'font-size:0.78rem;margin:0;padding:5px 8px;border-radius:6px;' + (_detailsAutoResult === 'ok' ? 'background:#e8f8f0;color:#1f7a4d;' : 'background:#fef2f2;color:#991b1b;')"
+                                                x-text="_detailsAutoResult === 'ok' ? '✓ Fluxo executado com sucesso!' : '✗ ' + _detailsAutoResult"
+                                            ></p>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="detailsData && detailsData.found && (!detailsData.automations || !detailsData.automations.length)">
+                                    <p style="font-size:0.78rem;color:var(--wa-list-meta-color,#667781);margin:0;">Nenhuma automação ativa.</p>
+                                </template>
+                                <template x-if="!detailsData || !detailsData.found">
+                                    <p style="font-size:0.78rem;color:var(--wa-list-meta-color,#667781);margin:0;">Crie o contato para executar automações.</p>
+                                </template>
+                            </div>
+                        </div>
+
+                    </div>
+                </template>
             </div>
         </div>
         <!-- Modal: após extrair membros, perguntar se adicionar a lista e/ou tag -->

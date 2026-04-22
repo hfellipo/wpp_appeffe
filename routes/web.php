@@ -135,6 +135,12 @@ Route::middleware('auth')->group(function () {
         Route::post('/api/apply-extracted', [WhatsAppInboxController::class, 'applyExtractedToListAndTag'])->name('api.apply-extracted');
         Route::get('/api/conversations/{conversation}/avatar', [WhatsAppInboxController::class, 'avatar'])->name('api.conversations.avatar');
         Route::get('/api/conversations/{conversation}/app-contact', [WhatsAppInboxController::class, 'appContact'])->name('api.conversations.app-contact');
+        Route::get('/api/conversations/{conversation}/contact-details', [WhatsAppInboxController::class, 'contactDetails'])->name('api.conversations.contact-details');
+        Route::post('/api/conversations/{conversation}/add-to-list', [WhatsAppInboxController::class, 'addToList'])->name('api.conversations.add-to-list');
+        Route::post('/api/conversations/{conversation}/remove-from-list', [WhatsAppInboxController::class, 'removeFromList'])->name('api.conversations.remove-from-list');
+        Route::post('/api/conversations/{conversation}/add-tag', [WhatsAppInboxController::class, 'addTag'])->name('api.conversations.add-tag');
+        Route::post('/api/conversations/{conversation}/remove-tag', [WhatsAppInboxController::class, 'removeTag'])->name('api.conversations.remove-tag');
+        Route::post('/api/conversations/{conversation}/run-automation', [WhatsAppInboxController::class, 'runAutomation'])->name('api.conversations.run-automation');
         Route::get('/api/conversations/{conversation}/messages', [WhatsAppInboxController::class, 'messages'])->name('api.messages');
         Route::post('/api/conversations/{conversation}/send', [WhatsAppInboxController::class, 'send'])->name('api.send');
         Route::post('/api/conversations/{conversation}/send-media', [WhatsAppInboxController::class, 'sendMedia'])->name('api.send-media');
