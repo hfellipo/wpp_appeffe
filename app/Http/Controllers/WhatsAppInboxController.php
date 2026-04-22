@@ -659,7 +659,7 @@ class WhatsAppInboxController extends Controller
             }
         }
 
-        // Contact armazena (XX)XXXXX-XXXX; o setter formata 10 ou 11 dígitos. BR com 55: usar só DDD+número.
+        // Normalize: strip Brazil country code, let Contact::normalizePhoneForStorage handle format.
         $phoneForStorage = $digits;
         if (strlen($digits) >= 12 && str_starts_with($digits, '55')) {
             $local = substr($digits, 2);
@@ -669,16 +669,17 @@ class WhatsAppInboxController extends Controller
         } elseif (strlen($digits) > 11) {
             $phoneForStorage = substr($digits, 0, 11);
         }
+        $phoneForStorage = Contact::normalizePhoneForStorage($phoneForStorage) ?: $phoneForStorage;
 
         $name = $displayName !== null && $displayName !== ''
             ? $displayName
             : ('Membro ' . substr($digits, -8));
 
-        return Contact::create([
-            'user_id' => $accountId,
-            'name' => $name,
-            'phone' => $phoneForStorage,
-        ]);
+        // updateOrCreate prevents duplicate on same phone — safe against concurrent webhooks.
+        return Contact::updateOrCreate(
+            ['user_id' => $accountId, 'phone' => $phoneForStorage],
+            ['name' => $name],
+        );
     }
 
     public function contacts(Request $request): JsonResponse

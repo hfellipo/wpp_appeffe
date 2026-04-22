@@ -216,25 +216,8 @@ class ContactController extends Controller
             ->with('success', 'Contato excluído com sucesso!');
     }
 
-    /**
-     * Format phone number for storage: (XX)XXXXX-XXXX ou (XX)XXXX-XXXX.
-     * Remove zero à esquerda (ex: 031994234090) para formato consistente e uso no WhatsApp.
-     */
     private function formatPhoneForStorage(?string $phone): string
     {
-        if ($phone === null || trim($phone) === '') {
-            return '';
-        }
-        $digits = preg_replace('/\D/', '', $phone);
-        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
-            $digits = substr($digits, 1);
-        }
-        if (strlen($digits) === 11) {
-            return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 5), substr($digits, 7, 4));
-        }
-        if (strlen($digits) === 10) {
-            return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 4), substr($digits, 6, 4));
-        }
-        return $phone;
+        return Contact::normalizePhoneForStorage($phone) ?: '';
     }
 }

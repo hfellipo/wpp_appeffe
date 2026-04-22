@@ -384,29 +384,11 @@ class ContactImportController extends Controller
     }
 
     /**
-     * Format phone number.
+     * Format phone number — delegates to Contact::normalizePhoneForStorage() for consistency.
      */
     private function formatPhone(string $phone): string
     {
-        $digits = preg_replace('/\D/', '', $phone);
-
-        if (strlen($digits) === 11) {
-            return sprintf('(%s)%s-%s',
-                substr($digits, 0, 2),
-                substr($digits, 2, 5),
-                substr($digits, 7, 4)
-            );
-        }
-
-        if (strlen($digits) === 10) {
-            return sprintf('(%s)%s-%s',
-                substr($digits, 0, 2),
-                substr($digits, 2, 4),
-                substr($digits, 6, 4)
-            );
-        }
-
-        return $phone;
+        return Contact::normalizePhoneForStorage($phone) ?: $phone;
     }
 
     /**
@@ -418,7 +400,7 @@ class ContactImportController extends Controller
         if ($phone === '(00)00000-0000') {
             return true;
         }
-        
+
         $digits = preg_replace('/\D/', '', $phone);
         return strlen($digits) >= 10 && strlen($digits) <= 11;
     }
@@ -668,9 +650,13 @@ class ContactImportController extends Controller
             $contact = $existingContact;
             $updated = true;
         } else {
-            $contact = Contact::create($contactData);
+            // updateOrCreate guards against race conditions and duplicate-phone edge cases.
+            $contact = Contact::updateOrCreate(
+                ['user_id' => $contactData['user_id'], 'phone' => $contactData['phone']],
+                ['name' => $contactData['name'], 'email' => $contactData['email'], 'notes' => $contactData['notes']],
+            );
             $existingContacts->put($normalizedPhone, $contact);
-            $updated = false;
+            $updated = $contact->wasRecentlyCreated === false;
         }
 
         foreach ($customFieldValues as $fieldId => $value) {

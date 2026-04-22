@@ -22,31 +22,47 @@ class Contact extends Model
     ];
 
     /**
+     * Canonical phone normalization used everywhere: (XX)XXXXX-XXXX or (XX)XXXX-XXXX.
+     * Strips leading zero for 11-digit numbers (e.g. 031994234090 → (31)99423-4090).
+     * Country code 55 prefix is stripped so local BR numbers are always stored in local format.
+     */
+    public static function normalizePhoneForStorage(?string $phone): string
+    {
+        if ($phone === null || trim($phone) === '') {
+            return '';
+        }
+        $digits = preg_replace('/\D/', '', $phone) ?: '';
+        if ($digits === '') {
+            return $phone;
+        }
+        // Strip Brazil country code if followed by valid local number (10 or 11 digits)
+        if (str_starts_with($digits, '55') && strlen($digits) >= 12) {
+            $local = substr($digits, 2);
+            if (strlen($local) === 10 || strlen($local) === 11) {
+                $digits = $local;
+            }
+        }
+        // Strip leading zero on 11-digit numbers
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            $digits = substr($digits, 1);
+        }
+        if (strlen($digits) === 11) {
+            return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 5), substr($digits, 7, 4));
+        }
+        if (strlen($digits) === 10) {
+            return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 4), substr($digits, 6, 4));
+        }
+        return $phone;
+    }
+
+    /**
      * Normaliza e formata o telefone ao salvar: (XX)XXXXX-XXXX ou (XX)XXXX-XXXX.
      * Remove zero à esquerda (ex: 031994234090 -> (31)99423-4090) para evitar JID inválido no WhatsApp.
      */
     protected function phone(): \Illuminate\Database\Eloquent\Casts\Attribute
     {
         return \Illuminate\Database\Eloquent\Casts\Attribute::make(
-            set: function (?string $value) {
-                if ($value === null || $value === '') {
-                    return $value;
-                }
-                $digits = preg_replace('/\D/', '', $value) ?: '';
-                if ($digits === '') {
-                    return $value;
-                }
-                if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
-                    $digits = substr($digits, 1);
-                }
-                if (strlen($digits) === 11) {
-                    return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 5), substr($digits, 7, 4));
-                }
-                if (strlen($digits) === 10) {
-                    return sprintf('(%s)%s-%s', substr($digits, 0, 2), substr($digits, 2, 4), substr($digits, 6, 4));
-                }
-                return $value;
-            },
+            set: fn (?string $value) => self::normalizePhoneForStorage($value) ?: $value,
         );
     }
 
