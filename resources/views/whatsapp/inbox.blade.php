@@ -199,6 +199,24 @@
             }
             .wa-emoji-trigger.wa-attach-trigger { margin-left: 0; }
 
+            /* Audio player */
+            .wa-audio-player { display: flex; align-items: center; gap: 8px; min-width: 200px; max-width: 280px; padding: 6px 4px; }
+            .wa-audio-player audio { flex: 1; height: 32px; min-width: 0; accent-color: #25D366; }
+            .wa-audio-player audio::-webkit-media-controls-panel { background: transparent; }
+            .wa-audio-dur { font-size: 11px; color: #667781; white-space: nowrap; }
+            .message-card.mc-sender .wa-audio-dur { color: rgba(255,255,255,0.8); }
+
+            /* Mic recording button & states */
+            .wa-mic-btn { background: none; border: none; padding: 4px 8px; cursor: pointer; color: #54656f; display: flex; align-items: center; font-size: 1.1rem; transition: color .15s; }
+            .wa-mic-btn:hover { color: #25D366; }
+            .wa-mic-btn.recording { color: #ef4444; animation: wa-pulse 1s infinite; }
+            .wa-recording-bar { display: flex; align-items: center; gap: 8px; flex: 1; }
+            .wa-recording-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: wa-pulse 1s infinite; }
+            .wa-recording-time { font-size: 13px; color: #ef4444; font-variant-numeric: tabular-nums; min-width: 40px; }
+            .wa-recording-cancel { font-size: 11px; color: #667781; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+            .wa-recording-cancel:hover { background: #f0f2f5; color: #ef4444; }
+            @keyframes wa-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
             /* Grupo: nome do remetente acima da bolha */
             .message-card-wrapper { margin-bottom: 2px; }
             .message-card-wrapper.mc-sender { display: flex; flex-direction: column; align-items: flex-end; }
@@ -755,9 +773,23 @@
                                         </template>
                                         <div class="message-card" :class="m.direction === 'out' ? 'mc-sender' : ''" style="position:relative;">
                                             <div class="message-card-content" :class="{
-                                                'wa-sender-media': m.direction === 'out' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type)),
-                                                'wa-received-media': m.direction === 'in' && (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document') || ['image','video','document'].includes(m.message_type))
+                                                'wa-sender-media': m.direction === 'out' && (m.attachment && (['image','video','document'].includes(m.attachment.type)) || ['image','video','document'].includes(m.message_type)),
+                                                'wa-received-media': m.direction === 'in' && (m.attachment && (['image','video','document'].includes(m.attachment.type)) || ['image','video','document'].includes(m.message_type))
                                             }">
+                                                <!-- Áudio: player nativo -->
+                                                <template x-if="m.attachment && m.attachment.type === 'audio' && m.attachment.url">
+                                                    <div class="wa-audio-player">
+                                                        <audio :src="m.attachment.url" controls preload="metadata" style="flex:1;min-width:0;max-width:220px;height:32px;"></audio>
+                                                        <span class="wa-audio-dur" x-show="m.attachment.size" x-text="m.attachment.size ? formatFileSize(m.attachment.size) : ''"></span>
+                                                    </div>
+                                                </template>
+                                                <!-- Áudio sem URL (enviando / indisponível) -->
+                                                <template x-if="(m.message_type === 'audio' || (m.attachment && m.attachment.type === 'audio')) && !(m.attachment && m.attachment.url)">
+                                                    <div class="wa-audio-player" style="gap:6px;">
+                                                        <span style="font-size:1.1rem;">🎵</span>
+                                                        <span style="font-size:12px;color:#667781;" x-text="m.status === 'sending' ? 'Enviando áudio...' : 'Áudio'"></span>
+                                                    </div>
+                                                </template>
                                                 <!-- Imagem: preview + feedback "Carregando..." até abrir; fallback se falhar. -->
                                                 <template x-if="m.attachment && m.attachment.type === 'image' && m.attachment.url && !imageLoadFail[m.id]">
                                                     <div class="wa-message-media wa-message-media--img">
@@ -820,10 +852,10 @@
                                                         <span class="wa-message-media-placeholder__label" x-text="m.message_type === 'image' ? (m.attachment && !m.attachment.url ? 'Carregando imagem...' : (imageLoadFail[m.id] ? 'Imagem indisponível' : 'Imagem')) : (m.message_type === 'video' ? 'Vídeo' : 'Documento')"></span>
                                                     </div>
                                                 </template>
-                                                <div class="message" :class="{ 'wa-message--has-media': (m.attachment && (m.attachment.type === 'image' || m.attachment.type === 'video' || m.attachment.type === 'document')) || ['image','video','document'].includes(m.message_type) }">
-                                                    <!-- Texto só quando não for mídia (evita exibir [image] / [Imagem]) -->
-                                                    <template x-if="!['image','video','document'].includes(m.message_type) || (m.body && !['[Imagem]','[Vídeo]','[Documento]','[image]','[video]','[document]'].includes(m.body))">
-                                                        <span x-text="m.body || (m.message_type && !['image','video','document'].includes(m.message_type) ? '['+m.message_type+']' : '')"></span>
+                                                <div class="message" :class="{ 'wa-message--has-media': (m.attachment && (['image','video','document'].includes(m.attachment.type))) || ['image','video','document'].includes(m.message_type) }">
+                                                    <!-- Texto só quando não for mídia (evita exibir [image] / [Áudio] etc.) -->
+                                                    <template x-if="!['image','video','document','audio'].includes(m.message_type) || (m.body && !['[Imagem]','[Vídeo]','[Documento]','[Áudio]','[audio]','[image]','[video]','[document]'].includes(m.body))">
+                                                        <span x-text="m.body || (m.message_type && !['image','video','document','audio'].includes(m.message_type) ? '['+m.message_type+']' : '')"></span>
                                                     </template>
                                                     <span class="message-time">
                                                         <span class="time" x-text="formatTimeShort(m.created_at)"></span>
@@ -883,28 +915,56 @@
                         <input type="file" class="hidden" x-ref="attachInput" accept="*/*"
                             @change="onAttachSelected($event)"
                         />
-                        <button type="button" class="wa-emoji-trigger wa-attach-trigger" title="Anexar arquivo"
-                                @click.prevent="$refs.attachInput && $refs.attachInput.click()"
-                                :disabled="!connected || sending">
-                            <span class="fas fa-paperclip"></span>
-                        </button>
-                        <button type="button" class="wa-emoji-trigger" title="Emoji"
-                                :class="{ 'wa-emoji-trigger--open': showEmojiPicker }"
-                                @click.prevent="showEmojiPicker = !showEmojiPicker">
-                            <span class="fas fa-smile"></span>
-                        </button>
-                        <textarea
-                            name="message"
-                            class="m-send app-scroll"
-                            placeholder="Digite uma mensagem..."
-                            x-model="draft"
-                            x-ref="draftInput"
-                            @keydown.enter.prevent="maybeSend($event)"
-                            :disabled="!connected || sending"
-                        ></textarea>
-                        <button class="send-button" type="submit" :disabled="!connected || sending || !draft.trim()">
-                            <span class="fas fa-paper-plane"></span>
-                        </button>
+                        {{-- Recording bar (shown while recording) --}}
+                        <template x-if="isRecording">
+                            <div class="wa-recording-bar">
+                                <span class="wa-recording-dot"></span>
+                                <span class="wa-recording-time" x-text="formatRecordingTime(recordingSeconds)"></span>
+                                <span class="wa-recording-cancel" @click.prevent="cancelRecording()" title="Cancelar">✕ Cancelar</span>
+                            </div>
+                        </template>
+                        {{-- Normal input (hidden while recording) --}}
+                        <template x-if="!isRecording">
+                            <div style="display:contents;">
+                                <button type="button" class="wa-emoji-trigger wa-attach-trigger" title="Anexar arquivo"
+                                        @click.prevent="$refs.attachInput && $refs.attachInput.click()"
+                                        :disabled="!connected || sending">
+                                    <span class="fas fa-paperclip"></span>
+                                </button>
+                                <button type="button" class="wa-emoji-trigger" title="Emoji"
+                                        :class="{ 'wa-emoji-trigger--open': showEmojiPicker }"
+                                        @click.prevent="showEmojiPicker = !showEmojiPicker">
+                                    <span class="fas fa-smile"></span>
+                                </button>
+                                <textarea
+                                    name="message"
+                                    class="m-send app-scroll"
+                                    placeholder="Digite uma mensagem..."
+                                    x-model="draft"
+                                    x-ref="draftInput"
+                                    @keydown.enter.prevent="maybeSend($event)"
+                                    :disabled="!connected || sending"
+                                ></textarea>
+                            </div>
+                        </template>
+                        {{-- Mic / Stop / Send --}}
+                        <template x-if="isRecording">
+                            <button type="button" class="send-button" style="background:#25D366;" title="Enviar áudio"
+                                    @click.prevent="stopRecording()" :disabled="!connected || sending">
+                                <span class="fas fa-check"></span>
+                            </button>
+                        </template>
+                        <template x-if="!isRecording && !draft.trim()">
+                            <button type="button" class="wa-mic-btn" title="Gravar áudio"
+                                    @click.prevent="startRecording()" :disabled="!connected || sending">
+                                <span class="fas fa-microphone"></span>
+                            </button>
+                        </template>
+                        <template x-if="!isRecording && draft.trim()">
+                            <button class="send-button" type="submit" :disabled="!connected || sending">
+                                <span class="fas fa-paper-plane"></span>
+                            </button>
+                        </template>
                     </form>
                 </div>
             </div>

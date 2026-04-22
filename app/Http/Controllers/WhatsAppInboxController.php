@@ -1605,12 +1605,14 @@ class WhatsAppInboxController extends Controller
             $mime = $file->getMimeType() ?: 'application/octet-stream';
             $originalName = $file->getClientOriginalName() ?: $file->hashName();
 
-            // mediatype for Evolution: image | video | document
+            // mediatype for Evolution: image | video | audio | document
             $mediatype = 'document';
             if (str_starts_with((string) $mime, 'image/')) {
                 $mediatype = 'image';
             } elseif (str_starts_with((string) $mime, 'video/')) {
                 $mediatype = 'video';
+            } elseif (str_starts_with((string) $mime, 'audio/')) {
+                $mediatype = 'audio';
             }
 
             if (!$this->client->isConfigured()) {
@@ -1696,7 +1698,12 @@ class WhatsAppInboxController extends Controller
             $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
             // Body vazio quando sem legenda, para não exibir "[Imagem]" no balão
             $bodyForMessage = $caption !== '' ? $caption : '';
-            $listPreview = $caption !== '' ? mb_substr($caption, 0, 500) : ($mediatype === 'image' ? 'Foto' : ($mediatype === 'video' ? 'Vídeo' : 'Documento'));
+            $listPreview = $caption !== '' ? mb_substr($caption, 0, 500) : match ($mediatype) {
+                'image'  => 'Foto',
+                'video'  => 'Vídeo',
+                'audio'  => '🎵 Áudio',
+                default  => 'Documento',
+            };
 
             $msg = WhatsAppMessage::create([
                 'conversation_id' => $conversation->id,

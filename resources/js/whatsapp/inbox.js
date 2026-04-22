@@ -68,6 +68,13 @@ window.waInboxChatify = function waInboxChatify() {
         appContact: null,
         appContactMessage: null,
 
+        // audio recording
+        isRecording: false,
+        recordingSeconds: 0,
+        _recordingTimer: null,
+        _mediaRecorder: null,
+        _audioChunks: [],
+
         // emoji picker
         showEmojiPicker: false,
         emojiList: ['😀','😃','😄','😁','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😋','😜','🤔','🤗','👍','👎','👏','🙌','👋','❤️','🧡','💛','💚','💙','💜','🖤','💯','🔥','⭐','✨','🎉','🙏','✌️','🤝','💪','😎','🥳','😢','😭','😤','😡','🤬','😷','🤒','🤕','💀','💩','🤡','👻','🙈','🙉','🙊','💋','💌','💐','🌸','🌺','🌻','🌹','🥀','🌷','🍀','☀️','🌈','⚡','❄️','🔥','💧','🌊'],
@@ -956,7 +963,10 @@ window.waInboxChatify = function waInboxChatify() {
             if (caption) form.append('caption', caption);
 
             const tmpId = `tmp-media-${nowIso()}-${Math.random().toString(16).slice(2)}`;
-            const mediaType = file.type.startsWith('image/') ? 'image' : (file.type.startsWith('video/') ? 'video' : 'document');
+            const mediaType = file.type.startsWith('image/') ? 'image'
+                : file.type.startsWith('video/') ? 'video'
+                : file.type.startsWith('audio/') ? 'audio'
+                : 'document';
             const optimistic = {
                 id: tmpId,
                 direction: 'out',
@@ -965,7 +975,7 @@ window.waInboxChatify = function waInboxChatify() {
                 status: 'sending',
                 sent_at: nowIso(),
                 created_at: nowIso(),
-                attachment: { type: mediaType, url: null, caption_preview: caption || file.name },
+                attachment: { type: mediaType, url: null, caption_preview: caption || file.name, mime: file.type, size: file.size },
             };
             this.messages.push(optimistic);
             if (caption) this.draft = '';
@@ -1025,6 +1035,61 @@ window.waInboxChatify = function waInboxChatify() {
         maybeSend(e) {
             if (e.shiftKey) return;
             this.sendMessage();
+        },
+
+        async startRecording() {
+            if (this.isRecording || !this.activeConversation) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                this._audioChunks = [];
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+                this._mediaRecorder = new MediaRecorder(stream, { mimeType });
+                this._mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) this._audioChunks.push(e.data);
+                };
+                this._mediaRecorder.onstop = () => {
+                    stream.getTracks().forEach(t => t.stop());
+                    const blob = new Blob(this._audioChunks, { type: mimeType });
+                    const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+                    const file = new File([blob], `audio_${Date.now()}.${ext}`, { type: mimeType });
+                    this.sendMediaFile(file);
+                };
+                this._mediaRecorder.start(250);
+                this.isRecording = true;
+                this.recordingSeconds = 0;
+                this._recordingTimer = setInterval(() => { this.recordingSeconds++; }, 1000);
+            } catch (err) {
+                alert('Não foi possível acessar o microfone: ' + (err.message || err));
+            }
+        },
+
+        stopRecording() {
+            if (!this.isRecording || !this._mediaRecorder) return;
+            this._mediaRecorder.stop();
+            clearInterval(this._recordingTimer);
+            this._recordingTimer = null;
+            this.isRecording = false;
+        },
+
+        cancelRecording() {
+            if (!this._mediaRecorder) return;
+            this._mediaRecorder.onstop = null;  // prevent sending
+            this._mediaRecorder.stream?.getTracks().forEach(t => t.stop());
+            try { this._mediaRecorder.stop(); } catch(_) {}
+            clearInterval(this._recordingTimer);
+            this._recordingTimer = null;
+            this._audioChunks = [];
+            this._mediaRecorder = null;
+            this.isRecording = false;
+            this.recordingSeconds = 0;
+        },
+
+        formatRecordingTime(secs) {
+            const m = Math.floor(secs / 60).toString().padStart(2, '0');
+            const s = (secs % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
         },
 
         onScrollMessages() {
