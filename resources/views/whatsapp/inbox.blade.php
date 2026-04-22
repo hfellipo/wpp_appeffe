@@ -562,6 +562,28 @@
                         </div>
                         <p class="messenger-title" style="margin-top: 0;"><span x-text="conversationTab === 'direct' ? 'Conversas' : 'Grupos'"></span></p>
 
+                        {{-- Banner discreto: sem instância conectada --}}
+                        <template x-if="hasInstance === false || (hasInstance === true && !connected && waConfigured !== null)">
+                            <div style="margin: 0 8px 8px; padding: 8px 10px; border-radius: 8px; font-size: 0.78rem; display: flex; align-items: center; gap: 8px;"
+                                 :style="waConfigured === false
+                                     ? 'background:#fff3cd;border:1px solid #ffc107;color:#856404;'
+                                     : (hasInstance === false
+                                         ? 'background:#fff3cd;border:1px solid #ffc107;color:#856404;'
+                                         : 'background:#fff8e1;border:1px solid #ffe082;color:#7a6000;')">
+                                <i class="fas fa-exclamation-circle" style="flex-shrink:0;font-size:0.85rem;"></i>
+                                <span x-text="waConfigured === false
+                                    ? 'WhatsApp não configurado.'
+                                    : (hasInstance === false
+                                        ? 'Nenhuma instância cadastrada.'
+                                        : 'WhatsApp desconectado.')">
+                                </span>
+                                <a href="{{ route('whatsapp.index') }}"
+                                   style="margin-left:auto;flex-shrink:0;font-size:0.75rem;font-weight:600;text-decoration:underline;color:inherit;white-space:nowrap;">
+                                    Configurar
+                                </a>
+                            </div>
+                        </template>
+
                         <div style="width: 100%; height: calc(100% - 160px); position: relative; overflow-y: auto;">
                             <template x-if="loadingConversations">
                                 <p class="message-hint center-el"><span>Loading...</span></p>

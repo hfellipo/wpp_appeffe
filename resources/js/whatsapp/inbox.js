@@ -17,6 +17,8 @@ window.waInboxChatify = function waInboxChatify() {
     return {
         connected: false,
         instanceName: '',
+        hasInstance: null,   // null = ainda carregando, false = sem instância, true = tem instância
+        waConfigured: null,  // null = ainda carregando, false = API não configurada
 
         loadingConversations: false,
         loadingMessages: false,
@@ -840,12 +842,19 @@ window.waInboxChatify = function waInboxChatify() {
         },
 
         async refreshStatus() {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 8000);
             try {
-                const resp = await fetch('/settings/whatsapp/status', { headers: { 'Accept': 'application/json' } });
+                const resp = await fetch('/settings/whatsapp/status', {
+                    headers: { 'Accept': 'application/json' },
+                    signal: ctrl.signal,
+                });
                 const data = await resp.json().catch(() => ({}));
                 const state = data.state || data.status || null;
                 const inst = data.instanceName || '';
 
+                this.waConfigured = data.configured !== false;
+                this.hasInstance = data.hasInstance === true;
                 this.instanceName = inst ? String(inst) : '';
                 this.connected = ['open', 'connected', 'online', 'ready'].includes(String(state || '').toLowerCase());
 
@@ -854,6 +863,9 @@ window.waInboxChatify = function waInboxChatify() {
                 }));
             } catch (e) {
                 this.connected = false;
+                // Não alterar hasInstance/waConfigured em timeout para não piscar o banner
+            } finally {
+                clearTimeout(t);
             }
         },
 
