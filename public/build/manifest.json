@@ -1,6 +1,6 @@
 {
-  "_client-cYsR-bxJ.js": {
-    "file": "assets/client-cYsR-bxJ.js",
+  "_client-cWaFMf4G.js": {
+    "file": "assets/client-cWaFMf4G.js",
     "name": "client",
     "isDynamicEntry": true,
     "imports": [
@@ -19,12 +19,12 @@
     "isEntry": true
   },
   "resources/js/automation-flow.jsx": {
-    "file": "assets/automation-flow-CDjy8Yug.js",
+    "file": "assets/automation-flow-CoF8nTAA.js",
     "name": "automation-flow",
     "src": "resources/js/automation-flow.jsx",
     "isEntry": true,
     "dynamicImports": [
-      "_client-cYsR-bxJ.js"
+      "_client-cWaFMf4G.js"
     ],
     "css": [
       "assets/automation-flow-BZV40eAE.css"

@@ -31,7 +31,7 @@ class AutomationRunnerService
      *
      * @return array{success: bool, message: string, run: ?AutomationRun, details: array}
      */
-    public function runForContact(Automation $automation, Contact $contact): array
+    public function runForContact(Automation $automation, Contact $contact, bool $skipDelays = false): array
     {
         $accountId = (int) $automation->user_id;
         if ((int) $contact->user_id !== $accountId) {
@@ -93,7 +93,7 @@ class AutomationRunnerService
         ]);
 
         $result = $useFlow
-            ? $this->runFlowFromNode($automation, $contact, $run, $startNode)
+            ? $this->runFlowFromNode($automation, $contact, $run, $startNode, $skipDelays)
             : $this->runNodesFrom($automation, $contact, $run, 0);
 
         if (! ($result['done'] ?? true)) {
@@ -155,7 +155,7 @@ class AutomationRunnerService
      *
      * @return array{done: bool, status?: string, details: array, delay_minutes?: int, resume_at?: \Carbon\CarbonImmutable}
      */
-    private function runFlowFromNode(Automation $automation, Contact $contact, AutomationRun $run, AutomationNode $node): array
+    private function runFlowFromNode(Automation $automation, Contact $contact, AutomationRun $run, AutomationNode $node, bool $skipDelays = false): array
     {
         $accountId = (int) $automation->user_id;
         $details   = (array) ($run->metadata['details']    ?? []);
@@ -165,7 +165,7 @@ class AutomationRunnerService
         if ($node->type === 'start') {
             $nextNodes = $this->getNextNodes($automation, $node);
             foreach ($nextNodes as $next) {
-                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
                 if (! ($result['done'] ?? true)) {
                     return $result;
                 }
@@ -177,13 +177,31 @@ class AutomationRunnerService
             return ['done' => true, 'status' => $runStatus, 'details' => $details];
         }
 
-        // ── delay: schedule resume job ────────────────────────────────
+        // ── delay: schedule resume job (or skip in test mode) ─────────
         if ($node->type === 'delay') {
             $minutes   = max(1, min(10080, (int) ($node->config['minutes'] ?? 0)));
-            $resumeAt  = now()->addMinutes($minutes);
             $nextNodes = $this->getNextNodes($automation, $node);
-            $details[] = ['action' => 'delay', 'node_id' => $node->id, 'scheduled_after_minutes' => $minutes];
+
+            if ($skipDelays) {
+                // Test mode: register the delay in details but continue immediately
+                $details[] = ['action' => 'delay', 'node_id' => $node->id, 'scheduled_after_minutes' => $minutes, 'skipped_in_test' => true];
+                $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
+                foreach ($nextNodes as $next) {
+                    $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
+                    if (! ($result['done'] ?? true)) {
+                        return $result;
+                    }
+                    $run       = $run->fresh();
+                    $details   = (array) ($run->metadata['details']    ?? []);
+                    $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
+                }
+                $run->update(['status' => $runStatus, 'metadata' => ['details' => $details, 'run_status' => $runStatus]]);
+                return ['done' => true, 'status' => $runStatus, 'details' => $details];
+            }
+
+            $resumeAt   = now()->addMinutes($minutes);
             $nextNodeId = $nextNodes->isNotEmpty() ? $nextNodes->first()->id : null;
+            $details[]  = ['action' => 'delay', 'node_id' => $node->id, 'scheduled_after_minutes' => $minutes];
             $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus], 'resume_at' => $resumeAt, 'resume_from_position' => null]);
             if ($nextNodeId) {
                 $run->update(['metadata' => array_merge($run->metadata ?? [], ['resume_from_node_id' => $nextNodeId])]);
@@ -200,7 +218,7 @@ class AutomationRunnerService
             $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
             $nextNodes = $this->getNextNodesFromHandle($automation, $node, $sourceHandle);
             foreach ($nextNodes as $next) {
-                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
                 if (! ($result['done'] ?? true)) {
                     return $result;
                 }
@@ -223,7 +241,6 @@ class AutomationRunnerService
                 'metadata'    => ['details' => $details, 'run_status' => $runStatus, 'waiting_input_node_id' => $node->id],
                 'resume_at'   => now()->addMinutes((int) ($node->config['timeout_minutes'] ?? 60)),
             ]);
-            // Flow pauses here — webhook should resume when user replies
             return ['done' => false, 'details' => $details, 'delay_minutes' => (int) ($node->config['timeout_minutes'] ?? 60)];
         }
 
@@ -241,7 +258,7 @@ class AutomationRunnerService
 
         $nextNodes = $this->getNextNodes($automation, $node);
         foreach ($nextNodes as $next) {
-            $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+            $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
             if (! ($result['done'] ?? true)) {
                 return $result;
             }

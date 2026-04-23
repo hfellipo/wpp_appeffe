@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -29,8 +29,6 @@ const AUTOMATIONS     = cfg.automations    || [];
 const CONTACTS        = cfg.contacts       || [];
 const CURRENT_AUTO_ID = cfg.automationId   || null;
 
-// ── Test results context (node_id string → detail object) ────────
-const TestResultsContext = React.createContext({});
 
 // ── Node visual definitions ──────────────────────────────────────
 const META = {
@@ -211,24 +209,25 @@ function getNodeSummary(type, config) {
 
 // ── Test result badge config ─────────────────────────────────────
 const TEST_BADGE = {
-  start:         { bg: '#10b981', tx: '#fff', label: '▶ Início' },
-  success:       { bg: '#10b981', tx: '#fff', label: '✓ OK' },
-  error:         { bg: '#ef4444', tx: '#fff', label: '✗ Erro' },
-  condition_yes: { bg: '#10b981', tx: '#fff', label: '✓ Sim' },
-  condition_no:  { bg: '#f97316', tx: '#fff', label: '✗ Não' },
-  delay:         { bg: '#d97706', tx: '#fff', label: '⏰ Aguardando' },
-  waiting:       { bg: '#3b82f6', tx: '#fff', label: '⌨ Aguardando resposta' },
+  start:         { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '▶', label: 'Executado'          },
+  success:       { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '✓', label: 'Sucesso'            },
+  error:         { bg: '#fee2e2', tx: '#991b1b', border: '#dc2626', icon: '✗', label: 'Erro'               },
+  condition_yes: { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '✓', label: 'Ramo: Sim'          },
+  condition_no:  { bg: '#ffedd5', tx: '#9a3412', border: '#ea580c', icon: '✗', label: 'Ramo: Não'          },
+  delay:         { bg: '#fef9c3', tx: '#854d0e', border: '#ca8a04', icon: '⏰', label: 'Delay agendado'    },
+  delay_skipped: { bg: '#dbeafe', tx: '#1e40af', border: '#3b82f6', icon: '⏭', label: 'Delay pulado (teste)' },
+  waiting:       { bg: '#dbeafe', tx: '#1e40af', border: '#3b82f6', icon: '⌨', label: 'Aguardando resposta' },
 };
 
 // ── Custom Node ──────────────────────────────────────────────────
 function AutomationNode({ id, type, data, selected }) {
   const { setNodes, setEdges } = useReactFlow();
-  const testResults = useContext(TestResultsContext);
-  const testDetail  = testResults[id];
   const [hovered, setHovered] = useState(false);
-  const meta    = META[type] || { label: type, bg: '#f9fafb', bd: '#d1d5db', ic: '#6b7280', tx: '#111827' };
-  const summary = getNodeSummary(type, data.config);
-  const isCond  = type === 'condition';
+  const meta       = META[type] || { label: type, bg: '#f9fafb', bd: '#d1d5db', ic: '#6b7280', tx: '#111827' };
+  const summary    = getNodeSummary(type, data.config);
+  const isCond     = type === 'condition';
+  const testDetail = data.testResult || null;  // set by FlowEditorInner after test run
+  const isLoading  = data.testLoading || false;
 
   const onDelete = useCallback((e) => {
     e.stopPropagation();
@@ -236,24 +235,22 @@ function AutomationNode({ id, type, data, selected }) {
     setEdges(es => es.filter(e => e.source !== id && e.target !== id));
   }, [id, setNodes, setEdges]);
 
-  // Compute test badge key
+  // Compute test badge
   let testBadgeKey = null;
   if (testDetail) {
-    if (testDetail.action === 'start')     testBadgeKey = 'start';
+    if (testDetail.action === 'start')          testBadgeKey = 'start';
     else if (testDetail.action === 'condition') testBadgeKey = testDetail.branch === 'yes' ? 'condition_yes' : 'condition_no';
-    else if (testDetail.action === 'delay')     testBadgeKey = 'delay';
+    else if (testDetail.action === 'delay')     testBadgeKey = testDetail.skipped_in_test ? 'delay_skipped' : 'delay';
     else if (testDetail.action === 'user_input') testBadgeKey = 'waiting';
     else testBadgeKey = testDetail.success === false ? 'error' : 'success';
   }
   const badge = testBadgeKey ? TEST_BADGE[testBadgeKey] : null;
 
-  const testBorderColor = badge
-    ? (testBadgeKey === 'error' ? '#ef4444' : testBadgeKey === 'condition_no' ? '#f97316' : testBadgeKey === 'delay' ? '#d97706' : testBadgeKey === 'waiting' ? '#3b82f6' : '#10b981')
-    : null;
+  const testBorderColor = badge ? badge.border : null;
 
   const borderColor = testBorderColor || (selected ? meta.ic : hovered ? `${meta.ic}99` : meta.bd);
   const shadow = testBorderColor
-    ? `0 0 0 3px ${testBorderColor}40, 0 4px 20px ${testBorderColor}30`
+    ? `0 0 0 3px ${testBorderColor}35, 0 4px 20px ${testBorderColor}25`
     : selected
       ? `0 0 0 3px ${meta.ic}28, 0 4px 20px rgba(0,0,0,0.14)`
       : hovered ? '0 4px 14px rgba(0,0,0,0.11)' : '0 2px 8px rgba(0,0,0,0.07)';
@@ -268,11 +265,23 @@ function AutomationNode({ id, type, data, selected }) {
         borderRadius: 14,
         minWidth: isCond ? 232 : 214,
         boxShadow: shadow,
-        transition: 'border-color 0.15s, box-shadow 0.15s',
+        transition: 'border-color 0.2s, box-shadow 0.2s',
         position: 'relative',
         userSelect: 'none',
+        opacity: isLoading ? 0.65 : 1,
       }}
     >
+      {/* Loading scan line */}
+      {isLoading && (
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 12, overflow: 'hidden',
+          background: 'linear-gradient(90deg, transparent 0%, rgba(16,185,129,.18) 50%, transparent 100%)',
+          backgroundSize: '200% 100%',
+          animation: 'scanLine 1.2s linear infinite',
+          zIndex: 5, pointerEvents: 'none',
+        }} />
+      )}
+
       {/* Delete btn */}
       <div onClick={onDelete} title="Remover" style={{
         position: 'absolute', top: -11, right: -11,
@@ -284,23 +293,6 @@ function AutomationNode({ id, type, data, selected }) {
         opacity: hovered || selected ? 1 : 0,
         transition: 'opacity 0.15s', zIndex: 10,
       }}>×</div>
-
-      {/* Test result badge */}
-      {badge && (
-        <div style={{
-          position: 'absolute', top: -11, left: 10,
-          background: badge.bg, color: badge.tx,
-          fontSize: 10, fontWeight: 700, lineHeight: 1,
-          padding: '3px 7px', borderRadius: 20,
-          boxShadow: '0 1px 4px rgba(0,0,0,.2)',
-          whiteSpace: 'nowrap', zIndex: 10,
-        }}>
-          {badge.label}
-          {testDetail?.reason && (
-            <span title={testDetail.reason} style={{ marginLeft: 4, opacity: 0.8 }}>⚠</span>
-          )}
-        </div>
-      )}
 
       {/* Input handle */}
       {type !== 'start' && (
@@ -351,6 +343,28 @@ function AutomationNode({ id, type, data, selected }) {
         </div>
       )}
 
+      {/* Test result status bar (n8n style) */}
+      {badge && (
+        <div style={{
+          margin: '0 0 0 0',
+          borderTop: `1px solid ${badge.border}40`,
+          background: badge.bg,
+          borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
+          padding: '5px 12px',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span style={{ fontSize: 12, lineHeight: 1 }}>{badge.icon}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: badge.tx, flex: 1 }}>
+            {badge.label}
+          </span>
+          {testDetail?.reason && (
+            <span title={testDetail.reason} style={{ fontSize: 10, color: '#dc2626', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {testDetail.reason}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Output handle(s) */}
       {isCond ? (
         <>
@@ -377,15 +391,17 @@ const ACTION_LABELS = {
   add_list: 'Adicionar à lista', remove_list: 'Remover da lista', human_transfer: 'Transferir humano',
 };
 
-function TestPanel({ onClose, onResults }) {
+function TestPanel({ onClose, onResults, onLoading }) {
   const [contactId, setContactId] = useState('');
   const [loading,   setLoading]   = useState(false);
-  const [result,    setResult]    = useState(null); // { success, message, details }
+  const [result,    setResult]    = useState(null);
 
   const run = async () => {
     if (!contactId || !FLOW_TEST_URL) return;
     setLoading(true);
+    onLoading(true);
     setResult(null);
+    onResults([]);
     try {
       const res  = await fetch(FLOW_TEST_URL, {
         method: 'POST',
@@ -397,8 +413,10 @@ function TestPanel({ onClose, onResults }) {
       if (data.details) onResults(data.details);
     } catch {
       setResult({ ok: false, success: false, message: 'Erro de conexão.' });
+      onResults([]);
     } finally {
       setLoading(false);
+      onLoading(false);
     }
   };
 
@@ -487,9 +505,8 @@ function TestPanel({ onClose, onResults }) {
             );
           })}
 
-          {/* Clear button */}
-          <div style={{ padding: '8px 14px' }}>
-            <button onClick={() => { setResult(null); onResults([]); }}
+          <div style={{ padding: '6px 14px 10px' }}>
+            <button onClick={() => { setResult(null); onResults([]); onLoading(false); }}
               style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
               Limpar resultado
             </button>
@@ -1171,8 +1188,7 @@ function FlowEditorInner() {
   const [loading, setSaving_Loading] = useState(true);
   const [saving,  setSaving]  = useState(false);
   const [toast,   setToast]   = useState(null);
-  const [showTest,    setShowTest]    = useState(false);
-  const [testResults, setTestResults] = useState({}); // nodeId → detail
+  const [showTest, setShowTest] = useState(false);
   const wrapperRef = useRef(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
@@ -1260,11 +1276,18 @@ function FlowEditorInner() {
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
+  const handleTestLoading = useCallback((loading) => {
+    setNodes(ns => ns.map(n => ({ ...n, data: { ...n.data, testLoading: loading, testResult: loading ? null : n.data.testResult } })));
+  }, [setNodes]);
+
   const handleTestResults = useCallback((details) => {
     const map = {};
-    details.forEach(d => { if (d.node_id) map[d.node_id] = d; });
-    setTestResults(map);
-  }, []);
+    details.forEach(d => { if (d.node_id) map[String(d.node_id)] = d; });
+    setNodes(ns => ns.map(n => ({
+      ...n,
+      data: { ...n.data, testLoading: false, testResult: map[String(n.id)] || null },
+    })));
+  }, [setNodes]);
 
   if (loading) {
     return (
@@ -1277,8 +1300,9 @@ function FlowEditorInner() {
   }
 
   return (
-    <TestResultsContext.Provider value={testResults}>
-      <div style={{ display: 'flex', height: '100%', width: '100%' }}>
+    <>
+    <style>{`@keyframes scanLine { 0%{background-position:-100% 0} 100%{background-position:200% 0} }`}</style>
+    <div style={{ display: 'flex', height: '100%', width: '100%' }}>
         <NodePalette onAddNode={addNode} />
         <div ref={wrapperRef} style={{ flex: 1, height: '100%', position: 'relative' }}>
           <ReactFlow
@@ -1315,8 +1339,9 @@ function FlowEditorInner() {
             {showTest && (
               <Panel position="top-right" style={{ marginTop: 52, marginRight: 10 }}>
                 <TestPanel
-                  onClose={() => { setShowTest(false); setTestResults({}); }}
+                  onClose={() => { setShowTest(false); handleTestResults([]); }}
                   onResults={handleTestResults}
+                  onLoading={handleTestLoading}
                 />
               </Panel>
             )}
@@ -1338,7 +1363,7 @@ function FlowEditorInner() {
         )}
         {toast && <Toast message={toast.message} type={toast.type} />}
       </div>
-    </TestResultsContext.Provider>
+    </>
   );
 }
 
