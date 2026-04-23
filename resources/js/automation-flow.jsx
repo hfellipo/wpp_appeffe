@@ -209,14 +209,15 @@ function getNodeSummary(type, config) {
 
 // ── Test result badge config ─────────────────────────────────────
 const TEST_BADGE = {
-  start:         { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '▶', label: 'Executado'          },
-  success:       { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '✓', label: 'Sucesso'            },
-  error:         { bg: '#fee2e2', tx: '#991b1b', border: '#dc2626', icon: '✗', label: 'Erro'               },
-  condition_yes: { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '✓', label: 'Ramo: Sim'          },
-  condition_no:  { bg: '#ffedd5', tx: '#9a3412', border: '#ea580c', icon: '✗', label: 'Ramo: Não'          },
-  delay:         { bg: '#fef9c3', tx: '#854d0e', border: '#ca8a04', icon: '⏰', label: 'Delay agendado'    },
-  delay_skipped: { bg: '#dbeafe', tx: '#1e40af', border: '#3b82f6', icon: '⏭', label: 'Delay pulado (teste)' },
-  waiting:       { bg: '#dbeafe', tx: '#1e40af', border: '#3b82f6', icon: '⌨', label: 'Aguardando resposta' },
+  start:         { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '▶', label: 'Entrada'              },
+  success:       { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '✓', label: 'Executado'            },
+  simulated:     { bg: '#f1f5f9', tx: '#475569', border: '#94a3b8', icon: '○', label: 'Simulado'             },
+  error:         { bg: '#fee2e2', tx: '#991b1b', border: '#dc2626', icon: '✗', label: 'Erro'                 },
+  condition_yes: { bg: '#dcfce7', tx: '#166534', border: '#16a34a', icon: '✓', label: 'Ramo: Sim'            },
+  condition_no:  { bg: '#ffedd5', tx: '#9a3412', border: '#ea580c', icon: '✗', label: 'Ramo: Não'            },
+  delay:         { bg: '#fef9c3', tx: '#854d0e', border: '#ca8a04', icon: '⏰', label: 'Delay agendado'      },
+  delay_skipped: { bg: '#dbeafe', tx: '#1e40af', border: '#3b82f6', icon: '⏭', label: 'Delay (ignorado no teste)' },
+  waiting:       { bg: '#fef9c3', tx: '#854d0e', border: '#ca8a04', icon: '⌨', label: 'Aguardando resposta' },
 };
 
 // ── Custom Node ──────────────────────────────────────────────────
@@ -238,10 +239,11 @@ function AutomationNode({ id, type, data, selected }) {
   // Compute test badge
   let testBadgeKey = null;
   if (testDetail) {
-    if (testDetail.action === 'start')          testBadgeKey = 'start';
-    else if (testDetail.action === 'condition') testBadgeKey = testDetail.branch === 'yes' ? 'condition_yes' : 'condition_no';
-    else if (testDetail.action === 'delay')     testBadgeKey = testDetail.skipped_in_test ? 'delay_skipped' : 'delay';
+    if (testDetail.action === 'start')           testBadgeKey = 'start';
+    else if (testDetail.action === 'condition')  testBadgeKey = testDetail.branch === 'yes' ? 'condition_yes' : 'condition_no';
+    else if (testDetail.action === 'delay')      testBadgeKey = testDetail.skipped_in_test ? 'delay_skipped' : 'delay';
     else if (testDetail.action === 'user_input') testBadgeKey = 'waiting';
+    else if (testDetail.dry_run)                 testBadgeKey = 'simulated';
     else testBadgeKey = testDetail.success === false ? 'error' : 'success';
   }
   const badge = testBadgeKey ? TEST_BADGE[testBadgeKey] : null;
@@ -477,10 +479,11 @@ function TestPanel({ onClose, onResults, onLoading }) {
           {/* Step list */}
           {(result.details || []).map((d, i) => {
             let badgeKey = 'success';
-            if (d.action === 'start')         badgeKey = 'start';
+            if (d.action === 'start')          badgeKey = 'start';
             else if (d.action === 'condition') badgeKey = d.branch === 'yes' ? 'condition_yes' : 'condition_no';
-            else if (d.action === 'delay')     badgeKey = 'delay';
+            else if (d.action === 'delay')     badgeKey = d.skipped_in_test ? 'delay_skipped' : 'delay';
             else if (d.action === 'user_input') badgeKey = 'waiting';
+            else if (d.dry_run)               badgeKey = 'simulated';
             else if (d.success === false)      badgeKey = 'error';
             const badge = TEST_BADGE[badgeKey];
             return (

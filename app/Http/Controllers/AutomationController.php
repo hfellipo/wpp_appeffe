@@ -593,7 +593,7 @@ class AutomationController extends Controller
             ->where('contact_id', $contact->id)
             ->delete();
 
-        $result = $runner->runForContact($automacao, $contact, skipDelays: true);
+        $result = $runner->runForContact($automacao, $contact, skipDelays: true, dryRun: true);
 
         $automacao->load('flowNodes');
         $startNode = $automacao->flowNodes->firstWhere('type', 'start');

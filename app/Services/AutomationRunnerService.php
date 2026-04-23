@@ -31,7 +31,7 @@ class AutomationRunnerService
      *
      * @return array{success: bool, message: string, run: ?AutomationRun, details: array}
      */
-    public function runForContact(Automation $automation, Contact $contact, bool $skipDelays = false): array
+    public function runForContact(Automation $automation, Contact $contact, bool $skipDelays = false, bool $dryRun = false): array
     {
         $accountId = (int) $automation->user_id;
         if ((int) $contact->user_id !== $accountId) {
@@ -93,7 +93,7 @@ class AutomationRunnerService
         ]);
 
         $result = $useFlow
-            ? $this->runFlowFromNode($automation, $contact, $run, $startNode, $skipDelays)
+            ? $this->runFlowFromNode($automation, $contact, $run, $startNode, $skipDelays, $dryRun)
             : $this->runNodesFrom($automation, $contact, $run, 0);
 
         if (! ($result['done'] ?? true)) {
@@ -155,20 +155,18 @@ class AutomationRunnerService
      *
      * @return array{done: bool, status?: string, details: array, delay_minutes?: int, resume_at?: \Carbon\CarbonImmutable}
      */
-    private function runFlowFromNode(Automation $automation, Contact $contact, AutomationRun $run, AutomationNode $node, bool $skipDelays = false): array
+    private function runFlowFromNode(Automation $automation, Contact $contact, AutomationRun $run, AutomationNode $node, bool $skipDelays = false, bool $dryRun = false): array
     {
         $accountId = (int) $automation->user_id;
         $details   = (array) ($run->metadata['details']    ?? []);
         $runStatus = (string) ($run->metadata['run_status'] ?? 'success');
 
-        // ── start: just pass through to next nodes ────────────────────
+        // ── start: pass through ───────────────────────────────────────
         if ($node->type === 'start') {
             $nextNodes = $this->getNextNodes($automation, $node);
             foreach ($nextNodes as $next) {
-                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
-                if (! ($result['done'] ?? true)) {
-                    return $result;
-                }
+                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+                if (! ($result['done'] ?? true)) return $result;
                 $run       = $run->fresh();
                 $details   = (array) ($run->metadata['details']    ?? []);
                 $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
@@ -177,20 +175,17 @@ class AutomationRunnerService
             return ['done' => true, 'status' => $runStatus, 'details' => $details];
         }
 
-        // ── delay: schedule resume job (or skip in test mode) ─────────
+        // ── delay ─────────────────────────────────────────────────────
         if ($node->type === 'delay') {
             $minutes   = max(1, min(10080, (int) ($node->config['minutes'] ?? 0)));
             $nextNodes = $this->getNextNodes($automation, $node);
 
             if ($skipDelays) {
-                // Test mode: register the delay in details but continue immediately
                 $details[] = ['action' => 'delay', 'node_id' => $node->id, 'scheduled_after_minutes' => $minutes, 'skipped_in_test' => true];
                 $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
                 foreach ($nextNodes as $next) {
-                    $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
-                    if (! ($result['done'] ?? true)) {
-                        return $result;
-                    }
+                    $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+                    if (! ($result['done'] ?? true)) return $result;
                     $run       = $run->fresh();
                     $details   = (array) ($run->metadata['details']    ?? []);
                     $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
@@ -210,7 +205,7 @@ class AutomationRunnerService
             return ['done' => false, 'details' => $details, 'delay_minutes' => $minutes, 'resume_at' => $resumeAt];
         }
 
-        // ── condition: evaluate and route yes/no ──────────────────────
+        // ── condition: always evaluate (dry run needs real branch) ────
         if ($node->type === 'condition') {
             $condResult   = $this->evaluateNodeCondition($node->config ?? [], $contact);
             $sourceHandle = $condResult ? 'yes' : 'no';
@@ -218,10 +213,8 @@ class AutomationRunnerService
             $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
             $nextNodes = $this->getNextNodesFromHandle($automation, $node, $sourceHandle);
             foreach ($nextNodes as $next) {
-                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
-                if (! ($result['done'] ?? true)) {
-                    return $result;
-                }
+                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+                if (! ($result['done'] ?? true)) return $result;
                 $run       = $run->fresh();
                 $details   = (array) ($run->metadata['details']    ?? []);
                 $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
@@ -230,38 +223,44 @@ class AutomationRunnerService
             return ['done' => true, 'status' => $runStatus, 'details' => $details];
         }
 
-        // ── user_input: send question then pause (async response required) ──
+        // ── user_input ────────────────────────────────────────────────
         if ($node->type === 'user_input') {
-            $question = trim((string) ($node->config['question'] ?? ''));
-            if ($question !== '' && $contact->phone_for_whatsapp !== '') {
-                $this->whatsAppSend->sendTextToContact($accountId, $contact, $question, $run->id);
+            if (! $dryRun) {
+                $question = trim((string) ($node->config['question'] ?? ''));
+                if ($question !== '' && $contact->phone_for_whatsapp !== '') {
+                    $this->whatsAppSend->sendTextToContact($accountId, $contact, $question, $run->id);
+                }
+                $run->update([
+                    'metadata'  => ['details' => $details, 'run_status' => $runStatus, 'waiting_input_node_id' => $node->id],
+                    'resume_at' => now()->addMinutes((int) ($node->config['timeout_minutes'] ?? 60)),
+                ]);
             }
-            $details[] = ['action' => 'user_input', 'node_id' => $node->id, 'status' => 'waiting', 'question' => $question];
-            $run->update([
-                'metadata'    => ['details' => $details, 'run_status' => $runStatus, 'waiting_input_node_id' => $node->id],
-                'resume_at'   => now()->addMinutes((int) ($node->config['timeout_minutes'] ?? 60)),
-            ]);
+            $details[] = ['action' => 'user_input', 'node_id' => $node->id, 'status' => 'waiting', 'dry_run' => $dryRun];
+            $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
             return ['done' => false, 'details' => $details, 'delay_minutes' => (int) ($node->config['timeout_minutes'] ?? 60)];
         }
 
-        // ── generic: execute and follow output edges ──────────────────
-        Log::info('automation flow executing node', ['run_id' => $run->id, 'node_id' => $node->id, 'node_type' => $node->type]);
-        $ok = $this->executeNode($node, $accountId, $contact, $run);
-        $details[] = ['action' => $node->type, 'node_id' => $node->id, 'success' => $ok];
-        if (! $ok) {
-            $runStatus = 'partial';
-            if ($node->type === 'send_message') {
-                $details[array_key_last($details)]['reason'] = $this->lastSendFailureReason();
+        // ── generic action node ───────────────────────────────────────
+        if ($dryRun) {
+            // Simulation: record what would happen without executing
+            $details[] = ['action' => $node->type, 'node_id' => $node->id, 'success' => true, 'dry_run' => true];
+        } else {
+            Log::info('automation flow executing node', ['run_id' => $run->id, 'node_id' => $node->id, 'node_type' => $node->type]);
+            $ok = $this->executeNode($node, $accountId, $contact, $run);
+            $details[] = ['action' => $node->type, 'node_id' => $node->id, 'success' => $ok];
+            if (! $ok) {
+                $runStatus = 'partial';
+                if ($node->type === 'send_message') {
+                    $details[array_key_last($details)]['reason'] = $this->lastSendFailureReason();
+                }
             }
         }
         $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
 
         $nextNodes = $this->getNextNodes($automation, $node);
         foreach ($nextNodes as $next) {
-            $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays);
-            if (! ($result['done'] ?? true)) {
-                return $result;
-            }
+            $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+            if (! ($result['done'] ?? true)) return $result;
             $run       = $run->fresh();
             $details   = (array) ($run->metadata['details']    ?? []);
             $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
