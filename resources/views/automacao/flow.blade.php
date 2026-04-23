@@ -31,11 +31,6 @@
                     @endif
                 </form>
 
-                <a href="{{ route('automacao.edit', ['automacao' => $automation, 'step' => 'trigger']) }}"
-                   class="btn-secondary text-sm">
-                    {{ __('Gatilho e condições') }}
-                </a>
-
                 <a href="{{ route('automacao.test', $automation) }}"
                    class="btn-primary text-sm inline-flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

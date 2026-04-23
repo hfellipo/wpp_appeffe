@@ -67,16 +67,15 @@ class AutomationController extends Controller
         $automations  = Automation::forUser($accountId)->orderBy('name')->get(['id', 'name']);
 
         $flowConfig = [
-            'automationId'   => $automacao->id,
-            'flowDataUrl'    => route('automacao.flow.data',   ['automacao' => $automacao]),
-            'flowUpdateUrl'  => route('automacao.flow.update', ['automacao' => $automacao]),
-            'csrfToken'      => csrf_token(),
-            'listas'         => $listas,
-            'tags'           => $tags,
-            'customFields'   => $customFields,
-            'automations'    => $automations,
-            'triggerEditUrl' => route('automacao.edit', ['automacao' => $automacao, 'step' => 'trigger']),
-            'title'          => $automacao->name,
+            'automationId'  => $automacao->id,
+            'flowDataUrl'   => route('automacao.flow.data',   ['automacao' => $automacao]),
+            'flowUpdateUrl' => route('automacao.flow.update', ['automacao' => $automacao]),
+            'csrfToken'     => csrf_token(),
+            'listas'        => $listas,
+            'tags'          => $tags,
+            'customFields'  => $customFields,
+            'automations'   => $automations,
+            'title'         => $automacao->name,
         ];
 
         return view('automacao.flow', [
@@ -86,29 +85,112 @@ class AutomationController extends Controller
     }
 
     /**
+     * Constrói o config do nó start a partir do trigger e condições salvas no DB.
+     */
+    private function buildStartNodeConfig(Automation $automacao): array
+    {
+        $trigger = $automacao->trigger;
+        if (! $trigger) {
+            return [];
+        }
+
+        $config = [
+            'trigger_type'    => $trigger->type,
+            'tag_id'          => $trigger->config['tag_id']   ?? null,
+            'lista_id'        => $trigger->config['lista_id'] ?? null,
+            'condition_logic' => $automacao->condition_logic ?? 'and',
+            'conditions'      => $automacao->conditions->map(fn (AutomationCondition $c) => [
+                'field_type'       => $c->field_type,
+                'field_key'        => $c->field_key,
+                'contact_field_id' => $c->contact_field_id,
+                'operator'         => $c->operator,
+                'value'            => $c->value,
+            ])->values()->all(),
+        ];
+
+        return $config;
+    }
+
+    /**
      * API: retorna nodes e edges para o editor.
      */
     public function flowData(Automation $automacao): JsonResponse
     {
         $this->authorize('update', $automacao);
-        $automacao->load(['flowNodes', 'flowEdges']);
+        $automacao->load(['flowNodes', 'flowEdges', 'trigger', 'conditions']);
+
+        $startConfig = $this->buildStartNodeConfig($automacao);
+
         $nodes = $automacao->flowNodes->map(fn (AutomationNode $n) => [
             'id' => (string) $n->id,
             'type' => $n->type,
             'position' => ['x' => (float) $n->position_x, 'y' => (float) $n->position_y],
             'data' => [
-                'label' => $n->label ?? AutomationNode::nodeTypes()[$n->type] ?? $n->type,
-                'config' => $n->config ?? [],
+                'label'  => $n->label ?? AutomationNode::nodeTypes()[$n->type] ?? $n->type,
+                'config' => $n->type === 'start' && ! empty($startConfig)
+                    ? $startConfig
+                    : ($n->config ?? []),
             ],
         ])->values()->all();
+
         $edges = $automacao->flowEdges->map(fn (AutomationEdge $e) => [
-            'id' => "e{$e->source_node_id}-{$e->target_node_id}",
-            'source' => (string) $e->source_node_id,
-            'target' => (string) $e->target_node_id,
+            'id'           => "e{$e->source_node_id}-{$e->target_node_id}",
+            'source'       => (string) $e->source_node_id,
+            'target'       => (string) $e->target_node_id,
             'sourceHandle' => $e->source_handle ?? 'default',
             'targetHandle' => $e->target_handle ?? 'input',
         ])->values()->all();
+
         return response()->json(['nodes' => $nodes, 'edges' => $edges]);
+    }
+
+    /**
+     * Sincroniza o config do nó start com as tabelas de trigger e condições.
+     */
+    private function syncTriggerFromStartNode(Automation $automacao, array $nodesPayload): void
+    {
+        $startNode = collect($nodesPayload)->first(fn ($n) => $n['type'] === 'start');
+        if (! $startNode) {
+            return;
+        }
+
+        $config      = $startNode['data']['config'] ?? [];
+        $triggerType = $config['trigger_type'] ?? null;
+
+        if (! $triggerType) {
+            return;
+        }
+
+        $triggerConfig = [];
+        if ($triggerType === 'tag_added' && ! empty($config['tag_id'])) {
+            $triggerConfig['tag_id'] = (int) $config['tag_id'];
+        }
+        if ($triggerType === 'list_added' && ! empty($config['lista_id'])) {
+            $triggerConfig['lista_id'] = (int) $config['lista_id'];
+        }
+
+        $automacao->trigger()->updateOrCreate(
+            ['automation_id' => $automacao->id],
+            ['type' => $triggerType, 'config' => $triggerConfig]
+        );
+
+        $conditions = array_values(array_filter($config['conditions'] ?? [], fn ($c) => ! empty($c['field_type']) && ! empty($c['operator'])));
+
+        $automacao->update([
+            'condition_logic' => count($conditions) > 0 ? ($config['condition_logic'] ?? 'and') : null,
+        ]);
+
+        $automacao->conditions()->delete();
+        foreach ($conditions as $i => $cond) {
+            $automacao->conditions()->create([
+                'position'         => $i,
+                'field_type'       => $cond['field_type'],
+                'field_key'        => $cond['field_key'] ?? null,
+                'contact_field_id' => ! empty($cond['contact_field_id']) ? (int) $cond['contact_field_id'] : null,
+                'operator'         => $cond['operator'],
+                'value'            => $cond['value'] ?? null,
+            ]);
+        }
     }
 
     /**
@@ -118,73 +200,81 @@ class AutomationController extends Controller
     {
         $this->authorize('update', $automacao);
         $validated = $request->validate([
-            'nodes' => ['required', 'array'],
-            'nodes.*.id' => ['required', 'string'],
-            'nodes.*.type' => ['required', 'string', 'in:start,send_message,condition,delay,go_to,user_input,update_field,add_tag,remove_tag,add_list,remove_list,human_transfer'],
-            'nodes.*.position' => ['required', 'array'],
-            'nodes.*.position.x' => ['required', 'numeric'],
-            'nodes.*.position.y' => ['required', 'numeric'],
-            'nodes.*.data' => ['nullable', 'array'],
-            'nodes.*.data.label' => ['nullable', 'string'],
-            'nodes.*.data.config' => ['nullable', 'array'],
-            'edges' => ['required', 'array'],
-            'edges.*.source' => ['required', 'string'],
-            'edges.*.target' => ['required', 'string'],
-            'edges.*.sourceHandle' => ['nullable', 'string'],
-            'edges.*.targetHandle' => ['nullable', 'string'],
+            'nodes'                   => ['required', 'array'],
+            'nodes.*.id'              => ['required', 'string'],
+            'nodes.*.type'            => ['required', 'string', 'in:start,send_message,condition,delay,go_to,user_input,update_field,add_tag,remove_tag,add_list,remove_list,human_transfer'],
+            'nodes.*.position'        => ['required', 'array'],
+            'nodes.*.position.x'      => ['required', 'numeric'],
+            'nodes.*.position.y'      => ['required', 'numeric'],
+            'nodes.*.data'            => ['nullable', 'array'],
+            'nodes.*.data.label'      => ['nullable', 'string'],
+            'nodes.*.data.config'     => ['nullable', 'array'],
+            'edges'                   => ['required', 'array'],
+            'edges.*.source'          => ['required', 'string'],
+            'edges.*.target'          => ['required', 'string'],
+            'edges.*.sourceHandle'    => ['nullable', 'string'],
+            'edges.*.targetHandle'    => ['nullable', 'string'],
         ]);
+
         $nodesPayload = $validated['nodes'];
         $edgesPayload = $validated['edges'];
+        $automacao->load('flowNodes');
         $existingByFrontId = $automacao->flowNodes->keyBy(fn (AutomationNode $node) => (string) $node->id);
-        $idMap = []; // frontend id -> database id
+        $idMap = [];
+
         foreach ($nodesPayload as $n) {
-            $pos = $n['position'];
-            $data = $n['data'] ?? [];
-            $config = $data['config'] ?? [];
-            $label = $data['label'] ?? null;
-            $type = $n['type'];
+            $pos     = $n['position'];
+            $data    = $n['data'] ?? [];
+            $config  = $data['config'] ?? [];
+            $label   = $data['label'] ?? null;
+            $type    = $n['type'];
             $frontId = $n['id'] ?? null;
             $existing = $frontId ? $existingByFrontId->get($frontId) : null;
             if ($existing) {
                 $existing->update([
-                    'type' => $type,
+                    'type'       => $type,
                     'position_x' => $pos['x'],
                     'position_y' => $pos['y'],
-                    'config' => $config,
-                    'label' => $label,
+                    'config'     => $config,
+                    'label'      => $label,
                 ]);
                 $idMap[$frontId] = $existing->id;
             } else {
                 $node = AutomationNode::create([
                     'automation_id' => $automacao->id,
-                    'type' => $type,
-                    'position_x' => $pos['x'],
-                    'position_y' => $pos['y'],
-                    'config' => $config,
-                    'label' => $label,
+                    'type'          => $type,
+                    'position_x'    => $pos['x'],
+                    'position_y'    => $pos['y'],
+                    'config'        => $config,
+                    'label'         => $label,
                 ]);
                 $idMap[$frontId] = $node->id;
             }
         }
+
         $payloadFrontIds = collect($nodesPayload)->pluck('id')->map(fn ($id) => (string) $id)->flip();
         $toDelete = $automacao->flowNodes->filter(fn (AutomationNode $node) => ! $payloadFrontIds->has((string) $node->id));
         foreach ($toDelete as $node) {
             $node->delete();
         }
+
         $automacao->flowEdges()->delete();
         foreach ($edgesPayload as $e) {
             $src = $idMap[$e['source']] ?? null;
             $tgt = $idMap[$e['target']] ?? null;
             if ($src && $tgt) {
                 AutomationEdge::create([
-                    'automation_id' => $automacao->id,
+                    'automation_id'  => $automacao->id,
                     'source_node_id' => $src,
                     'target_node_id' => $tgt,
-                    'source_handle' => $e['sourceHandle'] ?? 'default',
-                    'target_handle' => $e['targetHandle'] ?? 'input',
+                    'source_handle'  => $e['sourceHandle'] ?? 'default',
+                    'target_handle'  => $e['targetHandle'] ?? 'input',
                 ]);
             }
         }
+
+        $this->syncTriggerFromStartNode($automacao, $nodesPayload);
+
         return response()->json(['ok' => true, 'message' => __('Fluxo salvo.')]);
     }
 

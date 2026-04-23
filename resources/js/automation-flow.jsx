@@ -25,12 +25,11 @@ const LISTAS          = cfg.listas         || [];
 const TAGS            = cfg.tags           || [];
 const CUSTOM_FIELDS   = cfg.customFields   || [];
 const AUTOMATIONS     = cfg.automations    || [];
-const TRIGGER_URL     = cfg.triggerEditUrl || '';
 const CURRENT_AUTO_ID = cfg.automationId   || null;
 
 // ── Node visual definitions ──────────────────────────────────────
 const META = {
-  start:          { label: 'Início',              bg: '#ecfdf5', bd: '#6ee7b7', ic: '#10b981', tx: '#065f46', cat: 'Entrada' },
+  start:          { label: 'Gatilho',              bg: '#ecfdf5', bd: '#6ee7b7', ic: '#10b981', tx: '#065f46', cat: 'Entrada' },
   send_message:   { label: 'Enviar mensagem',     bg: '#f0f9ff', bd: '#7dd3fc', ic: '#0ea5e9', tx: '#0c4a6e', cat: 'Mensagens' },
   condition:      { label: 'Condição (Se/Senão)', bg: '#fafaf9', bd: '#a8a29e', ic: '#78716c', tx: '#1c1917', cat: 'Controle' },
   delay:          { label: 'Aguardar',            bg: '#fffbeb', bd: '#fcd34d', ic: '#d97706', tx: '#78350f', cat: 'Controle' },
@@ -48,7 +47,7 @@ const META = {
 const PALETTE_CATS = [
   {
     label: 'Entrada',
-    items: [{ type: 'start', desc: 'Ponto de entrada da jornada' }],
+    items: [{ type: 'start', desc: 'Define quando a jornada começa' }],
   },
   {
     label: 'Mensagens',
@@ -127,9 +126,27 @@ const COND_OP_LABELS = {
 
 const ATTR_LABELS = { name: 'Nome', email: 'E-mail', phone: 'Telefone' };
 
+const TRIGGER_TYPE_LABELS = {
+  tag_added:  'Quando receber uma tag',
+  list_added: 'Quando adicionado a uma lista',
+};
+
 function getNodeSummary(type, config) {
   if (!config) return '';
   switch (type) {
+    case 'start': {
+      const tt = config.trigger_type;
+      if (!tt) return '';
+      if (tt === 'tag_added') {
+        const t = TAGS.find(t => String(t.id) === String(config.tag_id));
+        return t ? `Tag: ${t.name}` : 'Tag: —';
+      }
+      if (tt === 'list_added') {
+        const l = LISTAS.find(l => String(l.id) === String(config.lista_id));
+        return l ? `Lista: ${l.name}` : 'Lista: —';
+      }
+      return TRIGGER_TYPE_LABELS[tt] || tt;
+    }
     case 'send_message': {
       const mt = config.message_type || 'text';
       if (mt === 'text') return config.message ? config.message.slice(0, 55) + (config.message.length > 55 ? '…' : '') : '';
@@ -372,11 +389,73 @@ const INPUT = {
   boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.5, color: '#111827',
 };
 
+// ── Entry Condition Row ──────────────────────────────────────────
+const ENTRY_COND_OPS_ATTR = {
+  equals: 'igual a', not_equals: 'diferente de', contains: 'contém',
+  is_empty: 'está vazio', is_not_empty: 'não está vazio',
+};
+const ENTRY_COND_OPS_MSG = {
+  is_sent: 'foi enviada', is_delivered: 'foi entregue', is_read: 'foi lida',
+  is_not_delivered: 'não foi entregue', is_not_read: 'não foi lida',
+};
+
+function EntryConditionRow({ cond, onChange, onRemove }) {
+  const needsValue = !['is_empty', 'is_not_empty', 'is_sent', 'is_delivered', 'is_read', 'is_not_delivered', 'is_not_read'].includes(cond.operator);
+  const ops = cond.field_type === 'message_status' ? ENTRY_COND_OPS_MSG : ENTRY_COND_OPS_ATTR;
+
+  return (
+    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', marginBottom: 6, position: 'relative' }}>
+      <button onClick={onRemove} style={{ position: 'absolute', top: 6, right: 8, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Verificar</div>
+      <select value={cond.field_type} onChange={e => onChange({ ...cond, field_type: e.target.value, operator: 'equals', field_key: 'name', contact_field_id: null, value: '' })}
+        style={{ ...INPUT, marginBottom: 6, fontSize: 12 }}>
+        <option value="attribute">Atributo do contato</option>
+        <option value="custom">Campo personalizado</option>
+        <option value="message_status">Status da última mensagem</option>
+      </select>
+
+      {cond.field_type === 'attribute' && (
+        <select value={cond.field_key || 'name'} onChange={e => onChange({ ...cond, field_key: e.target.value })}
+          style={{ ...INPUT, marginBottom: 6, fontSize: 12 }}>
+          <option value="name">Nome</option>
+          <option value="email">E-mail</option>
+          <option value="phone">Telefone</option>
+        </select>
+      )}
+      {cond.field_type === 'custom' && (
+        <select value={String(cond.contact_field_id || '')} onChange={e => onChange({ ...cond, contact_field_id: e.target.value || null })}
+          style={{ ...INPUT, marginBottom: 6, fontSize: 12 }}>
+          <option value="">— Campo —</option>
+          {CUSTOM_FIELDS.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+      )}
+
+      <select value={cond.operator || 'equals'} onChange={e => onChange({ ...cond, operator: e.target.value })}
+        style={{ ...INPUT, marginBottom: needsValue ? 6 : 0, fontSize: 12 }}>
+        {Object.entries(ops).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+
+      {needsValue && cond.field_type !== 'message_status' && (
+        <input value={cond.value || ''} onChange={e => onChange({ ...cond, value: e.target.value })}
+          placeholder='Valor...' style={{ ...INPUT, fontSize: 12 }} />
+      )}
+    </div>
+  );
+}
+
 // ── Properties Panel ─────────────────────────────────────────────
 function PropertiesPanel({ node, onUpdate, onClose }) {
   const { type, data } = node;
   const config = data.config || {};
   const meta = META[type] || {};
+
+  // ── start (trigger) state ────────────────────────────────────
+  const [triggerType,     setTriggerType]     = useState(config.trigger_type    || '');
+  const [triggerTagId,    setTriggerTagId]     = useState(String(config.tag_id   || ''));
+  const [triggerListaId,  setTriggerListaId]   = useState(String(config.lista_id || ''));
+  const [condLogic,       setCondLogic]        = useState(config.condition_logic || 'and');
+  const [entryConditions, setEntryConditions]  = useState(config.conditions      || []);
 
   // ── send_message state ───────────────────────────────────────
   const [msgType,     setMsgType]     = useState(config.message_type || 'text');
@@ -440,6 +519,10 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const rmItem     = (i) => setListItems(listItems.filter((_, idx) => idx !== i));
   const updItem    = (i, title) => setListItems(listItems.map((r, idx) => idx === i ? { ...r, title } : r));
 
+  const addEntryCond = () => setEntryConditions(cs => [...cs, { field_type: 'attribute', field_key: 'name', contact_field_id: null, operator: 'equals', value: '' }]);
+  const updEntryCond = (i, val) => setEntryConditions(cs => cs.map((c, idx) => idx === i ? val : c));
+  const rmEntryCond  = (i) => setEntryConditions(cs => cs.filter((_, idx) => idx !== i));
+
   const condNeedsValue = !['is_empty', 'is_not_empty', 'has_tag', 'not_has_tag'].includes(condOperator);
   const condOps = condFieldType === 'tag'
     ? { has_tag: 'possui a tag', not_has_tag: 'não possui a tag' }
@@ -448,7 +531,16 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const apply = () => {
     let next = {};
 
-    if (type === 'send_message') {
+    if (type === 'start') {
+      const conds = entryConditions.filter(c => c.field_type && c.operator);
+      next = {
+        trigger_type:    triggerType    || null,
+        tag_id:          triggerTagId   ? Number(triggerTagId)   : null,
+        lista_id:        triggerListaId ? Number(triggerListaId) : null,
+        condition_logic: condLogic,
+        conditions:      conds,
+      };
+    } else if (type === 'send_message') {
       next = { message_type: msgType };
       if (msgType === 'text')     next.message = message;
       if (['image','video','audio','document'].includes(msgType)) {
@@ -514,20 +606,80 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
       {/* Body */}
       <div style={{ padding: '4px 16px 16px', flex: 1, overflowY: 'auto' }}>
 
-        {/* ── START ── */}
+        {/* ── START (GATILHO) ── */}
         {type === 'start' && (
           <div>
-            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: 12, margin: '12px 0' }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#065f46', marginBottom: 4 }}>Ponto de entrada</div>
-              <div style={{ fontSize: 12, color: '#047857', lineHeight: 1.5 }}>
-                O gatilho que dispara esta jornada (tag, lista, etc.) é configurado separadamente.
-              </div>
-            </div>
-            {TRIGGER_URL && (
-              <a href={TRIGGER_URL} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, background: '#10b981', color: '#fff', textDecoration: 'none', fontSize: 12.5, fontWeight: 600 }}>
-                <NodeIcon type="start" size={13} /> Configurar gatilho e condições
-              </a>
+            <Label>Tipo de gatilho</Label>
+            <select value={triggerType} onChange={e => setTriggerType(e.target.value)} style={{ ...INPUT, cursor: 'pointer' }}>
+              <option value="">— Selecionar gatilho —</option>
+              <option value="tag_added">Quando o contato receber uma tag</option>
+              <option value="list_added">Quando o contato for adicionado a uma lista</option>
+            </select>
+
+            {triggerType === 'tag_added' && (
+              <>
+                <Label>Tag</Label>
+                {TAGS.length === 0
+                  ? <div style={{ fontSize: 12, color: '#9ca3af' }}>Nenhuma tag cadastrada.</div>
+                  : <select value={triggerTagId} onChange={e => setTriggerTagId(e.target.value)} style={{ ...INPUT, cursor: 'pointer' }}>
+                      <option value="">— Selecionar tag —</option>
+                      {TAGS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                }
+              </>
             )}
+
+            {triggerType === 'list_added' && (
+              <>
+                <Label>Lista</Label>
+                {LISTAS.length === 0
+                  ? <div style={{ fontSize: 12, color: '#9ca3af' }}>Nenhuma lista cadastrada.</div>
+                  : <select value={triggerListaId} onChange={e => setTriggerListaId(e.target.value)} style={{ ...INPUT, cursor: 'pointer' }}>
+                      <option value="">— Selecionar lista —</option>
+                      {LISTAS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                }
+              </>
+            )}
+
+            {/* Entry conditions */}
+            <div style={{ marginTop: 16, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#374151' }}>Condições de entrada</div>
+                <span style={{ fontSize: 10, color: '#9ca3af' }}>opcional</span>
+              </div>
+
+              {entryConditions.length > 1 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Lógica entre condições</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {['and', 'or'].map(v => (
+                      <button key={v} onClick={() => setCondLogic(v)} style={{
+                        flex: 1, padding: '5px 0', borderRadius: 6, border: `1.5px solid ${condLogic === v ? '#10b981' : '#d1d5db'}`,
+                        background: condLogic === v ? '#ecfdf5' : '#fff', color: condLogic === v ? '#065f46' : '#6b7280',
+                        fontSize: 12, fontWeight: condLogic === v ? 700 : 400, cursor: 'pointer',
+                      }}>
+                        {v === 'and' ? 'E (todas)' : 'OU (qualquer)'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {entryConditions.map((cond, i) => (
+                <EntryConditionRow key={i} cond={cond} onChange={val => updEntryCond(i, val)} onRemove={() => rmEntryCond(i)} />
+              ))}
+
+              <button onClick={addEntryCond} style={{ fontSize: 11.5, color: '#10b981', background: 'none', border: '1px dashed #6ee7b7', borderRadius: 6, cursor: 'pointer', padding: '5px 10px', width: '100%', marginTop: 2 }}>
+                + Adicionar condição de entrada
+              </button>
+
+              {entryConditions.length === 0 && (
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, lineHeight: 1.5 }}>
+                  Sem condições: todos os contatos elegíveis entram na jornada.
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -793,16 +945,14 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
       </div>
 
       {/* Footer */}
-      {type !== 'start' && (
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 8 }}>
-          <button onClick={apply} style={{ flex: 1, padding: '9px 16px', borderRadius: 8, background: meta.ic || '#4f46e5', color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            Aplicar
-          </button>
-          <button onClick={onClose} style={{ padding: '9px 14px', borderRadius: 8, background: '#f3f4f6', color: '#374151', border: 'none', fontSize: 13, cursor: 'pointer' }}>
-            Cancelar
-          </button>
-        </div>
-      )}
+      <div style={{ padding: '12px 16px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 8 }}>
+        <button onClick={apply} style={{ flex: 1, padding: '9px 16px', borderRadius: 8, background: meta.ic || '#4f46e5', color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          Aplicar
+        </button>
+        <button onClick={onClose} style={{ padding: '9px 14px', borderRadius: 8, background: '#f3f4f6', color: '#374151', border: 'none', fontSize: 13, cursor: 'pointer' }}>
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }
@@ -841,7 +991,6 @@ function FlowEditorInner() {
   const wrapperRef = useRef(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
-  // setLoading alias
   const setLoading = setSaving_Loading;
 
   const normNode = n => ({
@@ -957,17 +1106,9 @@ function FlowEditorInner() {
           <MiniMap nodeColor={n => META[n.type]?.ic || '#94a3b8'} style={{ right: 12, bottom: 12, borderRadius: 10 }} pannable zoomable />
 
           <Panel position="top-right" style={{ margin: '10px 10px 0 0' }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {TRIGGER_URL && (
-                <a href={TRIGGER_URL} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 8, background: '#fff', color: '#374151', textDecoration: 'none', fontSize: 12.5, fontWeight: 600, border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
-                  <NodeIcon type="start" size={13} color="#374151" />
-                  Gatilho
-                </a>
-              )}
-              <button onClick={saveFlow} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 18px', borderRadius: 8, background: saving ? '#6ee7b7' : '#10b981', color: '#fff', border: 'none', cursor: saving ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 700, boxShadow: '0 2px 8px rgba(16,185,129,.28)', transition: 'background .15s' }}>
-                {saving ? '⏳ Salvando…' : '💾 Salvar fluxo'}
-              </button>
-            </div>
+            <button onClick={saveFlow} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 18px', borderRadius: 8, background: saving ? '#6ee7b7' : '#10b981', color: '#fff', border: 'none', cursor: saving ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 700, boxShadow: '0 2px 8px rgba(16,185,129,.28)', transition: 'background .15s' }}>
+              {saving ? '⏳ Salvando…' : '💾 Salvar fluxo'}
+            </button>
           </Panel>
 
           {nodes.length === 0 && (
