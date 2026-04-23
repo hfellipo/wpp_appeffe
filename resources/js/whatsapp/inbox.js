@@ -1287,8 +1287,10 @@ window.waInboxChatify = function waInboxChatify() {
         },
 
         maybeSend(e) {
-            if (e.shiftKey) return;
+            if (e.shiftKey) return; // Shift+Enter → newline (browser default)
+            e.preventDefault();
             this.sendMessage();
+            this.$nextTick(() => this.$refs.draftInput?.focus());
         },
 
         async startRecording() {
