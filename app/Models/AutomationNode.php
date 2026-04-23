@@ -43,13 +43,18 @@ class AutomationNode extends Model
     public static function nodeTypes(): array
     {
         return [
-            'start'        => __('Início'),
-            'send_message' => __('Enviar mensagem'),
-            'delay'        => __('Aguardar (delay)'),
-            'add_tag'      => __('Adicionar tag'),
-            'remove_tag'   => __('Remover tag'),
-            'add_list'     => __('Adicionar à lista'),
-            'remove_list'  => __('Remover da lista'),
+            'start'          => __('Início'),
+            'send_message'   => __('Enviar mensagem'),
+            'condition'      => __('Condição (Se/Senão)'),
+            'delay'          => __('Aguardar (delay)'),
+            'go_to'          => __('Ir para fluxo'),
+            'user_input'     => __('Entrada do usuário'),
+            'update_field'   => __('Atualizar campo'),
+            'add_tag'        => __('Adicionar tag'),
+            'remove_tag'     => __('Remover tag'),
+            'add_list'       => __('Adicionar à lista'),
+            'remove_list'    => __('Remover da lista'),
+            'human_transfer' => __('Transferir para humano'),
         ];
     }
 }

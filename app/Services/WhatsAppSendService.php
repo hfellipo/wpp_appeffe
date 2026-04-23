@@ -365,6 +365,221 @@ class WhatsAppSendService
         return $this->sendMediaToConversation($conversation, $storagePath, $mimeType, $caption, $automationRunId, $sourceType, $sourceId);
     }
 
+    /**
+     * Envia mídia a partir de URL pública (imagem, vídeo, áudio, documento) para um contato.
+     * Tipo: 'image' | 'video' | 'audio' | 'document'
+     */
+    public function sendMediaUrlToContact(
+        int $accountId,
+        Contact $contact,
+        string $mediaUrl,
+        string $mediaType,
+        string $caption = '',
+        string $fileName = '',
+        ?int $automationRunId = null
+    ): ?WhatsAppMessage {
+        if (! $this->client->isConfigured()) {
+            return null;
+        }
+        $conversation = $this->findOrCreateConversationForContact($accountId, $contact);
+        if (! $conversation) {
+            return null;
+        }
+
+        $waInstance = $this->resolveInstance($conversation);
+        if (! $waInstance) {
+            return null;
+        }
+        $instanceForApi = trim((string) $waInstance->instance_name);
+        $recipient = $this->recipientForEvolution($conversation);
+        if ($recipient === '') {
+            return null;
+        }
+        $numberForPayload = $this->numberForEvolutionPayload($recipient);
+
+        if ($mediaType === 'audio') {
+            $payload = ['number' => $numberForPayload, 'audio' => $mediaUrl];
+            $resp    = $this->client->sendWhatsAppAudio($instanceForApi, $payload);
+        } else {
+            $payload = [
+                'number'    => $numberForPayload,
+                'mediatype' => $mediaType,
+                'media'     => $mediaUrl,
+                'fileName'  => $fileName ?: basename($mediaUrl),
+            ];
+            if ($caption !== '') {
+                $payload['caption'] = mb_substr($caption, 0, 1024);
+            }
+            $resp = $this->client->sendMedia($instanceForApi, $payload);
+        }
+
+        if ($resp['status'] < 200 || $resp['status'] >= 300) {
+            Log::channel('single')->warning('WhatsAppSendService: sendMediaUrl falhou', [
+                'conversation_id' => $conversation->id,
+                'http_status'     => $resp['status'],
+            ]);
+            return null;
+        }
+
+        $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+        $msg = WhatsAppMessage::create([
+            'conversation_id'   => $conversation->id,
+            'automation_run_id' => $automationRunId,
+            'source_type'       => $automationRunId ? 'automation_run' : null,
+            'source_id'         => $automationRunId,
+            'direction'         => 'out',
+            'message_type'      => $mediaType,
+            'body'              => $caption,
+            'remote_id'         => $remoteId ?: null,
+            'status'            => 'sent',
+            'sent_at'           => now(),
+            'raw_payload'       => is_array($resp['json']) ? $resp['json'] : null,
+        ]);
+        $conversation->last_message_at      = $msg->sent_at ?? $msg->created_at;
+        $conversation->last_message_preview = $caption ?: ucfirst($mediaType);
+        $conversation->save();
+
+        return $msg;
+    }
+
+    /**
+     * Envia mensagem com botões interativos para um contato.
+     * $buttons = [['id' => '1', 'text' => 'Opção 1'], ...]
+     */
+    public function sendButtonsToContact(
+        int $accountId,
+        Contact $contact,
+        string $text,
+        array $buttons,
+        ?int $automationRunId = null
+    ): ?WhatsAppMessage {
+        if (! $this->client->isConfigured()) {
+            return null;
+        }
+        $conversation = $this->findOrCreateConversationForContact($accountId, $contact);
+        if (! $conversation) {
+            return null;
+        }
+        $waInstance = $this->resolveInstance($conversation);
+        if (! $waInstance) {
+            return null;
+        }
+        $instanceForApi   = trim((string) $waInstance->instance_name);
+        $recipient        = $this->recipientForEvolution($conversation);
+        $numberForPayload = $this->numberForEvolutionPayload($recipient);
+
+        $payload = [
+            'number'      => $numberForPayload,
+            'description' => $text,
+            'buttons'     => array_map(fn ($b) => [
+                'type'        => 'reply',
+                'displayText' => $b['text'] ?? '',
+                'id'          => $b['id']   ?? uniqid(),
+            ], $buttons),
+        ];
+        $resp = $this->client->post("/message/sendButtons/{$instanceForApi}", $payload);
+        if ($resp['status'] < 200 || $resp['status'] >= 300) {
+            return null;
+        }
+        $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+        $msg = WhatsAppMessage::create([
+            'conversation_id'   => $conversation->id,
+            'automation_run_id' => $automationRunId,
+            'source_type'       => $automationRunId ? 'automation_run' : null,
+            'source_id'         => $automationRunId,
+            'direction'         => 'out',
+            'message_type'      => 'buttons',
+            'body'              => $text,
+            'remote_id'         => $remoteId ?: null,
+            'status'            => 'sent',
+            'sent_at'           => now(),
+        ]);
+        $conversation->last_message_at      = $msg->sent_at ?? $msg->created_at;
+        $conversation->last_message_preview = mb_substr($text, 0, 500);
+        $conversation->save();
+
+        return $msg;
+    }
+
+    /**
+     * Envia mensagem de lista interativa para um contato.
+     * $sections = [['title' => '', 'rows' => [['id' => '1', 'title' => 'Item']]]]
+     */
+    public function sendListToContact(
+        int $accountId,
+        Contact $contact,
+        string $text,
+        string $buttonText,
+        array $sections,
+        ?int $automationRunId = null
+    ): ?WhatsAppMessage {
+        if (! $this->client->isConfigured()) {
+            return null;
+        }
+        $conversation = $this->findOrCreateConversationForContact($accountId, $contact);
+        if (! $conversation) {
+            return null;
+        }
+        $waInstance = $this->resolveInstance($conversation);
+        if (! $waInstance) {
+            return null;
+        }
+        $instanceForApi   = trim((string) $waInstance->instance_name);
+        $recipient        = $this->recipientForEvolution($conversation);
+        $numberForPayload = $this->numberForEvolutionPayload($recipient);
+
+        $payload = [
+            'number'      => $numberForPayload,
+            'description' => $text,
+            'buttonText'  => $buttonText,
+            'sections'    => $sections,
+        ];
+        $resp = $this->client->post("/message/sendList/{$instanceForApi}", $payload);
+        if ($resp['status'] < 200 || $resp['status'] >= 300) {
+            return null;
+        }
+        $remoteId = $this->extractEvolutionRemoteId($resp['json'] ?? null);
+        $msg = WhatsAppMessage::create([
+            'conversation_id'   => $conversation->id,
+            'automation_run_id' => $automationRunId,
+            'source_type'       => $automationRunId ? 'automation_run' : null,
+            'source_id'         => $automationRunId,
+            'direction'         => 'out',
+            'message_type'      => 'list',
+            'body'              => $text,
+            'remote_id'         => $remoteId ?: null,
+            'status'            => 'sent',
+            'sent_at'           => now(),
+        ]);
+        $conversation->last_message_at      = $msg->sent_at ?? $msg->created_at;
+        $conversation->last_message_preview = mb_substr($text, 0, 500);
+        $conversation->save();
+
+        return $msg;
+    }
+
+    /** Resolve WhatsAppInstance from a conversation (shared helper). */
+    private function resolveInstance(WhatsAppConversation $conversation): ?WhatsAppInstance
+    {
+        $accountId          = (int) $conversation->user_id;
+        $instanceNormalized = preg_replace('/\D/', '', (string) $conversation->instance_name);
+        $waInstance = WhatsAppInstance::query()
+            ->where('user_id', $accountId)
+            ->where(function ($q) use ($instanceNormalized, $conversation) {
+                $q->where('instance_name', $instanceNormalized)
+                  ->orWhere('instance_name', $conversation->instance_name);
+            })
+            ->first();
+        if (! $waInstance) {
+            foreach (WhatsAppInstance::query()->where('user_id', $accountId)->get(['instance_name']) as $c) {
+                if (preg_replace('/\D/', '', (string) $c->instance_name) === $instanceNormalized) {
+                    return $c;
+                }
+            }
+        }
+        return $waInstance;
+    }
+
     private function ensureWhatsAppContactFromAppContact(
         int $userId,
         string $instanceName,

@@ -158,9 +158,10 @@ class AutomationRunnerService
     private function runFlowFromNode(Automation $automation, Contact $contact, AutomationRun $run, AutomationNode $node): array
     {
         $accountId = (int) $automation->user_id;
-        $details = (array) ($run->metadata['details'] ?? []);
-        $runStatus = $run->metadata['run_status'] ?? 'success';
+        $details   = (array) ($run->metadata['details']    ?? []);
+        $runStatus = (string) ($run->metadata['run_status'] ?? 'success');
 
+        // ── start: just pass through to next nodes ────────────────────
         if ($node->type === 'start') {
             $nextNodes = $this->getNextNodes($automation, $node);
             foreach ($nextNodes as $next) {
@@ -168,38 +169,65 @@ class AutomationRunnerService
                 if (! ($result['done'] ?? true)) {
                     return $result;
                 }
-                $run = $run->fresh();
-                $details = (array) ($run->metadata['details'] ?? []);
-                $runStatus = $run->metadata['run_status'] ?? $runStatus;
+                $run       = $run->fresh();
+                $details   = (array) ($run->metadata['details']    ?? []);
+                $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
             }
             $run->update(['status' => $runStatus, 'metadata' => ['details' => $details, 'run_status' => $runStatus]]);
             return ['done' => true, 'status' => $runStatus, 'details' => $details];
         }
 
+        // ── delay: schedule resume job ────────────────────────────────
         if ($node->type === 'delay') {
-            $minutes = (int) ($node->config['minutes'] ?? 0);
-            $minutes = max(1, min(10080, $minutes));
-            $resumeAt = now()->addMinutes($minutes);
+            $minutes   = max(1, min(10080, (int) ($node->config['minutes'] ?? 0)));
+            $resumeAt  = now()->addMinutes($minutes);
             $nextNodes = $this->getNextNodes($automation, $node);
             $details[] = ['action' => 'delay', 'node_id' => $node->id, 'scheduled_after_minutes' => $minutes];
             $nextNodeId = $nextNodes->isNotEmpty() ? $nextNodes->first()->id : null;
-            $run->update([
-                'metadata' => ['details' => $details, 'run_status' => $runStatus],
-                'resume_at' => $resumeAt,
-                'resume_from_position' => null,
-            ]);
+            $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus], 'resume_at' => $resumeAt, 'resume_from_position' => null]);
             if ($nextNodeId) {
                 $run->update(['metadata' => array_merge($run->metadata ?? [], ['resume_from_node_id' => $nextNodeId])]);
                 RunAutomationFromNodeJob::dispatch($automation->id, $contact->id, $run->id, $nextNodeId)->delay($resumeAt);
             }
-            return [
-                'done' => false,
-                'details' => $details,
-                'delay_minutes' => $minutes,
-                'resume_at' => $resumeAt,
-            ];
+            return ['done' => false, 'details' => $details, 'delay_minutes' => $minutes, 'resume_at' => $resumeAt];
         }
 
+        // ── condition: evaluate and route yes/no ──────────────────────
+        if ($node->type === 'condition') {
+            $condResult   = $this->evaluateNodeCondition($node->config ?? [], $contact);
+            $sourceHandle = $condResult ? 'yes' : 'no';
+            $details[]    = ['action' => 'condition', 'node_id' => $node->id, 'result' => $condResult, 'branch' => $sourceHandle];
+            $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
+            $nextNodes = $this->getNextNodesFromHandle($automation, $node, $sourceHandle);
+            foreach ($nextNodes as $next) {
+                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+                if (! ($result['done'] ?? true)) {
+                    return $result;
+                }
+                $run       = $run->fresh();
+                $details   = (array) ($run->metadata['details']    ?? []);
+                $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
+            }
+            $run->update(['status' => $runStatus, 'metadata' => ['details' => $details, 'run_status' => $runStatus], 'resume_at' => null]);
+            return ['done' => true, 'status' => $runStatus, 'details' => $details];
+        }
+
+        // ── user_input: send question then pause (async response required) ──
+        if ($node->type === 'user_input') {
+            $question = trim((string) ($node->config['question'] ?? ''));
+            if ($question !== '' && $contact->phone_for_whatsapp !== '') {
+                $this->whatsAppSend->sendTextToContact($accountId, $contact, $question, $run->id);
+            }
+            $details[] = ['action' => 'user_input', 'node_id' => $node->id, 'status' => 'waiting', 'question' => $question];
+            $run->update([
+                'metadata'    => ['details' => $details, 'run_status' => $runStatus, 'waiting_input_node_id' => $node->id],
+                'resume_at'   => now()->addMinutes((int) ($node->config['timeout_minutes'] ?? 60)),
+            ]);
+            // Flow pauses here — webhook should resume when user replies
+            return ['done' => false, 'details' => $details, 'delay_minutes' => (int) ($node->config['timeout_minutes'] ?? 60)];
+        }
+
+        // ── generic: execute and follow output edges ──────────────────
         Log::info('automation flow executing node', ['run_id' => $run->id, 'node_id' => $node->id, 'node_type' => $node->type]);
         $ok = $this->executeNode($node, $accountId, $contact, $run);
         $details[] = ['action' => $node->type, 'node_id' => $node->id, 'success' => $ok];
@@ -217,9 +245,9 @@ class AutomationRunnerService
             if (! ($result['done'] ?? true)) {
                 return $result;
             }
-            $run = $run->fresh();
-            $details = (array) ($run->metadata['details'] ?? []);
-            $runStatus = $run->metadata['run_status'] ?? $runStatus;
+            $run       = $run->fresh();
+            $details   = (array) ($run->metadata['details']    ?? []);
+            $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
         }
 
         $run->update(['status' => $runStatus, 'metadata' => ['details' => $details, 'run_status' => $runStatus], 'resume_at' => null]);
@@ -231,60 +259,207 @@ class AutomationRunnerService
         $targetIds = $automation->flowEdges
             ->where('source_node_id', $node->id)
             ->pluck('target_node_id')
-            ->unique()
-            ->values();
+            ->unique()->values();
         if ($targetIds->isEmpty()) {
             return collect();
         }
         return $automation->flowNodes->whereIn('id', $targetIds)->values();
     }
 
+    /** For condition nodes: follow only the edges from the matching source handle (yes/no). */
+    private function getNextNodesFromHandle(Automation $automation, AutomationNode $node, string $handle): \Illuminate\Support\Collection
+    {
+        $targetIds = $automation->flowEdges
+            ->where('source_node_id', $node->id)
+            ->where('source_handle', $handle)
+            ->pluck('target_node_id')
+            ->unique()->values();
+        if ($targetIds->isEmpty()) {
+            return collect();
+        }
+        return $automation->flowNodes->whereIn('id', $targetIds)->values();
+    }
+
+    /** Evaluates a condition node config against a contact. Returns true (yes branch) or false (no branch). */
+    private function evaluateNodeCondition(array $config, Contact $contact): bool
+    {
+        $fieldType = (string) ($config['field_type'] ?? '');
+        $operator  = (string) ($config['operator']   ?? '');
+
+        if ($fieldType === 'tag') {
+            $tagId  = (int) ($config['tag_id'] ?? 0);
+            $hasTags = $contact->tags->pluck('id')->contains($tagId);
+            return $operator === 'has_tag' ? $hasTags : ! $hasTags;
+        }
+
+        if ($fieldType === 'attribute') {
+            $fieldKey     = (string) ($config['field_key'] ?? '');
+            $contactValue = match ($fieldKey) {
+                'name'  => (string) ($contact->name  ?? ''),
+                'email' => (string) ($contact->email ?? ''),
+                'phone' => (string) ($contact->phone ?? ''),
+                default => '',
+            };
+            return $this->evaluateOperator($contactValue, $operator, (string) ($config['value'] ?? ''));
+        }
+
+        if ($fieldType === 'custom') {
+            $fieldId     = (int) ($config['contact_field_id'] ?? 0);
+            $contact->loadMissing('fieldValues');
+            $fv          = $contact->fieldValues->firstWhere('contact_field_id', $fieldId);
+            $contactValue = $fv ? (string) ($fv->value ?? '') : '';
+            return $this->evaluateOperator($contactValue, $operator, (string) ($config['value'] ?? ''));
+        }
+
+        return false;
+    }
+
+    private function evaluateOperator(string $contactValue, string $operator, string $value): bool
+    {
+        $cv = mb_strtolower(trim($contactValue));
+        $v  = mb_strtolower(trim($value));
+        return match ($operator) {
+            'equals'       => $cv === $v,
+            'not_equals'   => $cv !== $v,
+            'contains'     => str_contains($cv, $v),
+            'not_contains' => ! str_contains($cv, $v),
+            'starts_with'  => str_starts_with($cv, $v),
+            'ends_with'    => str_ends_with($cv, $v),
+            'is_empty'     => trim($contactValue) === '',
+            'is_not_empty' => trim($contactValue) !== '',
+            default        => false,
+        };
+    }
+
     private function executeNode(AutomationNode $node, int $accountId, Contact $contact, AutomationRun $run): bool
     {
         $config = $node->config ?? [];
+
         switch ($node->type) {
+
+            // ── send_message (text + media URL) ──────────────────────
             case 'send_message':
-                $text = (string) ($config['message'] ?? '');
-                if ($text === '') {
-                    return true;
-                }
                 if ($contact->phone_for_whatsapp === '') {
-                    Log::channel('single')->warning('AutomationRunner: contato sem telefone', [
-                        'contact_id' => $contact->id,
-                        'automation_id' => $run->automation_id,
-                    ]);
+                    Log::channel('single')->warning('AutomationRunner: contato sem telefone', ['contact_id' => $contact->id]);
                     return false;
                 }
-                $sent = $this->whatsAppSend->sendTextToContact($accountId, $contact, $text, $run->id);
-                return $sent !== null;
+                $msgType = (string) ($config['message_type'] ?? 'text');
+                if ($msgType === 'text') {
+                    $text = trim((string) ($config['message'] ?? ''));
+                    if ($text === '') {
+                        return true;
+                    }
+                    return $this->whatsAppSend->sendTextToContact($accountId, $contact, $text, $run->id) !== null;
+                }
+                if (\in_array($msgType, ['image', 'video', 'document', 'audio'], true)) {
+                    $mediaUrl = trim((string) ($config['media_url'] ?? ''));
+                    if ($mediaUrl === '') {
+                        return true;
+                    }
+                    $caption  = trim((string) ($config['caption']  ?? ''));
+                    $filename = trim((string) ($config['filename'] ?? basename($mediaUrl)));
+                    return $this->whatsAppSend->sendMediaUrlToContact($accountId, $contact, $mediaUrl, $msgType, $caption, $filename, $run->id) !== null;
+                }
+                if ($msgType === 'buttons') {
+                    $text    = trim((string) ($config['message'] ?? ''));
+                    $buttons = array_values(array_filter((array) ($config['buttons'] ?? []), fn ($b) => ! empty($b['text'])));
+                    if ($text === '' || empty($buttons)) {
+                        return true;
+                    }
+                    return $this->whatsAppSend->sendButtonsToContact($accountId, $contact, $text, $buttons, $run->id) !== null;
+                }
+                if ($msgType === 'list') {
+                    $text     = trim((string) ($config['message'] ?? ''));
+                    $btnText  = trim((string) ($config['list_button_text'] ?? 'Ver opções'));
+                    $sections = (array) ($config['list_sections'] ?? []);
+                    if ($text === '' || empty($sections)) {
+                        return true;
+                    }
+                    return $this->whatsAppSend->sendListToContact($accountId, $contact, $text, $btnText, $sections, $run->id) !== null;
+                }
+                return true;
+
+            // ── add / remove list ─────────────────────────────────────
             case 'add_list':
                 $listaId = (int) ($config['lista_id'] ?? 0);
-                if ($listaId <= 0) {
-                    return true;
+                if ($listaId > 0) {
+                    $contact->listas()->syncWithoutDetaching([$listaId]);
                 }
-                $contact->listas()->syncWithoutDetaching([$listaId]);
                 return true;
             case 'remove_list':
                 $listaId = (int) ($config['lista_id'] ?? 0);
-                if ($listaId <= 0) {
-                    return true;
+                if ($listaId > 0) {
+                    $contact->listas()->detach($listaId);
                 }
-                $contact->listas()->detach($listaId);
                 return true;
+
+            // ── add / remove tag ──────────────────────────────────────
             case 'add_tag':
                 $tagId = (int) ($config['tag_id'] ?? 0);
-                if ($tagId <= 0) {
-                    return true;
+                if ($tagId > 0) {
+                    $contact->tags()->syncWithoutDetaching([$tagId]);
                 }
-                $contact->tags()->syncWithoutDetaching([$tagId]);
                 return true;
             case 'remove_tag':
                 $tagId = (int) ($config['tag_id'] ?? 0);
-                if ($tagId <= 0) {
+                if ($tagId > 0) {
+                    $contact->tags()->detach($tagId);
+                }
+                return true;
+
+            // ── update contact field ──────────────────────────────────
+            case 'update_field':
+                $fieldType = (string) ($config['field_type'] ?? 'attribute');
+                $value     = (string) ($config['value']      ?? '');
+                if ($fieldType === 'attribute') {
+                    $key = (string) ($config['field_key'] ?? '');
+                    if (\in_array($key, ['name', 'email', 'phone'], true)) {
+                        $contact->update([$key => $value]);
+                    }
+                } elseif ($fieldType === 'custom') {
+                    $fieldId = (int) ($config['contact_field_id'] ?? 0);
+                    if ($fieldId > 0) {
+                        $contact->fieldValues()->updateOrCreate(
+                            ['contact_field_id' => $fieldId],
+                            ['value' => $value]
+                        );
+                    }
+                }
+                return true;
+
+            // ── go to another automation ──────────────────────────────
+            case 'go_to':
+                $targetAutoId = (int) ($config['automation_id'] ?? 0);
+                if ($targetAutoId <= 0 || $targetAutoId === (int) $run->automation_id) {
                     return true;
                 }
-                $contact->tags()->detach($tagId);
+                $targetAuto = Automation::with(['flowNodes', 'flowEdges', 'actions'])->find($targetAutoId);
+                if (! $targetAuto) {
+                    return true;
+                }
+                try {
+                    $this->runForContact($targetAuto, $contact);
+                } catch (\Throwable $e) {
+                    Log::warning('AutomationRunner go_to failed', ['error' => $e->getMessage()]);
+                }
                 return true;
+
+            // ── transfer to human ─────────────────────────────────────
+            case 'human_transfer':
+                $message = trim((string) ($config['message'] ?? ''));
+                if ($message !== '' && $contact->phone_for_whatsapp !== '') {
+                    $this->whatsAppSend->sendTextToContact($accountId, $contact, $message, $run->id);
+                }
+                $tagId = (int) ($config['tag_id'] ?? 0);
+                if ($tagId > 0) {
+                    $contact->tags()->syncWithoutDetaching([$tagId]);
+                }
+                Log::info('AutomationRunner: human_transfer requested', [
+                    'contact_id'   => $contact->id,
+                    'automation_id' => $run->automation_id,
+                ]);
+                return true;
+
             default:
                 return true;
         }

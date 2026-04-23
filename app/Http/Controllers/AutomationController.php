@@ -60,8 +60,11 @@ class AutomationController extends Controller
         $this->authorize('update', $automacao);
         $automacao->load(['flowNodes', 'flowEdges']);
         $accountId = auth()->user()->accountId();
-        $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
-        $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+
+        $listas       = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
+        $tags         = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
+        $customFields = \App\Models\ContactField::forUser($accountId)->active()->ordered()->get(['id', 'name']);
+        $automations  = Automation::forUser($accountId)->orderBy('name')->get(['id', 'name']);
 
         $flowConfig = [
             'automationId'   => $automacao->id,
@@ -70,6 +73,8 @@ class AutomationController extends Controller
             'csrfToken'      => csrf_token(),
             'listas'         => $listas,
             'tags'           => $tags,
+            'customFields'   => $customFields,
+            'automations'    => $automations,
             'triggerEditUrl' => route('automacao.edit', ['automacao' => $automacao, 'step' => 'trigger']),
             'title'          => $automacao->name,
         ];
@@ -115,7 +120,7 @@ class AutomationController extends Controller
         $validated = $request->validate([
             'nodes' => ['required', 'array'],
             'nodes.*.id' => ['required', 'string'],
-            'nodes.*.type' => ['required', 'string', 'in:start,send_message,delay,add_tag,remove_tag,add_list,remove_list'],
+            'nodes.*.type' => ['required', 'string', 'in:start,send_message,condition,delay,go_to,user_input,update_field,add_tag,remove_tag,add_list,remove_list,human_transfer'],
             'nodes.*.position' => ['required', 'array'],
             'nodes.*.position.x' => ['required', 'numeric'],
             'nodes.*.position.y' => ['required', 'numeric'],
