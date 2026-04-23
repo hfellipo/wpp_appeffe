@@ -1286,7 +1286,16 @@ window.waInboxChatify = function waInboxChatify() {
             }
         },
 
-        maybeSend() {
+        maybeSend(e) {
+            if (e.shiftKey) {
+                // Insert newline at cursor (preventDefault already called by Alpine's .prevent)
+                const el = this.$refs.draftInput;
+                const start = el.selectionStart;
+                const end = el.selectionEnd;
+                this.draft = this.draft.slice(0, start) + '\n' + this.draft.slice(end);
+                this.$nextTick(() => { el.selectionStart = el.selectionEnd = start + 1; });
+                return;
+            }
             this.sendMessage();
             this.$nextTick(() => this.$refs.draftInput?.focus());
         },

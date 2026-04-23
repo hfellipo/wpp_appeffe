@@ -1080,7 +1080,7 @@
                                     placeholder="Digite uma mensagem..."
                                     x-model="draft"
                                     x-ref="draftInput"
-                                    @keydown.enter.exact.prevent="maybeSend()"
+                                    @keydown.enter.prevent="maybeSend($event)"
                                     :disabled="!connected || sending"
                                 ></textarea>
                             </div>
