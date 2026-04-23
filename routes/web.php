@@ -270,6 +270,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/automacao/{automacao}/test', [AutomationController::class, 'runTest'])->name('automacao.runTest');
     Route::get('/automacao/{automacao}/flow/test', [AutomationController::class, 'testFlow'])->name('automacao.flow.test');
     Route::post('/automacao/{automacao}/flow/test', [AutomationController::class, 'runTestFlow'])->name('automacao.flow.runTest');
+    Route::post('/automacao/{automacao}/flow/test-ajax', [AutomationController::class, 'testFlowAjax'])->name('automacao.flow.testAjax');
 
     // Posts agendados (grupo, lista ou tag) — envio de mensagem WhatsApp em data/hora
     Route::get('/automacao/agendamentos', [ScheduledPostController::class, 'index'])->name('automacao.agendamentos.index');

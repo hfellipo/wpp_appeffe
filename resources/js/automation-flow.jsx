@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -17,15 +17,20 @@ import {
 import '@xyflow/react/dist/style.css';
 
 // ── Config from Laravel ──────────────────────────────────────────
-const cfg           = window.AUTOMATION_FLOW || {};
+const cfg             = window.AUTOMATION_FLOW || {};
 const FLOW_DATA_URL   = cfg.flowDataUrl    || '';
 const FLOW_UPDATE_URL = cfg.flowUpdateUrl  || '';
+const FLOW_TEST_URL   = cfg.flowTestUrl    || '';
 const CSRF            = cfg.csrfToken      || '';
 const LISTAS          = cfg.listas         || [];
 const TAGS            = cfg.tags           || [];
 const CUSTOM_FIELDS   = cfg.customFields   || [];
 const AUTOMATIONS     = cfg.automations    || [];
+const CONTACTS        = cfg.contacts       || [];
 const CURRENT_AUTO_ID = cfg.automationId   || null;
+
+// ── Test results context (node_id string → detail object) ────────
+const TestResultsContext = React.createContext({});
 
 // ── Node visual definitions ──────────────────────────────────────
 const META = {
@@ -204,9 +209,22 @@ function getNodeSummary(type, config) {
   }
 }
 
+// ── Test result badge config ─────────────────────────────────────
+const TEST_BADGE = {
+  start:         { bg: '#10b981', tx: '#fff', label: '▶ Início' },
+  success:       { bg: '#10b981', tx: '#fff', label: '✓ OK' },
+  error:         { bg: '#ef4444', tx: '#fff', label: '✗ Erro' },
+  condition_yes: { bg: '#10b981', tx: '#fff', label: '✓ Sim' },
+  condition_no:  { bg: '#f97316', tx: '#fff', label: '✗ Não' },
+  delay:         { bg: '#d97706', tx: '#fff', label: '⏰ Aguardando' },
+  waiting:       { bg: '#3b82f6', tx: '#fff', label: '⌨ Aguardando resposta' },
+};
+
 // ── Custom Node ──────────────────────────────────────────────────
 function AutomationNode({ id, type, data, selected }) {
   const { setNodes, setEdges } = useReactFlow();
+  const testResults = useContext(TestResultsContext);
+  const testDetail  = testResults[id];
   const [hovered, setHovered] = useState(false);
   const meta    = META[type] || { label: type, bg: '#f9fafb', bd: '#d1d5db', ic: '#6b7280', tx: '#111827' };
   const summary = getNodeSummary(type, data.config);
@@ -218,10 +236,27 @@ function AutomationNode({ id, type, data, selected }) {
     setEdges(es => es.filter(e => e.source !== id && e.target !== id));
   }, [id, setNodes, setEdges]);
 
-  const borderColor = selected ? meta.ic : hovered ? `${meta.ic}99` : meta.bd;
-  const shadow = selected
-    ? `0 0 0 3px ${meta.ic}28, 0 4px 20px rgba(0,0,0,0.14)`
-    : hovered ? '0 4px 14px rgba(0,0,0,0.11)' : '0 2px 8px rgba(0,0,0,0.07)';
+  // Compute test badge key
+  let testBadgeKey = null;
+  if (testDetail) {
+    if (testDetail.action === 'start')     testBadgeKey = 'start';
+    else if (testDetail.action === 'condition') testBadgeKey = testDetail.branch === 'yes' ? 'condition_yes' : 'condition_no';
+    else if (testDetail.action === 'delay')     testBadgeKey = 'delay';
+    else if (testDetail.action === 'user_input') testBadgeKey = 'waiting';
+    else testBadgeKey = testDetail.success === false ? 'error' : 'success';
+  }
+  const badge = testBadgeKey ? TEST_BADGE[testBadgeKey] : null;
+
+  const testBorderColor = badge
+    ? (testBadgeKey === 'error' ? '#ef4444' : testBadgeKey === 'condition_no' ? '#f97316' : testBadgeKey === 'delay' ? '#d97706' : testBadgeKey === 'waiting' ? '#3b82f6' : '#10b981')
+    : null;
+
+  const borderColor = testBorderColor || (selected ? meta.ic : hovered ? `${meta.ic}99` : meta.bd);
+  const shadow = testBorderColor
+    ? `0 0 0 3px ${testBorderColor}40, 0 4px 20px ${testBorderColor}30`
+    : selected
+      ? `0 0 0 3px ${meta.ic}28, 0 4px 20px rgba(0,0,0,0.14)`
+      : hovered ? '0 4px 14px rgba(0,0,0,0.11)' : '0 2px 8px rgba(0,0,0,0.07)';
 
   return (
     <div
@@ -249,6 +284,23 @@ function AutomationNode({ id, type, data, selected }) {
         opacity: hovered || selected ? 1 : 0,
         transition: 'opacity 0.15s', zIndex: 10,
       }}>×</div>
+
+      {/* Test result badge */}
+      {badge && (
+        <div style={{
+          position: 'absolute', top: -11, left: 10,
+          background: badge.bg, color: badge.tx,
+          fontSize: 10, fontWeight: 700, lineHeight: 1,
+          padding: '3px 7px', borderRadius: 20,
+          boxShadow: '0 1px 4px rgba(0,0,0,.2)',
+          whiteSpace: 'nowrap', zIndex: 10,
+        }}>
+          {badge.label}
+          {testDetail?.reason && (
+            <span title={testDetail.reason} style={{ marginLeft: 4, opacity: 0.8 }}>⚠</span>
+          )}
+        </div>
+      )}
 
       {/* Input handle */}
       {type !== 'start' && (
@@ -316,6 +368,137 @@ function AutomationNode({ id, type, data, selected }) {
 }
 
 const nodeTypes = Object.fromEntries(Object.keys(META).map(t => [t, AutomationNode]));
+
+// ── Test Panel ───────────────────────────────────────────────────
+const ACTION_LABELS = {
+  start: 'Gatilho', send_message: 'Enviar mensagem', condition: 'Condição',
+  delay: 'Aguardar', go_to: 'Ir para fluxo', user_input: 'Entrada do usuário',
+  update_field: 'Atualizar campo', add_tag: 'Adicionar tag', remove_tag: 'Remover tag',
+  add_list: 'Adicionar à lista', remove_list: 'Remover da lista', human_transfer: 'Transferir humano',
+};
+
+function TestPanel({ onClose, onResults }) {
+  const [contactId, setContactId] = useState('');
+  const [loading,   setLoading]   = useState(false);
+  const [result,    setResult]    = useState(null); // { success, message, details }
+
+  const run = async () => {
+    if (!contactId || !FLOW_TEST_URL) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res  = await fetch(FLOW_TEST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ contact_id: Number(contactId) }),
+      });
+      const data = await res.json();
+      setResult(data);
+      if (data.details) onResults(data.details);
+    } catch {
+      setResult({ ok: false, success: false, message: 'Erro de conexão.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      width: 270, background: '#fff', borderRadius: 14,
+      boxShadow: '0 8px 32px rgba(0,0,0,.18)', border: '1px solid #e2e8f0',
+      overflow: 'hidden', display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Header */}
+      <div style={{ padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
+            <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+            <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>Testar flow</span>
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 18, lineHeight: 1, padding: 2 }}>×</button>
+      </div>
+
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9' }}>
+        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Contato</div>
+        <select value={contactId} onChange={e => { setContactId(e.target.value); setResult(null); onResults([]); }}
+          style={{ width: '100%', borderRadius: 7, border: '1px solid #d1d5db', padding: '6px 8px', fontSize: 12, outline: 'none', color: '#111827', cursor: 'pointer' }}>
+          <option value="">— Selecionar —</option>
+          {CONTACTS.map(c => (
+            <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
+          ))}
+        </select>
+        <button onClick={run} disabled={!contactId || loading}
+          style={{
+            marginTop: 8, width: '100%', padding: '7px 0', borderRadius: 7, border: 'none',
+            background: !contactId || loading ? '#d1fae5' : '#10b981', color: '#fff',
+            fontSize: 12.5, fontWeight: 700, cursor: !contactId || loading ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          {loading
+            ? <><span style={{ display: 'inline-block', width: 13, height: 13, border: '2px solid #fff4', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin .7s linear infinite' }} /> Executando…</>
+            : '▶ Executar teste'
+          }
+        </button>
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          {/* Summary */}
+          <div style={{
+            padding: '8px 14px', fontSize: 11.5, fontWeight: 700,
+            background: result.success ? '#f0fdf4' : '#fef2f2',
+            color: result.success ? '#065f46' : '#991b1b',
+            borderBottom: '1px solid #f1f5f9',
+          }}>
+            {result.success ? '✓' : '✗'} {result.message}
+          </div>
+
+          {/* Step list */}
+          {(result.details || []).map((d, i) => {
+            let badgeKey = 'success';
+            if (d.action === 'start')         badgeKey = 'start';
+            else if (d.action === 'condition') badgeKey = d.branch === 'yes' ? 'condition_yes' : 'condition_no';
+            else if (d.action === 'delay')     badgeKey = 'delay';
+            else if (d.action === 'user_input') badgeKey = 'waiting';
+            else if (d.success === false)      badgeKey = 'error';
+            const badge = TEST_BADGE[badgeKey];
+            return (
+              <div key={i} style={{ padding: '6px 14px', borderBottom: '1px solid #f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: badge.bg, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: '#374151' }}>
+                    {ACTION_LABELS[d.action] || d.action}
+                  </div>
+                  {d.action === 'condition' && (
+                    <div style={{ fontSize: 10.5, color: badge.bg }}>Tomou o ramo: {d.branch === 'yes' ? 'Sim ✓' : 'Não ✗'}</div>
+                  )}
+                  {d.action === 'delay' && (
+                    <div style={{ fontSize: 10.5, color: '#92400e' }}>Aguardando {d.scheduled_after_minutes} min</div>
+                  )}
+                  {d.reason && (
+                    <div style={{ fontSize: 10.5, color: '#dc2626', marginTop: 1 }}>{d.reason}</div>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: badge.bg, flexShrink: 0 }}>{badge.label}</div>
+              </div>
+            );
+          })}
+
+          {/* Clear button */}
+          <div style={{ padding: '8px 14px' }}>
+            <button onClick={() => { setResult(null); onResults([]); }}
+              style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              Limpar resultado
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Node Palette ─────────────────────────────────────────────────
 function PaletteItem({ type, desc, meta, onDragStart, onAddNode }) {
@@ -988,6 +1171,8 @@ function FlowEditorInner() {
   const [loading, setSaving_Loading] = useState(true);
   const [saving,  setSaving]  = useState(false);
   const [toast,   setToast]   = useState(null);
+  const [showTest,    setShowTest]    = useState(false);
+  const [testResults, setTestResults] = useState({}); // nodeId → detail
   const wrapperRef = useRef(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
@@ -1085,49 +1270,75 @@ function FlowEditorInner() {
     );
   }
 
+  const handleTestResults = useCallback((details) => {
+    const map = {};
+    details.forEach(d => { if (d.node_id) map[d.node_id] = d; });
+    setTestResults(map);
+  }, []);
+
   return (
-    <div style={{ display: 'flex', height: '100%', width: '100%' }}>
-      <NodePalette onAddNode={addNode} />
-      <div ref={wrapperRef} style={{ flex: 1, height: '100%', position: 'relative' }}>
-        <ReactFlow
-          nodes={nodes} edges={edges}
-          onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-          onConnect={onConnect} onNodeClick={onNodeClick} onPaneClick={onPaneClick}
-          onDrop={onDrop} onDragOver={onDragOver}
-          nodeTypes={nodeTypes}
-          defaultEdgeOptions={DEFAULT_EDGE}
-          deleteKeyCode={['Backspace', 'Delete']}
-          connectionLineStyle={{ stroke: '#94a3b8', strokeWidth: 2 }}
-          connectionLineType="smoothstep"
-          minZoom={0.2} maxZoom={2.5} fitView={false}
-        >
-          <Background variant="dots" gap={20} size={1} color="#cbd5e1" />
-          <Controls style={{ left: 12, bottom: 12 }} showInteractive={false} />
-          <MiniMap nodeColor={n => META[n.type]?.ic || '#94a3b8'} style={{ right: 12, bottom: 12, borderRadius: 10 }} pannable zoomable />
+    <TestResultsContext.Provider value={testResults}>
+      <div style={{ display: 'flex', height: '100%', width: '100%' }}>
+        <NodePalette onAddNode={addNode} />
+        <div ref={wrapperRef} style={{ flex: 1, height: '100%', position: 'relative' }}>
+          <ReactFlow
+            nodes={nodes} edges={edges}
+            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+            onConnect={onConnect} onNodeClick={onNodeClick} onPaneClick={onPaneClick}
+            onDrop={onDrop} onDragOver={onDragOver}
+            nodeTypes={nodeTypes}
+            defaultEdgeOptions={DEFAULT_EDGE}
+            deleteKeyCode={['Backspace', 'Delete']}
+            connectionLineStyle={{ stroke: '#94a3b8', strokeWidth: 2 }}
+            connectionLineType="smoothstep"
+            minZoom={0.2} maxZoom={2.5} fitView={false}
+          >
+            <Background variant="dots" gap={20} size={1} color="#cbd5e1" />
+            <Controls style={{ left: 12, bottom: 12 }} showInteractive={false} />
+            <MiniMap nodeColor={n => META[n.type]?.ic || '#94a3b8'} style={{ right: 12, bottom: 12, borderRadius: 10 }} pannable zoomable />
 
-          <Panel position="top-right" style={{ margin: '10px 10px 0 0' }}>
-            <button onClick={saveFlow} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 18px', borderRadius: 8, background: saving ? '#6ee7b7' : '#10b981', color: '#fff', border: 'none', cursor: saving ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 700, boxShadow: '0 2px 8px rgba(16,185,129,.28)', transition: 'background .15s' }}>
-              {saving ? '⏳ Salvando…' : '💾 Salvar fluxo'}
-            </button>
-          </Panel>
-
-          {nodes.length === 0 && (
-            <Panel position="top-center" style={{ marginTop: 80, pointerEvents: 'none' }}>
-              <div style={{ textAlign: 'center', color: '#94a3b8', lineHeight: 1.7 }}>
-                <div style={{ fontSize: 44, marginBottom: 8 }}>🗺️</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#64748b' }}>Canvas vazio</div>
-                <div style={{ fontSize: 13 }}>Arraste blocos da barra lateral para começar<br/>ou clique em qualquer bloco para adicioná-lo</div>
-              </div>
+            <Panel position="top-right" style={{ margin: '10px 10px 0 0', display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => { setShowTest(v => !v); setTestResults({}); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: showTest ? '#ecfdf5' : '#fff', color: showTest ? '#065f46' : '#374151', border: `1px solid ${showTest ? '#6ee7b7' : '#e5e7eb'}`, cursor: 'pointer', fontSize: 12.5, fontWeight: 700, boxShadow: '0 1px 4px rgba(0,0,0,.07)', transition: 'all .15s' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                  <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Testar
+              </button>
+              <button onClick={saveFlow} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 18px', borderRadius: 8, background: saving ? '#6ee7b7' : '#10b981', color: '#fff', border: 'none', cursor: saving ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 700, boxShadow: '0 2px 8px rgba(16,185,129,.28)', transition: 'background .15s' }}>
+                {saving ? '⏳ Salvando…' : '💾 Salvar fluxo'}
+              </button>
             </Panel>
-          )}
-        </ReactFlow>
-      </div>
 
-      {selectedNode && (
-        <PropertiesPanel node={selectedNode} onUpdate={updateNodeData} onClose={() => setSelectedNodeId(null)} />
-      )}
-      {toast && <Toast message={toast.message} type={toast.type} />}
-    </div>
+            {showTest && (
+              <Panel position="top-right" style={{ marginTop: 52, marginRight: 10 }}>
+                <TestPanel
+                  onClose={() => { setShowTest(false); setTestResults({}); }}
+                  onResults={handleTestResults}
+                />
+              </Panel>
+            )}
+
+            {nodes.length === 0 && (
+              <Panel position="top-center" style={{ marginTop: 80, pointerEvents: 'none' }}>
+                <div style={{ textAlign: 'center', color: '#94a3b8', lineHeight: 1.7 }}>
+                  <div style={{ fontSize: 44, marginBottom: 8 }}>🗺️</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#64748b' }}>Canvas vazio</div>
+                  <div style={{ fontSize: 13 }}>Arraste blocos da barra lateral para começar<br/>ou clique em qualquer bloco para adicioná-lo</div>
+                </div>
+              </Panel>
+            )}
+          </ReactFlow>
+        </div>
+
+        {selectedNode && (
+          <PropertiesPanel node={selectedNode} onUpdate={updateNodeData} onClose={() => setSelectedNodeId(null)} />
+        )}
+        {toast && <Toast message={toast.message} type={toast.type} />}
+      </div>
+    </TestResultsContext.Provider>
   );
 }
 

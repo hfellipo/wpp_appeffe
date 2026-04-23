@@ -67,15 +67,19 @@ class AutomationController extends Controller
         $customFields = \App\Models\ContactField::forUser($accountId)->active()->ordered()->get(['id', 'name']);
         $automations  = Automation::forUser($accountId)->orderBy('name')->get(['id', 'name']);
 
+        $contacts = Contact::forUser($accountId)->orderBy('name')->get(['id', 'name', 'phone']);
+
         $flowConfig = [
             'automationId'  => $automacao->id,
             'flowDataUrl'   => route('automacao.flow.data',   ['automacao' => $automacao]),
             'flowUpdateUrl' => route('automacao.flow.update', ['automacao' => $automacao]),
+            'flowTestUrl'   => route('automacao.flow.testAjax', ['automacao' => $automacao]),
             'csrfToken'     => csrf_token(),
             'listas'        => $listas,
             'tags'          => $tags,
             'customFields'  => $customFields,
             'automations'   => $automations,
+            'contacts'      => $contacts,
             'title'         => $automacao->name,
         ];
 
@@ -568,6 +572,53 @@ class AutomationController extends Controller
             ->back()
             ->withInput()
             ->with('error', $result['message']);
+    }
+
+    /**
+     * API JSON: executa o flow para teste, retorna resultado nó a nó para o editor React.
+     */
+    public function testFlowAjax(Request $request, Automation $automacao, AutomationRunnerService $runner): JsonResponse
+    {
+        $this->authorize('update', $automacao);
+
+        $request->validate([
+            'contact_id' => ['required', 'integer', 'exists:contacts,id'],
+        ]);
+
+        $contact = Contact::forUser(auth()->user()->accountId())
+            ->where('id', $request->input('contact_id'))
+            ->firstOrFail();
+
+        AutomationRun::where('automation_id', $automacao->id)
+            ->where('contact_id', $contact->id)
+            ->delete();
+
+        $result = $runner->runForContact($automacao, $contact);
+
+        $automacao->load('flowNodes');
+        $startNode = $automacao->flowNodes->firstWhere('type', 'start');
+
+        $details = $result['details'] ?? [];
+
+        if ($startNode && ! collect($details)->contains('node_id', $startNode->id)) {
+            array_unshift($details, [
+                'action'  => 'start',
+                'node_id' => $startNode->id,
+                'success' => true,
+            ]);
+        }
+
+        $details = array_map(
+            fn ($d) => array_merge($d, ['node_id' => (string) ($d['node_id'] ?? '')]),
+            $details
+        );
+
+        return response()->json([
+            'ok'      => true,
+            'success' => $result['success'],
+            'message' => $result['message'],
+            'details' => $details,
+        ]);
     }
 
     /**
