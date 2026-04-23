@@ -1286,7 +1286,7 @@ window.waInboxChatify = function waInboxChatify() {
             }
         },
 
-        maybeSend(e) {
+        async maybeSend(e) {
             if (e.shiftKey) {
                 // Insert newline at cursor (preventDefault already called by Alpine's .prevent)
                 const el = this.$refs.draftInput;
@@ -1296,7 +1296,8 @@ window.waInboxChatify = function waInboxChatify() {
                 this.$nextTick(() => { el.selectionStart = el.selectionEnd = start + 1; });
                 return;
             }
-            this.sendMessage();
+            // Await so focus runs only after sending=false (textarea re-enabled)
+            await this.sendMessage();
             this.$nextTick(() => this.$refs.draftInput?.focus());
         },
 
