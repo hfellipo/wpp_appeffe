@@ -268,6 +268,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/automacao/{automacao}/actions/{action}', [AutomationController::class, 'destroyAction'])->name('automacao.actions.destroy');
     Route::get('/automacao/{automacao}/test', [AutomationController::class, 'test'])->name('automacao.test');
     Route::post('/automacao/{automacao}/test', [AutomationController::class, 'runTest'])->name('automacao.runTest');
+    Route::get('/automacao/{automacao}/flow/test', [AutomationController::class, 'testFlow'])->name('automacao.flow.test');
+    Route::post('/automacao/{automacao}/flow/test', [AutomationController::class, 'runTestFlow'])->name('automacao.flow.runTest');
 
     // Posts agendados (grupo, lista ou tag) — envio de mensagem WhatsApp em data/hora
     Route::get('/automacao/agendamentos', [ScheduledPostController::class, 'index'])->name('automacao.agendamentos.index');

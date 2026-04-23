@@ -31,7 +31,7 @@
                     @endif
                 </form>
 
-                <a href="{{ route('automacao.test', $automation) }}"
+                <a href="{{ route('automacao.flow.test', $automation) }}"
                    class="btn-primary text-sm inline-flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -44,6 +44,26 @@
             </div>
         </div>
     </x-slot>
+
+    {{-- Flash do resultado do teste --}}
+    @if(session('success'))
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)"
+             class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+            {{ session('success') }}
+        </div>
+    @endif
+    @if(session('error'))
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 6000)"
+             class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-red-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+            {{ session('error') }}
+        </div>
+    @endif
 
     {{-- Full-height canvas: subtract header (~64px nav + ~65px page header) --}}
     <div style="height: calc(100vh - 8rem);" id="automation-flow-root"></div>

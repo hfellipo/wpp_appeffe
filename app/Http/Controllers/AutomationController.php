@@ -7,6 +7,7 @@ use App\Models\AutomationAction;
 use App\Models\AutomationCondition;
 use App\Models\AutomationEdge;
 use App\Models\AutomationNode;
+use App\Models\AutomationRun;
 use App\Models\AutomationTrigger;
 use App\Models\Contact;
 use App\Models\Lista;
@@ -567,5 +568,52 @@ class AutomationController extends Controller
             ->back()
             ->withInput()
             ->with('error', $result['message']);
+    }
+
+    /**
+     * Página de teste do flow: seleciona contato e dispara o fluxo ignorando o gatilho.
+     */
+    public function testFlow(Automation $automacao): View
+    {
+        $this->authorize('update', $automacao);
+
+        $contacts = Contact::forUser(auth()->user()->accountId())
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone', 'email']);
+
+        return view('automacao.test_flow', [
+            'automation' => $automacao,
+            'contacts'   => $contacts,
+        ]);
+    }
+
+    /**
+     * Executa o flow a partir do nó start, ignorando o gatilho e apagando run anterior
+     * (para permitir re-testes do mesmo contato).
+     */
+    public function runTestFlow(Request $request, Automation $automacao, AutomationRunnerService $runner): RedirectResponse
+    {
+        $this->authorize('update', $automacao);
+
+        $request->validate([
+            'contact_id' => ['required', 'integer', 'exists:contacts,id'],
+        ]);
+
+        $contact = Contact::forUser(auth()->user()->accountId())
+            ->where('id', $request->input('contact_id'))
+            ->firstOrFail();
+
+        // Remove run anterior para permitir re-teste com o mesmo contato
+        AutomationRun::where('automation_id', $automacao->id)
+            ->where('contact_id', $contact->id)
+            ->delete();
+
+        $result = $runner->runForContact($automacao, $contact);
+
+        $flash = $result['success'] ? 'success' : 'error';
+
+        return redirect()
+            ->route('automacao.flow', $automacao)
+            ->with($flash, $result['message']);
     }
 }
