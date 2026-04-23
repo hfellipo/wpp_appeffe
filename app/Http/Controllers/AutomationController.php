@@ -83,9 +83,20 @@ class AutomationController extends Controller
             'title'         => $automacao->name,
         ];
 
+        $lastRun = \App\Models\AutomationRun::where('automation_id', $automacao->id)
+            ->where('status', 'success')
+            ->orderByDesc('ran_at')
+            ->first(['ran_at', 'contact_id']);
+
+        $totalRuns = \App\Models\AutomationRun::where('automation_id', $automacao->id)
+            ->where('status', 'success')
+            ->count();
+
         return view('automacao.flow', [
             'automation' => $automacao,
             'flowConfig' => $flowConfig,
+            'lastRun'    => $lastRun,
+            'totalRuns'  => $totalRuns,
         ]);
     }
 

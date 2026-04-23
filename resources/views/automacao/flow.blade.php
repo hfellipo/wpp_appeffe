@@ -11,7 +11,28 @@
                 </a>
                 <div>
                     <h2 class="font-semibold text-xl text-gray-800 leading-tight">{{ $automation->name }}</h2>
-                    <p class="text-sm text-gray-500 mt-0.5">{{ __('Editor de jornada') }}</p>
+                    <div class="flex items-center gap-3 mt-0.5">
+                        <p class="text-sm text-gray-500">{{ __('Editor de jornada') }}</p>
+                        @if($automation->last_checked_at)
+                            <span class="text-xs text-gray-400">·</span>
+                            <p class="text-xs text-gray-400" title="Última vez que o cron verificou esta automação">
+                                Verificado: {{ $automation->last_checked_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i:s') }}
+                            </p>
+                        @else
+                            <span class="text-xs text-gray-400">·</span>
+                            <p class="text-xs text-amber-500 font-medium">Cron ainda não executou</p>
+                        @endif
+                        @if($lastRun)
+                            <span class="text-xs text-gray-400">·</span>
+                            <p class="text-xs text-emerald-600" title="Última execução real (não teste)">
+                                Último disparo: {{ $lastRun->ran_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i:s') }}
+                                <span class="text-gray-400">({{ $totalRuns }} {{ $totalRuns === 1 ? 'contato' : 'contatos' }})</span>
+                            </p>
+                        @else
+                            <span class="text-xs text-gray-400">·</span>
+                            <p class="text-xs text-gray-400">Nenhum disparo ainda</p>
+                        @endif
+                    </div>
                 </div>
             </div>
             <div class="flex items-center gap-2">
