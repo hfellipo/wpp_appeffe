@@ -1,6 +1,6 @@
 {
-  "_client-BVrftq_Q.js": {
-    "file": "assets/client-BVrftq_Q.js",
+  "_client-BPmKq4_7.js": {
+    "file": "assets/client-BPmKq4_7.js",
     "name": "client",
     "isDynamicEntry": true,
     "imports": [
@@ -8,7 +8,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-C8Q2Q9eS.css",
+    "file": "assets/app-BVcbhJKr.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
@@ -19,12 +19,12 @@
     "isEntry": true
   },
   "resources/js/automation-flow.jsx": {
-    "file": "assets/automation-flow-Cm9KtFYE.js",
+    "file": "assets/automation-flow-BBR1HKIg.js",
     "name": "automation-flow",
     "src": "resources/js/automation-flow.jsx",
     "isEntry": true,
     "dynamicImports": [
-      "_client-BVrftq_Q.js"
+      "_client-BPmKq4_7.js"
     ],
     "css": [
       "assets/automation-flow-BZV40eAE.css"

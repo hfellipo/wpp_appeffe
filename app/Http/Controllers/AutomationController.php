@@ -53,7 +53,7 @@ class AutomationController extends Controller
     }
 
     /**
-     * Editor de fluxo drag-and-drop (N8N/BotConversa style).
+     * Editor de fluxo drag-and-drop — usado tanto por /flow quanto por /jornada.
      */
     public function flow(Automation $automacao): View
     {
@@ -62,23 +62,20 @@ class AutomationController extends Controller
         $accountId = auth()->user()->accountId();
         $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
         $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
-        $nodeTypes = AutomationNode::nodeTypes();
 
         $flowConfig = [
-            'automationId' => $automacao->id,
-            'flowDataUrl' => route('automacao.flow.data', ['automacao' => $automacao]),
-            'flowUpdateUrl' => route('automacao.flow.update', ['automacao' => $automacao]),
-            'csrfToken' => csrf_token(),
-            'listas' => $listas,
-            'tags' => $tags,
-            'nodeTypes' => $nodeTypes,
+            'automationId'   => $automacao->id,
+            'flowDataUrl'    => route('automacao.flow.data',   ['automacao' => $automacao]),
+            'flowUpdateUrl'  => route('automacao.flow.update', ['automacao' => $automacao]),
+            'csrfToken'      => csrf_token(),
+            'listas'         => $listas,
+            'tags'           => $tags,
+            'triggerEditUrl' => route('automacao.edit', ['automacao' => $automacao, 'step' => 'trigger']),
+            'title'          => $automacao->name,
         ];
 
         return view('automacao.flow', [
             'automation' => $automacao,
-            'listas' => $listas,
-            'tags' => $tags,
-            'nodeTypes' => $nodeTypes,
             'flowConfig' => $flowConfig,
         ]);
     }
@@ -118,7 +115,7 @@ class AutomationController extends Controller
         $validated = $request->validate([
             'nodes' => ['required', 'array'],
             'nodes.*.id' => ['required', 'string'],
-            'nodes.*.type' => ['required', 'string', 'in:start,send_message,delay,add_tag,add_list'],
+            'nodes.*.type' => ['required', 'string', 'in:start,send_message,delay,add_tag,remove_tag,add_list,remove_list'],
             'nodes.*.position' => ['required', 'array'],
             'nodes.*.position.x' => ['required', 'numeric'],
             'nodes.*.position.y' => ['required', 'numeric'],
@@ -187,24 +184,11 @@ class AutomationController extends Controller
     }
 
     /**
-     * Visão visual da jornada: gatilho → condições → ações (fluxo intuitivo).
+     * Visão da jornada — agora renderiza o editor de fluxo drag-and-drop.
      */
     public function jornada(Automation $automacao): View
     {
-        $this->authorize('update', $automacao);
-
-        $automacao->load(['trigger', 'conditions.contactField', 'actions']);
-
-        $accountId = auth()->user()->accountId();
-        $listas = Lista::forUser($accountId)->orderBy('name')->get(['id', 'name']);
-        $tags = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
-
-        return view('automacao.jornada', [
-            'automation' => $automacao,
-            'listas' => $listas,
-            'tags' => $tags,
-            'actionTypes' => Automation::actionTypes(),
-        ]);
+        return $this->flow($automacao);
     }
 
     public function edit(Request $request, Automation $automacao): View

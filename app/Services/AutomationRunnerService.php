@@ -264,12 +264,26 @@ class AutomationRunnerService
                 }
                 $contact->listas()->syncWithoutDetaching([$listaId]);
                 return true;
+            case 'remove_list':
+                $listaId = (int) ($config['lista_id'] ?? 0);
+                if ($listaId <= 0) {
+                    return true;
+                }
+                $contact->listas()->detach($listaId);
+                return true;
             case 'add_tag':
                 $tagId = (int) ($config['tag_id'] ?? 0);
                 if ($tagId <= 0) {
                     return true;
                 }
                 $contact->tags()->syncWithoutDetaching([$tagId]);
+                return true;
+            case 'remove_tag':
+                $tagId = (int) ($config['tag_id'] ?? 0);
+                if ($tagId <= 0) {
+                    return true;
+                }
+                $contact->tags()->detach($tagId);
                 return true;
             default:
                 return true;
