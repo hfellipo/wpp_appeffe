@@ -1260,6 +1260,12 @@ function FlowEditorInner() {
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
+  const handleTestResults = useCallback((details) => {
+    const map = {};
+    details.forEach(d => { if (d.node_id) map[d.node_id] = d; });
+    setTestResults(map);
+  }, []);
+
   if (loading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', flexDirection: 'column', gap: 12 }}>
@@ -1269,12 +1275,6 @@ function FlowEditorInner() {
       </div>
     );
   }
-
-  const handleTestResults = useCallback((details) => {
-    const map = {};
-    details.forEach(d => { if (d.node_id) map[d.node_id] = d; });
-    setTestResults(map);
-  }, []);
 
   return (
     <TestResultsContext.Provider value={testResults}>
