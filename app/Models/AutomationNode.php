@@ -49,6 +49,7 @@ class AutomationNode extends Model
             'delay'          => __('Aguardar (delay)'),
             'go_to'          => __('Ir para fluxo'),
             'user_input'     => __('Entrada do usuário'),
+            'smart_reply'    => __('Resposta por texto'),
             'update_field'   => __('Atualizar campo'),
             'add_tag'        => __('Adicionar tag'),
             'remove_tag'     => __('Remover tag'),

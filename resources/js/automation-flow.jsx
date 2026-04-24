@@ -33,7 +33,8 @@ const CURRENT_AUTO_ID = cfg.automationId   || null;
 
 // ── Node visual definitions ──────────────────────────────────────
 const META = {
-  start:          { label: 'Gatilho',              bg: '#ecfdf5', bd: '#6ee7b7', ic: '#10b981', tx: '#065f46', cat: 'Entrada' },
+  start:          { label: 'Gatilho',              bg: '#ecfdf5', bd: '#6ee7b7', ic: '#10b981', tx: '#065f46', cat: 'Entrada'    },
+  smart_reply:    { label: 'Resposta por texto',   bg: '#faf5ff', bd: '#d8b4fe', ic: '#9333ea', tx: '#4c1d95', cat: 'Controle'   },
   send_message:   { label: 'Enviar mensagem',     bg: '#f0f9ff', bd: '#7dd3fc', ic: '#0ea5e9', tx: '#0c4a6e', cat: 'Mensagens' },
   condition:      { label: 'Condição (Se/Senão)', bg: '#fafaf9', bd: '#a8a29e', ic: '#78716c', tx: '#1c1917', cat: 'Controle' },
   delay:          { label: 'Aguardar',            bg: '#fffbeb', bd: '#fcd34d', ic: '#d97706', tx: '#78350f', cat: 'Controle' },
@@ -60,9 +61,10 @@ const PALETTE_CATS = [
   {
     label: 'Controle',
     items: [
-      { type: 'condition', desc: 'Bifurca o fluxo com Se/Senão' },
-      { type: 'delay',     desc: 'Pausa antes do próximo passo' },
-      { type: 'go_to',     desc: 'Salta para outra automação' },
+      { type: 'condition',   desc: 'Bifurca o fluxo com Se/Senão' },
+      { type: 'smart_reply', desc: 'Pergunta e roteia pela resposta digitada' },
+      { type: 'delay',       desc: 'Pausa antes do próximo passo' },
+      { type: 'go_to',       desc: 'Salta para outra automação' },
     ],
   },
   {
@@ -101,6 +103,7 @@ const ICONS = {
   add_list:       [['M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4']],
   remove_list:    [['M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2'], ['M10 12l4 4m0-4l-4 4']],
   human_transfer: [['M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z']],
+  smart_reply:    [['M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z']],
 };
 
 function NodeIcon({ type, size = 16, color = '#fff' }) {
@@ -193,6 +196,11 @@ function getNodeSummary(type, config) {
       const a = AUTOMATIONS.find(a => String(a.id) === String(config.automation_id));
       return a ? `→ ${a.name}` : '';
     }
+    case 'smart_reply': {
+      const q = config.question ? config.question.slice(0, 40) + (config.question.length > 40 ? '…' : '') : '';
+      const n = (config.choices || []).length;
+      return q ? `${q} (${n} opção${n !== 1 ? 'ões' : ''})` : '';
+    }
     case 'human_transfer':
       return config.message ? config.message.slice(0, 50) + (config.message.length > 50 ? '…' : '') : 'Transferir para atendente';
     case 'add_tag':
@@ -228,7 +236,9 @@ function AutomationNode({ id, type, data, selected }) {
   const [hovered, setHovered] = useState(false);
   const meta       = META[type] || { label: type, bg: '#f9fafb', bd: '#d1d5db', ic: '#6b7280', tx: '#111827' };
   const summary    = getNodeSummary(type, data.config);
-  const isCond     = type === 'condition';
+  const isCond       = type === 'condition';
+  const isSmartReply = type === 'smart_reply';
+  const srChoices    = isSmartReply ? (data.config?.choices || []) : [];
   const testDetail = data.testResult || null;  // set by FlowEditorInner after test run
   const isLoading  = data.testLoading || false;
 
@@ -267,7 +277,7 @@ function AutomationNode({ id, type, data, selected }) {
         background: meta.bg,
         border: `2px solid ${borderColor}`,
         borderRadius: 14,
-        minWidth: isCond ? 232 : 214,
+        minWidth: (isCond || isSmartReply) ? 232 : 214,
         boxShadow: shadow,
         transition: 'border-color 0.2s, box-shadow 0.2s',
         position: 'relative',
@@ -347,6 +357,26 @@ function AutomationNode({ id, type, data, selected }) {
         </div>
       )}
 
+      {/* Smart reply choices list */}
+      {isSmartReply && srChoices.length > 0 && (
+        <div style={{ borderTop: `1px solid ${meta.bd}`, margin: '0 10px 0', padding: '6px 0 8px' }}>
+          {srChoices.map((c, i) => (
+            <div key={c.id || i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: i < srChoices.length - 1 ? 4 : 0, paddingRight: 20 }}>
+              <div style={{ width: 14, height: 14, borderRadius: '50%', background: meta.ic, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 8, color: '#fff', fontWeight: 800 }}>{i + 1}</span>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: meta.tx }}>{c.label}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, paddingRight: 20 }}>
+            <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#94a3b8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>Sem resposta / timeout</span>
+          </div>
+        </div>
+      )}
+
       {/* Test result status bar (n8n style) */}
       {badge && (
         <div style={{
@@ -377,6 +407,17 @@ function AutomationNode({ id, type, data, selected }) {
           <Handle type="source" id="no" position={Position.Right}
             style={{ background: '#ef4444', width: 11, height: 11, border: '2.5px solid #fff', top: '86%' }} />
         </>
+      ) : isSmartReply ? (
+        // One handle per choice + fallback, evenly spaced after header
+        (() => {
+          const all = [...srChoices.map(c => ({ id: `reply_${c.id}`, color: meta.ic })), { id: 'fallback', color: '#94a3b8' }];
+          const headerPx = 62 + (srChoices.length > 0 ? 0 : 0);
+          const rowPx = 22;
+          return all.map((h, i) => (
+            <Handle key={h.id} type="source" id={h.id} position={Position.Right}
+              style={{ background: h.color, width: 10, height: 10, border: '2.5px solid #fff', top: headerPx + rowPx * i + 11 }} />
+          ));
+        })()
       ) : (
         <Handle type="source" position={Position.Right} id="default"
           style={{ background: meta.ic, width: 10, height: 10, border: '2.5px solid #fff', right: -6 }} />
@@ -830,6 +871,16 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const [tagId,   setTagId]   = useState(String(config.tag_id   || ''));
   const [listaId, setListaId] = useState(String(config.lista_id || ''));
 
+  // ── smart_reply state ────────────────────────────────────────
+  const [srQuestion, setSrQuestion] = useState(config.question        || '');
+  const [srTimeout,  setSrTimeout]  = useState(config.timeout_minutes || 1440);
+  const [srChoices,  setSrChoices]  = useState(
+    config.choices?.length ? config.choices : [{ id: '1', label: 'Sim' }, { id: '2', label: 'Não' }]
+  );
+  const addSrChoice  = () => setSrChoices(cs => [...cs, { id: String(Date.now()), label: '' }]);
+  const rmSrChoice   = (i) => setSrChoices(cs => cs.filter((_, idx) => idx !== i));
+  const updSrChoice  = (i, label) => setSrChoices(cs => cs.map((c, idx) => idx === i ? { ...c, label } : c));
+
   // ── go_to state ──────────────────────────────────────────────
   const [gotoAutoId, setGotoAutoId] = useState(String(config.automation_id || ''));
 
@@ -902,6 +953,12 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
       next = { tag_id: tagId ? Number(tagId) : null };
     } else if (type === 'add_list' || type === 'remove_list') {
       next = { lista_id: listaId ? Number(listaId) : null };
+    } else if (type === 'smart_reply') {
+      next = {
+        question:        srQuestion,
+        timeout_minutes: Number(srTimeout) || 1440,
+        choices:         srChoices.filter(c => c.label.trim()).map((c, i) => ({ id: c.id || String(i + 1), label: c.label.trim() })),
+      };
     } else if (type === 'go_to') {
       next = { automation_id: gotoAutoId ? Number(gotoAutoId) : null };
     } else if (type === 'human_transfer') {
@@ -1269,6 +1326,52 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
                   {LISTAS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
             }
+          </div>
+        )}
+
+        {/* ── SMART_REPLY ── */}
+        {type === 'smart_reply' && (
+          <div>
+            <Label>Pergunta a enviar</Label>
+            <textarea value={srQuestion} onChange={e => setSrQuestion(e.target.value)}
+              rows={3} placeholder="Ex: Você concorda?" style={{ ...INPUT, resize: 'vertical' }} />
+
+            <Label>Opções de resposta</Label>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8, lineHeight: 1.5 }}>
+              A comparação ignora maiúsculas, acentos e espaços extras.
+            </div>
+            {srChoices.map((c, i) => (
+              <div key={c.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                <div style={{ width: 20, height: 20, borderRadius: '50%', background: META.smart_reply.ic, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 9, color: '#fff', fontWeight: 800 }}>{i + 1}</span>
+                </div>
+                <input value={c.label} onChange={e => updSrChoice(i, e.target.value)}
+                  placeholder={`Opção ${i + 1}`} style={{ ...INPUT, flex: 1 }} />
+                {srChoices.length > 1 && (
+                  <button onClick={() => rmSrChoice(i)}
+                    style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, color: '#dc2626', cursor: 'pointer', padding: '0 8px', fontSize: 14, height: 36 }}>×</button>
+                )}
+              </div>
+            ))}
+            <button onClick={addSrChoice}
+              style={{ fontSize: 11.5, color: META.smart_reply.ic, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              + Adicionar opção
+            </button>
+
+            <div style={{ marginTop: 12, padding: '8px 10px', background: '#f5f3ff', borderRadius: 8, fontSize: 11, color: '#6b7280', lineHeight: 1.5 }}>
+              <strong style={{ color: '#4c1d95' }}>Saídas:</strong><br />
+              {srChoices.map((c, i) => c.label.trim() && (
+                <span key={i}>→ <strong>{c.label}</strong><br /></span>
+              ))}
+              → <strong style={{ color: '#64748b' }}>Sem resposta / timeout</strong>
+            </div>
+
+            <Label>Tempo limite (minutos)</Label>
+            <input type="number" min={1} max={10080} value={srTimeout}
+              onChange={e => setSrTimeout(e.target.value)} style={INPUT} />
+            <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>
+              Se não responder nesse tempo, segue pelo caminho "Sem resposta".
+            </div>
           </div>
         )}
 

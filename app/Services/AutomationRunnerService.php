@@ -139,6 +139,46 @@ class AutomationRunnerService
      *
      * @return array{done: bool, status?: string, details: array, delay_minutes?: int, resume_at?: \Carbon\CarbonImmutable}
      */
+    /**
+     * Retoma o flow a partir de um nó smart_reply com o handle correspondente à resposta.
+     */
+    public function runForContactFromSmartReply(Automation $automation, Contact $contact, AutomationRun $run, int $nodeId, string $handle): array
+    {
+        $meta = $run->metadata ?? [];
+        $run->update([
+            'resume_at' => null,
+            'metadata'  => array_merge($meta, ['waiting_smart_reply_node_id' => null, 'smart_reply_matched_handle' => $handle]),
+        ]);
+
+        $node = $automation->flowNodes->firstWhere('id', $nodeId);
+        if (! $node) {
+            return ['done' => true, 'status' => 'success', 'details' => $meta['details'] ?? []];
+        }
+
+        $nextNodes = $this->getNextNodesFromHandle($automation, $node, $handle);
+        foreach ($nextNodes as $next) {
+            $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+        }
+
+        return ['done' => true, 'status' => 'success', 'details' => $run->fresh()->metadata['details'] ?? []];
+    }
+
+    /**
+     * Normaliza texto para comparação case-insensitive e sem acentos.
+     */
+    public static function normalizeReplyText(string $text): string
+    {
+        $text = mb_strtolower(trim($text));
+        if (class_exists(\Normalizer::class)) {
+            $text = \Normalizer::normalize($text, \Normalizer::FORM_D);
+        }
+        // Remove combining diacritical marks (accents)
+        $text = preg_replace('/\p{Mn}/u', '', (string) $text);
+        // Keep only letters, digits, spaces
+        $text = preg_replace('/[^a-z0-9\s]/u', '', (string) $text);
+        return trim((string) $text);
+    }
+
     public function runForContactFromNode(Automation $automation, Contact $contact, AutomationRun $run, int $nodeId): array
     {
         $node = $automation->flowNodes->firstWhere('id', $nodeId);
@@ -224,6 +264,28 @@ class AutomationRunnerService
             }
             $run->update(['status' => $runStatus, 'metadata' => ['details' => $details, 'run_status' => $runStatus], 'resume_at' => null]);
             return ['done' => true, 'status' => $runStatus, 'details' => $details];
+        }
+
+        // ── smart_reply: envia pergunta e aguarda resposta por texto ──
+        if ($node->type === 'smart_reply') {
+            $question = trim((string) ($node->config['question'] ?? ''));
+            $timeout  = max(1, (int) ($node->config['timeout_minutes'] ?? 1440));
+            if (! $dryRun) {
+                if ($question !== '' && $contact->phone_for_whatsapp !== '') {
+                    $this->whatsAppSend->sendTextToContact($accountId, $contact, $question, $run->id);
+                }
+                $run->update([
+                    'metadata'  => array_merge($run->metadata ?? [], [
+                        'details'                    => $details,
+                        'run_status'                 => $runStatus,
+                        'waiting_smart_reply_node_id' => $node->id,
+                    ]),
+                    'resume_at' => now()->addMinutes($timeout),
+                ]);
+            }
+            $details[] = ['action' => 'smart_reply', 'node_id' => $node->id, 'status' => 'waiting_reply', 'dry_run' => $dryRun];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
+            return ['done' => false, 'details' => $details, 'delay_minutes' => $timeout];
         }
 
         // ── user_input ────────────────────────────────────────────────

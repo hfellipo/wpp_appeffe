@@ -223,7 +223,7 @@ class AutomationController extends Controller
         $validated = $request->validate([
             'nodes'                   => ['required', 'array'],
             'nodes.*.id'              => ['required', 'string'],
-            'nodes.*.type'            => ['required', 'string', 'in:start,send_message,condition,delay,go_to,user_input,update_field,add_tag,remove_tag,add_list,remove_list,human_transfer'],
+            'nodes.*.type'            => ['required', 'string', 'in:start,send_message,condition,delay,go_to,user_input,smart_reply,update_field,add_tag,remove_tag,add_list,remove_list,human_transfer'],
             'nodes.*.position'        => ['required', 'array'],
             'nodes.*.position.x'      => ['required', 'numeric'],
             'nodes.*.position.y'      => ['required', 'numeric'],

@@ -66,6 +66,14 @@ class AutomationProcessorService
                 continue;
             }
             $metadata = $run->metadata ?? [];
+
+            // smart_reply timeout → route to fallback
+            $smartReplyNodeId = isset($metadata['waiting_smart_reply_node_id']) ? (int) $metadata['waiting_smart_reply_node_id'] : null;
+            if ($smartReplyNodeId > 0) {
+                $this->runner->runForContactFromSmartReply($automation, $contact, $run->fresh(), $smartReplyNodeId, 'fallback');
+                continue;
+            }
+
             $nodeId = isset($metadata['resume_from_node_id']) ? (int) $metadata['resume_from_node_id'] : null;
             if ($nodeId > 0) {
                 $this->runner->runForContactFromNode($automation, $contact, $run->fresh(), $nodeId);

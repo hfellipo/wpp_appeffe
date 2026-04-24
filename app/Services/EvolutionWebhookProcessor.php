@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Automation;
+use App\Models\AutomationRun;
 use App\Models\Contact;
 use App\Models\WhatsAppAttachment;
 use App\Models\WhatsAppContact;
@@ -571,13 +573,22 @@ class EvolutionWebhookProcessor
 
             if (! $fromMe) {
                 try {
-                    // Pass contact_id and user_id directly — $conversation->save() happens after this
-                    // call, so lazy-loading the conversation from DB would see contact_id as NULL.
                     FunnelStageRuleService::applyReplyRules($msg, $conversation->contact_id, $accountId);
                 } catch (\Throwable $e) {
                     Log::channel('single')->warning('EvolutionWebhookProcessor: FunnelStageRuleService::applyReplyRules failed', [
                         'message' => $e->getMessage(),
                     ]);
+                }
+
+                // Check for pending smart_reply node waiting for this contact's reply
+                if ($body !== null && $body !== '' && $conversation->contact_id) {
+                    try {
+                        $this->handleSmartReplyIfPending($conversation->contact_id, $accountId, $body);
+                    } catch (\Throwable $e) {
+                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleSmartReplyIfPending failed', [
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
                 }
             }
 
@@ -1144,10 +1155,75 @@ class EvolutionWebhookProcessor
         if (str_contains($s, 'deliver') || str_contains($s, 'delivery') || str_contains($s, 'received')) return 'delivered';
         if (str_contains($s, 'sent') || str_contains($s, 'server') || str_contains($s, 'ack')) return 'sent';
 
-        // Already-normalized values
         if (in_array($s, ['sent', 'delivered', 'read'], true)) return $s;
 
         return '';
+    }
+
+    /**
+     * Verifica se há um nó smart_reply aguardando resposta deste contato.
+     * Se sim, normaliza a resposta, encontra o handle correspondente e retoma o flow.
+     */
+    private function handleSmartReplyIfPending(int $contactId, int $accountId, string $body): void
+    {
+        // Find the most recent pending run with waiting_smart_reply_node_id for this contact
+        $pendingRuns = AutomationRun::query()
+            ->where('contact_id', $contactId)
+            ->whereNotNull('resume_at')
+            ->where('resume_at', '>', now())
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+
+        foreach ($pendingRuns as $run) {
+            $meta      = $run->metadata ?? [];
+            $nodeId    = isset($meta['waiting_smart_reply_node_id']) ? (int) $meta['waiting_smart_reply_node_id'] : null;
+            if (! $nodeId) {
+                continue;
+            }
+
+            $automation = Automation::query()
+                ->where('user_id', $accountId)
+                ->with(['flowNodes', 'flowEdges'])
+                ->find($run->automation_id);
+
+            if (! $automation) {
+                continue;
+            }
+
+            $node = $automation->flowNodes->firstWhere('id', $nodeId);
+            if (! $node || $node->type !== 'smart_reply') {
+                continue;
+            }
+
+            $choices         = (array) ($node->config['choices'] ?? []);
+            $normalizedInput = AutomationRunnerService::normalizeReplyText($body);
+            $matchedHandle   = 'fallback';
+
+            foreach ($choices as $choice) {
+                $normalized = AutomationRunnerService::normalizeReplyText((string) ($choice['label'] ?? ''));
+                if ($normalized !== '' && $normalized === $normalizedInput) {
+                    $matchedHandle = 'reply_' . ($choice['id'] ?? '');
+                    break;
+                }
+            }
+
+            Log::channel('single')->info('[SmartReply] Resposta recebida', [
+                'contact_id'    => $contactId,
+                'automation_id' => $automation->id,
+                'body'          => $body,
+                'normalized'    => $normalizedInput,
+                'handle'        => $matchedHandle,
+            ]);
+
+            $contact = Contact::find($contactId);
+            if ($contact) {
+                $runner = app(AutomationRunnerService::class);
+                $runner->runForContactFromSmartReply($automation, $contact, $run->fresh(), $nodeId, $matchedHandle);
+            }
+
+            break; // Only process the first matching pending run
+        }
     }
 }
 
