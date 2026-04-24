@@ -85,20 +85,24 @@ class AutomationEventService
      */
     private function dispatchIfEligible(Automation $automation, Contact $contact, string $context): void
     {
-        $alreadyRan = AutomationRun::query()
-            ->where('automation_id', $automation->id)
-            ->where('contact_id', $contact->id)
-            ->exists();
+        $runOnce = $automation->run_once_per_contact ?? true;
 
-        if ($alreadyRan) {
-            Log::channel('single')->info('[AutomationEvent] SKIPPED (já executou)', [
-                'automation_id'   => $automation->id,
-                'automation_name' => $automation->name,
-                'contact_id'      => $contact->id,
-                'contact_name'    => $contact->name,
-                'context'         => $context,
-            ]);
-            return;
+        if ($runOnce) {
+            $alreadyRan = AutomationRun::query()
+                ->where('automation_id', $automation->id)
+                ->where('contact_id', $contact->id)
+                ->exists();
+
+            if ($alreadyRan) {
+                Log::channel('single')->info('[AutomationEvent] SKIPPED (já executou e run_once=true)', [
+                    'automation_id'   => $automation->id,
+                    'automation_name' => $automation->name,
+                    'contact_id'      => $contact->id,
+                    'contact_name'    => $contact->name,
+                    'context'         => $context,
+                ]);
+                return;
+            }
         }
 
         Log::channel('single')->info('[AutomationEvent] DISPARANDO flow', [

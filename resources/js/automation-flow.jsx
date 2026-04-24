@@ -140,15 +140,16 @@ function getNodeSummary(type, config) {
     case 'start': {
       const tt = config.trigger_type;
       if (!tt) return '';
+      const freq = config.run_once_per_contact === false ? ' · 🔁' : ' · 1×';
       if (tt === 'tag_added') {
         const t = TAGS.find(t => String(t.id) === String(config.tag_id));
-        return t ? `Tag: ${t.name}` : 'Tag: —';
+        return (t ? `Tag: ${t.name}` : 'Tag: —') + freq;
       }
       if (tt === 'list_added') {
         const l = LISTAS.find(l => String(l.id) === String(config.lista_id));
-        return l ? `Lista: ${l.name}` : 'Lista: —';
+        return (l ? `Lista: ${l.name}` : 'Lista: —') + freq;
       }
-      return TRIGGER_TYPE_LABELS[tt] || tt;
+      return (TRIGGER_TYPE_LABELS[tt] || tt) + freq;
     }
     case 'send_message': {
       const mt = config.message_type || 'text';
@@ -654,11 +655,12 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const meta = META[type] || {};
 
   // ── start (trigger) state ────────────────────────────────────
-  const [triggerType,     setTriggerType]     = useState(config.trigger_type    || '');
-  const [triggerTagId,    setTriggerTagId]     = useState(String(config.tag_id   || ''));
-  const [triggerListaId,  setTriggerListaId]   = useState(String(config.lista_id || ''));
-  const [condLogic,       setCondLogic]        = useState(config.condition_logic || 'and');
-  const [entryConditions, setEntryConditions]  = useState(config.conditions      || []);
+  const [triggerType,       setTriggerType]       = useState(config.trigger_type         || '');
+  const [triggerTagId,      setTriggerTagId]       = useState(String(config.tag_id        || ''));
+  const [triggerListaId,    setTriggerListaId]     = useState(String(config.lista_id      || ''));
+  const [runOnce,           setRunOnce]            = useState(config.run_once_per_contact !== false);
+  const [condLogic,         setCondLogic]          = useState(config.condition_logic      || 'and');
+  const [entryConditions,   setEntryConditions]    = useState(config.conditions           || []);
 
   // ── send_message state ───────────────────────────────────────
   const [msgType,     setMsgType]     = useState(config.message_type || 'text');
@@ -737,11 +739,12 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
     if (type === 'start') {
       const conds = entryConditions.filter(c => c.field_type && c.operator);
       next = {
-        trigger_type:    triggerType    || null,
-        tag_id:          triggerTagId   ? Number(triggerTagId)   : null,
-        lista_id:        triggerListaId ? Number(triggerListaId) : null,
-        condition_logic: condLogic,
-        conditions:      conds,
+        trigger_type:         triggerType    || null,
+        tag_id:               triggerTagId   ? Number(triggerTagId)   : null,
+        lista_id:             triggerListaId ? Number(triggerListaId) : null,
+        run_once_per_contact: runOnce,
+        condition_logic:      condLogic,
+        conditions:           conds,
       };
     } else if (type === 'send_message') {
       next = { message_type: msgType };
@@ -845,8 +848,43 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
               </>
             )}
 
-            {/* Entry conditions */}
+            {/* Run once toggle */}
             <div style={{ marginTop: 16, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Frequência de execução</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[
+                  { val: true,  icon: '1️⃣', label: 'Uma vez por contato', desc: 'O contato só entra na jornada uma única vez' },
+                  { val: false, icon: '🔁', label: 'Toda vez que o gatilho disparar', desc: 'O contato entra novamente cada vez que o evento ocorrer' },
+                ].map(opt => (
+                  <div key={String(opt.val)} onClick={() => setRunOnce(opt.val)}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px',
+                      borderRadius: 8, cursor: 'pointer',
+                      border: `1.5px solid ${runOnce === opt.val ? '#10b981' : '#e5e7eb'}`,
+                      background: runOnce === opt.val ? '#f0fdf4' : '#f9fafb',
+                      transition: 'all .12s',
+                    }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+                      border: `2px solid ${runOnce === opt.val ? '#10b981' : '#d1d5db'}`,
+                      background: runOnce === opt.val ? '#10b981' : '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {runOnce === opt.val && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: runOnce === opt.val ? '#065f46' : '#374151' }}>
+                        {opt.icon} {opt.label}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 2 }}>{opt.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Entry conditions */}
+            <div style={{ marginTop: 12, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: '#374151' }}>Condições de entrada</div>
                 <span style={{ fontSize: 10, color: '#9ca3af' }}>opcional</span>

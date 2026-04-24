@@ -111,11 +111,12 @@ class AutomationController extends Controller
         }
 
         $config = [
-            'trigger_type'    => $trigger->type,
-            'tag_id'          => $trigger->config['tag_id']   ?? null,
-            'lista_id'        => $trigger->config['lista_id'] ?? null,
-            'condition_logic' => $automacao->condition_logic ?? 'and',
-            'conditions'      => $automacao->conditions->map(fn (AutomationCondition $c) => [
+            'trigger_type'        => $trigger->type,
+            'tag_id'              => $trigger->config['tag_id']   ?? null,
+            'lista_id'            => $trigger->config['lista_id'] ?? null,
+            'run_once_per_contact' => $automacao->run_once_per_contact ?? true,
+            'condition_logic'     => $automacao->condition_logic ?? 'and',
+            'conditions'          => $automacao->conditions->map(fn (AutomationCondition $c) => [
                 'field_type'       => $c->field_type,
                 'field_key'        => $c->field_key,
                 'contact_field_id' => $c->contact_field_id,
@@ -189,6 +190,9 @@ class AutomationController extends Controller
             ['automation_id' => $automacao->id],
             ['type' => $triggerType, 'config' => $triggerConfig]
         );
+
+        $runOnce = isset($config['run_once_per_contact']) ? (bool) $config['run_once_per_contact'] : true;
+        $automacao->update(['run_once_per_contact' => $runOnce]);
 
         $conditions = array_values(array_filter($config['conditions'] ?? [], fn ($c) => ! empty($c['field_type']) && ! empty($c['operator'])));
 
@@ -600,11 +604,17 @@ class AutomationController extends Controller
             ->where('id', $request->input('contact_id'))
             ->firstOrFail();
 
+        // Remove run anterior para permitir o teste
         AutomationRun::where('automation_id', $automacao->id)
             ->where('contact_id', $contact->id)
             ->delete();
 
         $result = $runner->runForContact($automacao, $contact, skipDelays: true, dryRun: true);
+
+        // Remove o run criado pelo dry run para não bloquear disparos reais futuros
+        AutomationRun::where('automation_id', $automacao->id)
+            ->where('contact_id', $contact->id)
+            ->delete();
 
         $automacao->load('flowNodes');
         $startNode = $automacao->flowNodes->firstWhere('type', 'start');

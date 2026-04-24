@@ -65,23 +65,26 @@ class AutomationRunnerService
             ];
         }
 
-        // Garante no máximo uma mensagem por (automação, contato): se já existe qualquer run, não envia de novo
-        $existingRun = AutomationRun::query()
-            ->where('automation_id', $automation->id)
-            ->where('contact_id', $contact->id)
-            ->first();
-        if ($existingRun !== null) {
-            Log::info('automation run skipped: contact already received this automation', [
-                'automation_id' => $automation->id,
-                'contact_id' => $contact->id,
-                'existing_run_id' => $existingRun->id,
-            ]);
-            return [
-                'success' => true,
-                'message' => __('Automação já executada para este contato. Cada contato recebe no máximo uma vez por automação.'),
-                'run' => $existingRun,
-                'details' => [],
-            ];
+        // Se run_once_per_contact=true (padrão), bloqueia re-execução para o mesmo contato
+        $runOnce = $automation->run_once_per_contact ?? true;
+        if ($runOnce) {
+            $existingRun = AutomationRun::query()
+                ->where('automation_id', $automation->id)
+                ->where('contact_id', $contact->id)
+                ->first();
+            if ($existingRun !== null) {
+                Log::info('automation run skipped: contact already received this automation', [
+                    'automation_id' => $automation->id,
+                    'contact_id' => $contact->id,
+                    'existing_run_id' => $existingRun->id,
+                ]);
+                return [
+                    'success' => true,
+                    'message' => __('Automação já executada para este contato. Cada contato recebe no máximo uma vez por automação.'),
+                    'run' => $existingRun,
+                    'details' => [],
+                ];
+            }
         }
 
         $run = AutomationRun::create([
