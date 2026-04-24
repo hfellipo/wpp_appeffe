@@ -580,12 +580,21 @@ class EvolutionWebhookProcessor
                     ]);
                 }
 
-                // Check for pending smart_reply node waiting for this contact's reply
                 if ($body !== null && $body !== '' && $conversation->contact_id) {
+                    // Check for pending smart_reply node waiting for this contact's reply
                     try {
                         $this->handleSmartReplyIfPending($conversation->contact_id, $accountId, $body);
                     } catch (\Throwable $e) {
                         Log::channel('single')->warning('EvolutionWebhookProcessor: handleSmartReplyIfPending failed', [
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+
+                    // Check keyword triggers
+                    try {
+                        $this->handleKeywordTrigger($conversation->contact_id, $accountId, $body);
+                    } catch (\Throwable $e) {
+                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleKeywordTrigger failed', [
                             'message' => $e->getMessage(),
                         ]);
                     }
@@ -1158,6 +1167,68 @@ class EvolutionWebhookProcessor
         if (in_array($s, ['sent', 'delivered', 'read'], true)) return $s;
 
         return '';
+    }
+
+    /**
+     * Verifica se a mensagem recebida contém uma palavra-chave de alguma automação ativa
+     * e, se sim, dispara o flow para o contato.
+     */
+    private function handleKeywordTrigger(int $contactId, int $accountId, string $body): void
+    {
+        $normalizedBody = AutomationRunnerService::normalizeReplyText($body);
+        if ($normalizedBody === '') {
+            return;
+        }
+
+        $automations = Automation::query()
+            ->where('is_active', true)
+            ->where('user_id', $accountId)
+            ->whereHas('trigger', fn ($q) => $q->where('type', 'keyword'))
+            ->with(['trigger', 'conditions', 'flowNodes', 'flowEdges', 'actions'])
+            ->get();
+
+        foreach ($automations as $automation) {
+            $keywords = (array) ($automation->trigger->config['keywords'] ?? []);
+            if (empty($keywords)) {
+                continue;
+            }
+
+            $matchMode = (string) ($automation->trigger->config['keyword_match_mode'] ?? 'contains');
+            $matched   = false;
+            $matchedKw = '';
+            foreach ($keywords as $kw) {
+                $normalizedKw = AutomationRunnerService::normalizeReplyText((string) $kw);
+                if ($normalizedKw === '') {
+                    continue;
+                }
+                $hit = $matchMode === 'exact'
+                    ? $normalizedBody === $normalizedKw
+                    : str_contains($normalizedBody, $normalizedKw);
+                if ($hit) {
+                    $matched   = true;
+                    $matchedKw = $kw;
+                    break;
+                }
+            }
+
+            if (! $matched) {
+                continue;
+            }
+
+            $contact = Contact::find($contactId);
+            if (! $contact || (int) $contact->user_id !== $accountId) {
+                continue;
+            }
+
+            Log::channel('single')->info('[KeywordTrigger] Palavra-chave detectada', [
+                'contact_id'    => $contactId,
+                'automation_id' => $automation->id,
+                'keyword'       => $matchedKw,
+                'body'          => mb_substr($body, 0, 100),
+            ]);
+
+            app(AutomationRunnerService::class)->runForContact($automation, $contact);
+        }
     }
 
     /**

@@ -153,6 +153,10 @@ function getNodeSummary(type, config) {
         const l = LISTAS.find(l => String(l.id) === String(config.lista_id));
         return (l ? `Lista: ${l.name}` : 'Lista: —') + freq;
       }
+      if (tt === 'keyword') {
+        const kws = (config.keywords || []).filter(Boolean);
+        return (kws.length ? `🔑 ${kws.slice(0, 3).join(', ')}${kws.length > 3 ? '…' : ''}` : '🔑 Sem palavras') + freq;
+      }
       return (TRIGGER_TYPE_LABELS[tt] || tt) + freq;
     }
     case 'send_message': {
@@ -825,9 +829,14 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const [triggerType,       setTriggerType]       = useState(config.trigger_type         || '');
   const [triggerTagId,      setTriggerTagId]       = useState(String(config.tag_id        || ''));
   const [triggerListaId,    setTriggerListaId]     = useState(String(config.lista_id      || ''));
+  const [triggerKeywords,   setTriggerKeywords]    = useState(config.keywords?.length ? config.keywords : ['']);
+  const [kwMatchMode,       setKwMatchMode]        = useState(config.keyword_match_mode || 'contains');
   const [runOnce,           setRunOnce]            = useState(config.run_once_per_contact !== false);
   const [condLogic,         setCondLogic]          = useState(config.condition_logic      || 'and');
   const [entryConditions,   setEntryConditions]    = useState(config.conditions           || []);
+  const addKw  = () => setTriggerKeywords(ks => [...ks, '']);
+  const rmKw   = (i) => setTriggerKeywords(ks => ks.filter((_, idx) => idx !== i));
+  const updKw  = (i, v) => setTriggerKeywords(ks => ks.map((k, idx) => idx === i ? v : k));
 
   // ── send_message state ───────────────────────────────────────
   const [msgType,     setMsgType]     = useState(config.message_type || 'text');
@@ -919,6 +928,8 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
         trigger_type:         triggerType    || null,
         tag_id:               triggerTagId   ? Number(triggerTagId)   : null,
         lista_id:             triggerListaId ? Number(triggerListaId) : null,
+        keywords:             triggerKeywords.map(k => k.trim()).filter(Boolean),
+        keyword_match_mode:   kwMatchMode,
         run_once_per_contact: runOnce,
         condition_logic:      condLogic,
         conditions:           conds,
@@ -1003,6 +1014,7 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
               <option value="">— Selecionar gatilho —</option>
               <option value="tag_added">Quando o contato receber uma tag</option>
               <option value="list_added">Quando o contato for adicionado a uma lista</option>
+              <option value="keyword">Quando o contato digitar uma palavra-chave</option>
             </select>
 
             {triggerType === 'tag_added' && (
@@ -1029,6 +1041,58 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
                     </select>
                 }
               </>
+            )}
+
+            {triggerType === 'keyword' && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+                  Palavras-chave
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                  {[
+                    { val: 'contains', label: '🔍 Contém', desc: 'a mensagem contém a palavra' },
+                    { val: 'exact',    label: '🎯 Igual',   desc: 'a mensagem é exatamente igual' },
+                  ].map(opt => (
+                    <div key={opt.val} onClick={() => setKwMatchMode(opt.val)}
+                      style={{
+                        flex: 1, padding: '7px 8px', borderRadius: 8, cursor: 'pointer', textAlign: 'center',
+                        border: `1.5px solid ${kwMatchMode === opt.val ? '#0ea5e9' : '#e5e7eb'}`,
+                        background: kwMatchMode === opt.val ? '#f0f9ff' : '#f9fafb',
+                        transition: 'all .12s',
+                      }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: kwMatchMode === opt.val ? '#0369a1' : '#374151' }}>{opt.label}</div>
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{opt.desc}</div>
+                    </div>
+                  ))}
+                </div>
+                {triggerKeywords.map((kw, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                    <input
+                      value={kw}
+                      onChange={e => updKw(i, e.target.value)}
+                      placeholder={`Ex: comprar, quero, interesse`}
+                      style={{ ...INPUT, flex: 1 }}
+                    />
+                    {triggerKeywords.length > 1 && (
+                      <button onClick={() => rmKw(i)}
+                        style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, color: '#dc2626', cursor: 'pointer', padding: '0 8px', fontSize: 14 }}>
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button onClick={addKw}
+                  style={{ fontSize: 11.5, color: '#0ea5e9', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  + Adicionar palavra-chave
+                </button>
+                <div style={{ marginTop: 8, padding: '6px 10px', background: '#f0f9ff', borderRadius: 8, fontSize: 10.5, color: '#0369a1', lineHeight: 1.5 }}>
+                  {kwMatchMode === 'contains' ? (
+                    <><strong>Contém:</strong> "comprar" detecta "quero <em>comprar</em>", "<em>COMPRAR</em> já", etc.</>
+                  ) : (
+                    <><strong>Igual:</strong> "sim" detecta "<em>sim</em>", "<em>SIM</em>", "<em>Sim</em>" — mas NÃO "quero sim"</>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Run once toggle */}

@@ -115,6 +115,7 @@ class AutomationController extends Controller
             'trigger_type'        => $trigger->type,
             'tag_id'              => $trigger->config['tag_id']   ?? null,
             'lista_id'            => $trigger->config['lista_id'] ?? null,
+            'keywords'            => $trigger->config['keywords'] ?? [],
             'run_once_per_contact' => $automacao->run_once_per_contact ?? true,
             'condition_logic'     => $automacao->condition_logic ?? 'and',
             'conditions'          => $automacao->conditions->map(fn (AutomationCondition $c) => [
@@ -185,6 +186,15 @@ class AutomationController extends Controller
         }
         if ($triggerType === 'list_added' && ! empty($config['lista_id'])) {
             $triggerConfig['lista_id'] = (int) $config['lista_id'];
+        }
+        if ($triggerType === 'keyword' && ! empty($config['keywords'])) {
+            $triggerConfig['keywords'] = array_values(array_filter(
+                array_map('trim', (array) $config['keywords']),
+                fn ($k) => $k !== ''
+            ));
+            $triggerConfig['keyword_match_mode'] = in_array($config['keyword_match_mode'] ?? '', ['contains', 'exact'], true)
+                ? $config['keyword_match_mode']
+                : 'contains';
         }
 
         $automacao->trigger()->updateOrCreate(

@@ -78,8 +78,9 @@ class Automation extends Model
     public static function triggerTypes(): array
     {
         return [
-            'tag_added' => __('Quando o contato receber uma tag'),
+            'tag_added'  => __('Quando o contato receber uma tag'),
             'list_added' => __('Quando o contato for adicionado a uma lista'),
+            'keyword'    => __('Quando o contato digitar uma palavra-chave'),
         ];
     }
 
