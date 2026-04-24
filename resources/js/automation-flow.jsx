@@ -373,6 +373,12 @@ function AutomationNode({ id, type, data, selected }) {
             </div>
           ))}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, paddingRight: 20 }}>
+            <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#f97316', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#ea580c' }}>Resposta diferente</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, paddingRight: 20 }}>
             <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#94a3b8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </div>
@@ -414,7 +420,7 @@ function AutomationNode({ id, type, data, selected }) {
       ) : isSmartReply ? (
         // One handle per choice + fallback, evenly spaced after header
         (() => {
-          const all = [...srChoices.map(c => ({ id: `reply_${c.id}`, color: meta.ic })), { id: 'fallback', color: '#94a3b8' }];
+          const all = [...srChoices.map(c => ({ id: `reply_${c.id}`, color: meta.ic })), { id: 'different', color: '#f97316' }, { id: 'fallback', color: '#94a3b8' }];
           const headerPx = 62 + (srChoices.length > 0 ? 0 : 0);
           const rowPx = 22;
           return all.map((h, i) => (
@@ -1427,6 +1433,7 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
               {srChoices.map((c, i) => c.label.trim() && (
                 <span key={i}>→ <strong>{c.label}</strong><br /></span>
               ))}
+              → <strong style={{ color: '#ea580c' }}>Resposta diferente do previsto</strong><br />
               → <strong style={{ color: '#64748b' }}>Sem resposta / timeout</strong>
             </div>
 
@@ -1434,7 +1441,7 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
             <input type="number" min={1} max={10080} value={srTimeout}
               onChange={e => setSrTimeout(e.target.value)} style={INPUT} />
             <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>
-              Se não responder nesse tempo, segue pelo caminho "Sem resposta".
+              Se responder algo fora das opções, segue por "Resposta diferente". Se não responder nesse tempo, segue por "Sem resposta".
             </div>
           </div>
         )}

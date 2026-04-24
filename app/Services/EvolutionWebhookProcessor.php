@@ -1269,7 +1269,7 @@ class EvolutionWebhookProcessor
 
             $choices         = (array) ($node->config['choices'] ?? []);
             $normalizedInput = AutomationRunnerService::normalizeReplyText($body);
-            $matchedHandle   = 'fallback';
+            $matchedHandle   = 'different'; // user responded but didn't match any choice
 
             foreach ($choices as $choice) {
                 $normalized = AutomationRunnerService::normalizeReplyText((string) ($choice['label'] ?? ''));
