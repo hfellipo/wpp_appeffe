@@ -73,7 +73,8 @@ class AutomationController extends Controller
             'automationId'  => $automacao->id,
             'flowDataUrl'   => route('automacao.flow.data',   ['automacao' => $automacao]),
             'flowUpdateUrl' => route('automacao.flow.update', ['automacao' => $automacao]),
-            'flowTestUrl'   => route('automacao.flow.testAjax', ['automacao' => $automacao]),
+            'flowTestUrl'    => route('automacao.flow.testAjax',  ['automacao' => $automacao]),
+            'uploadMediaUrl' => route('automacao.upload-media'),
             'csrfToken'     => csrf_token(),
             'listas'        => $listas,
             'tags'          => $tags,
@@ -639,6 +640,36 @@ class AutomationController extends Controller
             'success' => $result['success'],
             'message' => $result['message'],
             'details' => $details,
+        ]);
+    }
+
+    /**
+     * Upload de mídia para uso nos nós do flow (imagem, vídeo, áudio, documento).
+     * Armazena em public/automation-media/ e retorna a URL pública.
+     */
+    public function uploadMedia(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'max:20480', 'mimes:jpeg,jpg,png,gif,webp,mp4,mov,avi,mp3,ogg,wav,m4a,pdf,doc,docx,xls,xlsx,zip'],
+        ]);
+
+        $file = $request->file('file');
+        $mime = $file->getMimeType() ?? 'application/octet-stream';
+        $ext  = $file->getClientOriginalExtension() ?: $file->extension();
+        $name = time() . '_' . str($file->getClientOriginalName())->slug() . '.' . $ext;
+
+        $path = $file->storeAs('automation-media', $name, 'public');
+
+        $mediaType = 'document';
+        if (str_starts_with($mime, 'image/'))  $mediaType = 'image';
+        elseif (str_starts_with($mime, 'video/')) $mediaType = 'video';
+        elseif (str_starts_with($mime, 'audio/')) $mediaType = 'audio';
+
+        return response()->json([
+            'ok'         => true,
+            'url'        => asset('storage/' . $path),
+            'media_type' => $mediaType,
+            'filename'   => $file->getClientOriginalName(),
         ]);
     }
 

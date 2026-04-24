@@ -1,6 +1,6 @@
 {
-  "_client-DziB1G97.js": {
-    "file": "assets/client-DziB1G97.js",
+  "_client-B8cDhbIf.js": {
+    "file": "assets/client-B8cDhbIf.js",
     "name": "client",
     "isDynamicEntry": true,
     "imports": [
@@ -19,12 +19,12 @@
     "isEntry": true
   },
   "resources/js/automation-flow.jsx": {
-    "file": "assets/automation-flow-DdxFtrIt.js",
+    "file": "assets/automation-flow-CIeVYmmp.js",
     "name": "automation-flow",
     "src": "resources/js/automation-flow.jsx",
     "isEntry": true,
     "dynamicImports": [
-      "_client-DziB1G97.js"
+      "_client-B8cDhbIf.js"
     ],
     "css": [
       "assets/automation-flow-BZV40eAE.css"

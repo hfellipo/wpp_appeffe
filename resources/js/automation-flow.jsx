@@ -20,8 +20,9 @@ import '@xyflow/react/dist/style.css';
 const cfg             = window.AUTOMATION_FLOW || {};
 const FLOW_DATA_URL   = cfg.flowDataUrl    || '';
 const FLOW_UPDATE_URL = cfg.flowUpdateUrl  || '';
-const FLOW_TEST_URL   = cfg.flowTestUrl    || '';
-const CSRF            = cfg.csrfToken      || '';
+const FLOW_TEST_URL    = cfg.flowTestUrl    || '';
+const UPLOAD_MEDIA_URL = cfg.uploadMediaUrl || '';
+const CSRF             = cfg.csrfToken      || '';
 const LISTAS          = cfg.listas         || [];
 const TAGS            = cfg.tags           || [];
 const CUSTOM_FIELDS   = cfg.customFields   || [];
@@ -648,6 +649,131 @@ function EntryConditionRow({ cond, onChange, onRemove }) {
   );
 }
 
+// ── Media Upload Field ───────────────────────────────────────────
+const ACCEPT_MAP = {
+  image:    'image/jpeg,image/png,image/gif,image/webp',
+  video:    'video/mp4,video/mov,video/avi',
+  audio:    'audio/mp3,audio/ogg,audio/wav,audio/m4a,audio/mpeg',
+  document: '.pdf,.doc,.docx,.xls,.xlsx,.zip',
+};
+
+function MediaUploadField({ msgType, mediaUrl, setMediaUrl, filename, setFilename }) {
+  const [uploading, setUploading]   = useState(false);
+  const [uploadErr, setUploadErr]   = useState('');
+  const fileRef                     = useRef(null);
+
+  const isImage = msgType === 'image';
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadErr('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res  = await fetch(UPLOAD_MEDIA_URL, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+        body: form,
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMediaUrl(data.url);
+        if (msgType === 'document' && data.filename) setFilename(data.filename);
+      } else {
+        setUploadErr(data.message || 'Erro no upload');
+      }
+    } catch {
+      setUploadErr('Erro de conexão');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <div>
+      {/* Preview de imagem */}
+      {isImage && mediaUrl && (
+        <div style={{ marginTop: 10, marginBottom: 8, borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+          <img src={mediaUrl} alt="preview"
+            style={{ width: '100%', maxHeight: 140, objectFit: 'cover', display: 'block' }}
+            onError={e => { e.target.style.display = 'none'; }}
+          />
+        </div>
+      )}
+
+      {/* Área de upload */}
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Arquivo de mídia</div>
+
+        {/* Drop zone / upload button */}
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          style={{
+            border: '2px dashed #d1d5db', borderRadius: 10, padding: '14px 12px',
+            textAlign: 'center', cursor: uploading ? 'default' : 'pointer',
+            background: '#f9fafb', transition: 'border-color .15s',
+          }}
+          onMouseEnter={e => { if (!uploading) e.currentTarget.style.borderColor = '#6ee7b7'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; }}
+        >
+          {uploading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <div style={{ width: 16, height: 16, border: '2px solid #d1fae5', borderTopColor: '#10b981', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+              <span style={{ fontSize: 12, color: '#6b7280' }}>Enviando...</span>
+            </div>
+          ) : (
+            <>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" style={{ margin: '0 auto 6px' }}>
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Clique para selecionar arquivo</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                {msgType === 'image'    && 'JPG, PNG, GIF, WEBP — até 20MB'}
+                {msgType === 'video'    && 'MP4, MOV, AVI — até 20MB'}
+                {msgType === 'audio'    && 'MP3, OGG, WAV, M4A — até 20MB'}
+                {msgType === 'document' && 'PDF, DOC, XLS, ZIP — até 20MB'}
+              </div>
+            </>
+          )}
+        </div>
+
+        <input ref={fileRef} type="file" accept={ACCEPT_MAP[msgType] || '*/*'}
+          onChange={handleFile} style={{ display: 'none' }} />
+
+        {uploadErr && (
+          <div style={{ marginTop: 6, fontSize: 11, color: '#dc2626' }}>{uploadErr}</div>
+        )}
+      </div>
+
+      {/* URL manual (separador) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 6px' }}>
+        <div style={{ flex: 1, height: 1, background: '#f1f5f9' }} />
+        <span style={{ fontSize: 10.5, color: '#9ca3af', whiteSpace: 'nowrap' }}>ou cole a URL</span>
+        <div style={{ flex: 1, height: 1, background: '#f1f5f9' }} />
+      </div>
+
+      <input
+        value={mediaUrl}
+        onChange={e => setMediaUrl(e.target.value)}
+        placeholder="https://..."
+        style={INPUT}
+      />
+
+      {msgType === 'document' && (
+        <>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: '#374151', marginBottom: 5, marginTop: 10 }}>Nome do arquivo</div>
+          <input value={filename} onChange={e => setFilename(e.target.value)} placeholder="documento.pdf" style={INPUT} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Properties Panel ─────────────────────────────────────────────
 function PropertiesPanel({ node, onUpdate, onClose }) {
   const { type, data } = node;
@@ -939,21 +1065,18 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
             )}
 
             {['image', 'video', 'audio', 'document'].includes(msgType) && (
+              <MediaUploadField
+                msgType={msgType}
+                mediaUrl={mediaUrl}
+                setMediaUrl={setMediaUrl}
+                filename={filename}
+                setFilename={setFilename}
+              />
+            )}
+            {['image', 'video'].includes(msgType) && (
               <>
-                <Label>URL da mídia</Label>
-                <input value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} placeholder="https://..." style={INPUT} />
-                {['image', 'video'].includes(msgType) && (
-                  <>
-                    <Label>Legenda (opcional)</Label>
-                    <input value={caption} onChange={e => setCaption(e.target.value)} placeholder="Legenda..." style={INPUT} />
-                  </>
-                )}
-                {msgType === 'document' && (
-                  <>
-                    <Label>Nome do arquivo</Label>
-                    <input value={filename} onChange={e => setFilename(e.target.value)} placeholder="documento.pdf" style={INPUT} />
-                  </>
-                )}
+                <Label>Legenda (opcional)</Label>
+                <input value={caption} onChange={e => setCaption(e.target.value)} placeholder="Legenda..." style={INPUT} />
               </>
             )}
 

@@ -32,6 +32,9 @@ Route::get('/automacao/agendamentos/cron', [ScheduledPostController::class, 'cro
 // Cron por URL: automação jornada (sem auth; exige token no .env)
 Route::get('/automacao/jornada/cron', [AutomationController::class, 'cronJornada'])->name('automacao.jornada.cron');
 
+// Upload de mídia para nós do flow (requer autenticação)
+Route::post('/automacao/upload-media', [AutomationController::class, 'uploadMedia'])->name('automacao.upload-media')->middleware('auth');
+
 // Debug: últimas linhas do log filtradas por [AutomationEvent] (exige token)
 Route::get('/automacao/debug/log', function (Request $request) {
     $token = config('services.scheduled_posts_cron_token');
