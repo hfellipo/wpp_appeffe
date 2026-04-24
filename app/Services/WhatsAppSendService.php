@@ -397,15 +397,20 @@ class WhatsAppSendService
         }
         $numberForPayload = $this->numberForEvolutionPayload($recipient);
 
+        // Resolve media: if file is on our server, read from disk and send as base64
+        // (more reliable than URL — Evolution API doesn't need to make outbound request)
+        [$mediaValue, $mimeType] = $this->resolveMediaForSend($mediaUrl, $mediaType);
+
         if ($mediaType === 'audio') {
-            $payload = ['number' => $numberForPayload, 'audio' => $mediaUrl];
+            $payload = ['number' => $numberForPayload, 'audio' => $mediaValue, 'encoding' => true];
             $resp    = $this->client->sendWhatsAppAudio($instanceForApi, $payload);
         } else {
             $payload = [
                 'number'    => $numberForPayload,
                 'mediatype' => $mediaType,
-                'media'     => $mediaUrl,
-                'fileName'  => $fileName ?: basename($mediaUrl),
+                'mimetype'  => $mimeType,
+                'media'     => $mediaValue,
+                'fileName'  => $fileName ?: basename(parse_url($mediaUrl, PHP_URL_PATH) ?? $mediaUrl),
             ];
             if ($caption !== '') {
                 $payload['caption'] = mb_substr($caption, 0, 1024);
@@ -417,6 +422,9 @@ class WhatsAppSendService
             Log::channel('single')->warning('WhatsAppSendService: sendMediaUrl falhou', [
                 'conversation_id' => $conversation->id,
                 'http_status'     => $resp['status'],
+                'media_url'       => $mediaUrl,
+                'media_type'      => $mediaType,
+                'response_text'   => mb_substr((string) ($resp['text'] ?? ''), 0, 500),
             ]);
             return null;
         }
@@ -733,5 +741,63 @@ class WhatsAppSendService
             }
         }
         return '';
+    }
+
+    /**
+     * Resolve a media URL for sending:
+     * - If it's a file on our public storage → read from disk and return base64
+     * - Otherwise → return the URL as-is
+     * Returns [mediaValue, mimeType]
+     */
+    private function resolveMediaForSend(string $mediaUrl, string $mediaType): array
+    {
+        $appUrl = rtrim(config('app.url'), '/');
+
+        // Check if the URL points to our own public storage
+        $storagePrefix = $appUrl . '/storage/';
+        if (str_starts_with($mediaUrl, $storagePrefix)) {
+            $relativePath = substr($mediaUrl, strlen($storagePrefix));
+            if (Storage::disk('public')->exists($relativePath)) {
+                $contents = Storage::disk('public')->get($relativePath);
+                $mime     = Storage::disk('public')->mimeType($relativePath)
+                    ?: $this->guessMimeType($mediaUrl, $mediaType);
+                return [base64_encode($contents), $mime];
+            }
+        }
+
+        // External URL — use as-is with guessed MIME type
+        return [$mediaUrl, $this->guessMimeType($mediaUrl, $mediaType)];
+    }
+
+    private function guessMimeType(string $url, string $mediaType): string
+    {
+        $path = parse_url($url, PHP_URL_PATH) ?? $url;
+        $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        return match ($ext) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png'         => 'image/png',
+            'gif'         => 'image/gif',
+            'webp'        => 'image/webp',
+            'mp4'         => 'video/mp4',
+            'mov'         => 'video/quicktime',
+            'avi'         => 'video/x-msvideo',
+            'mp3'         => 'audio/mpeg',
+            'ogg'         => 'audio/ogg',
+            'wav'         => 'audio/wav',
+            'm4a'         => 'audio/mp4',
+            'pdf'         => 'application/pdf',
+            'doc'         => 'application/msword',
+            'docx'        => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls'         => 'application/vnd.ms-excel',
+            'xlsx'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'zip'         => 'application/zip',
+            default       => match ($mediaType) {
+                'image'    => 'image/jpeg',
+                'video'    => 'video/mp4',
+                'audio'    => 'audio/mpeg',
+                default    => 'application/octet-stream',
+            },
+        };
     }
 }
