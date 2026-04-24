@@ -32,6 +32,63 @@ Route::get('/automacao/agendamentos/cron', [ScheduledPostController::class, 'cro
 // Cron por URL: automação jornada (sem auth; exige token no .env)
 Route::get('/automacao/jornada/cron', [AutomationController::class, 'cronJornada'])->name('automacao.jornada.cron');
 
+// Debug: últimas linhas do log filtradas por [AutomationEvent] (exige token)
+Route::get('/automacao/debug/log', function (Request $request) {
+    $token = config('services.scheduled_posts_cron_token');
+    if ($request->query('token') !== $token) {
+        return response()->json(['error' => 'Token inválido'], 403);
+    }
+    $logFile = storage_path('logs/laravel.log');
+    if (! file_exists($logFile)) {
+        return response()->json(['lines' => [], 'message' => 'Log não encontrado']);
+    }
+    $lines = array_filter(
+        array_slice(file($logFile), -800),
+        fn ($l) => str_contains($l, '[AutomationEvent]') || str_contains($l, 'TriggerAutomation') || str_contains($l, 'automation flow')
+    );
+    return response()->json(['lines' => array_values($lines), 'count' => count($lines)]);
+})->name('automacao.debug.log');
+
+// Debug: dispara manualmente o trigger para um contato + lista (exige token)
+// Uso: /automacao/debug/trigger?token=XXX&contact_id=163&lista_id=5
+Route::get('/automacao/debug/trigger', function (Request $request) {
+    $token = config('services.scheduled_posts_cron_token');
+    if ($request->query('token') !== $token) {
+        return response()->json(['error' => 'Token inválido'], 403);
+    }
+    $contactId = (int) $request->query('contact_id');
+    $listaId   = (int) $request->query('lista_id');
+    $tagId     = (int) $request->query('tag_id');
+
+    if (! $contactId) {
+        return response()->json(['error' => 'Informe contact_id'], 422);
+    }
+
+    $contact = \App\Models\Contact::find($contactId);
+    if (! $contact) {
+        return response()->json(['error' => 'Contato não encontrado'], 404);
+    }
+
+    $svc = app(\App\Services\AutomationEventService::class);
+    $result = [];
+
+    if ($listaId) {
+        $svc->contactAddedToList($contact, $listaId);
+        $result[] = "contactAddedToList({$contactId}, {$listaId}) chamado";
+    }
+    if ($tagId) {
+        $svc->contactTagAdded($contact, $tagId);
+        $result[] = "contactTagAdded({$contactId}, {$tagId}) chamado";
+    }
+
+    return response()->json([
+        'ok'      => true,
+        'contact' => ['id' => $contact->id, 'name' => $contact->name],
+        'actions' => $result,
+        'message' => 'Verifique /automacao/debug/log para ver o resultado',
+    ]);
+})->name('automacao.debug.trigger');
+
 
 // Rota de debug para testar se o Laravel está recebendo requisições
 Route::match(['get', 'post'], '/debug/test', function (Request $request) {
