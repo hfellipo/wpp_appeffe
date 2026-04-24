@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Contact;
 use App\Models\Lista;
 use App\Models\WhatsAppContact;
+use App\Services\AutomationEventService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -135,8 +136,21 @@ class ListaController extends Controller
         $validContactIds = Contact::forUser($accountId)->whereIn('id', $contactIds)->pluck('id')->all();
         $validWaIds = WhatsAppContact::where('user_id', $accountId)->whereIn('id', $waIds)->pluck('id')->all();
 
+        $previousIds = $lista->contacts()->pluck('contacts.id')->flip();
+
         $lista->contacts()->sync($validContactIds);
         $lista->whatsappContacts()->sync($validWaIds);
+
+        // Trigger automations for newly added contacts
+        $eventService = app(AutomationEventService::class);
+        foreach ($validContactIds as $contactId) {
+            if (! $previousIds->has($contactId)) {
+                $contact = Contact::find($contactId);
+                if ($contact) {
+                    $eventService->contactAddedToList($contact, $lista->id);
+                }
+            }
+        }
 
         return redirect()
             ->route('listas.show', $lista)

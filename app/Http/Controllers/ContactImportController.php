@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Contact;
 use App\Models\ContactField;
 use App\Models\Lista;
+use App\Services\AutomationEventService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -665,6 +666,7 @@ class ContactImportController extends Controller
 
         if ($listId) {
             $contact->listas()->syncWithoutDetaching([$listId]);
+            app(AutomationEventService::class)->contactAddedToList($contact, $listId);
         }
 
         return ['skipped' => false, 'updated' => $updated];

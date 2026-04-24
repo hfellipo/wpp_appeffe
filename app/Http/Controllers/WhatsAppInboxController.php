@@ -12,6 +12,7 @@ use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppInstance;
+use App\Services\AutomationEventService;
 use App\Services\AutomationRunnerService;
 use App\Services\EvolutionApiHttpClient;
 use App\Services\EvolutionWebhookProcessor;
@@ -577,20 +578,32 @@ class WhatsAppInboxController extends Controller
         $tagId = $validated['tag_id'] ?? null;
         $tagName = isset($validated['tag_name']) ? trim($validated['tag_name']) : null;
 
+        $eventService = app(AutomationEventService::class);
+        $contacts = Contact::whereIn('id', $validContactIds)->get()->keyBy('id');
+
         if ($listId !== null) {
             $lista = Lista::forUser($accountId)->find($listId);
             if ($lista) {
                 $lista->contacts()->syncWithoutDetaching($validContactIds);
+                foreach ($validContactIds as $cid) {
+                    if ($contacts->has($cid)) $eventService->contactAddedToList($contacts[$cid], $lista->id);
+                }
             }
         } elseif ($listName !== '' && $listName !== null) {
             $lista = Lista::create(['user_id' => $accountId, 'name' => $listName]);
             $lista->contacts()->syncWithoutDetaching($validContactIds);
+            foreach ($validContactIds as $cid) {
+                if ($contacts->has($cid)) $eventService->contactAddedToList($contacts[$cid], $lista->id);
+            }
         }
 
         if ($tagId !== null) {
             $tag = Tag::forUser($accountId)->find($tagId);
             if ($tag) {
                 $tag->contacts()->syncWithoutDetaching($validContactIds);
+                foreach ($validContactIds as $cid) {
+                    if ($contacts->has($cid)) $eventService->contactTagAdded($contacts[$cid], $tag->id);
+                }
             }
         } elseif ($tagName !== '' && $tagName !== null) {
             $tag = Tag::forUser($accountId)->where('name', $tagName)->first();
@@ -602,6 +615,9 @@ class WhatsAppInboxController extends Controller
                 ]);
             }
             $tag->contacts()->syncWithoutDetaching($validContactIds);
+            foreach ($validContactIds as $cid) {
+                if ($contacts->has($cid)) $eventService->contactTagAdded($contacts[$cid], $tag->id);
+            }
         }
 
         return response()->json([
@@ -2383,6 +2399,8 @@ class WhatsAppInboxController extends Controller
 
         $lista->contacts()->syncWithoutDetaching([$contact->id]);
 
+        app(AutomationEventService::class)->contactAddedToList($contact, $lista->id);
+
         return response()->json([
             'success' => true,
             'list' => ['id' => $lista->id, 'name' => $lista->name],
@@ -2459,6 +2477,8 @@ class WhatsAppInboxController extends Controller
         }
 
         $tag->contacts()->syncWithoutDetaching([$contact->id]);
+
+        app(AutomationEventService::class)->contactTagAdded($contact, $tag->id);
 
         return response()->json([
             'success' => true,

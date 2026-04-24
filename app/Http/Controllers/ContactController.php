@@ -7,6 +7,7 @@ use App\Models\AutomationRun;
 use App\Models\Contact;
 use App\Models\ContactField;
 use App\Models\Tag;
+use App\Services\AutomationEventService;
 use App\Models\WhatsAppConversation;
 use App\Models\WhatsAppMessage;
 use Illuminate\Http\RedirectResponse;
@@ -195,7 +196,15 @@ class ContactController extends Controller
         // Update tags
         $tagIds = $request->input('tag_ids', []);
         $validTagIds = Tag::forUser(auth()->user()->accountId())->whereIn('id', $tagIds)->pluck('id')->all();
+        $previousTagIds = $contact->tags()->pluck('tags.id')->flip();
         $contact->tags()->sync($validTagIds);
+
+        $eventService = app(AutomationEventService::class);
+        foreach ($validTagIds as $tagId) {
+            if (! $previousTagIds->has($tagId)) {
+                $eventService->contactTagAdded($contact, $tagId);
+            }
+        }
 
         return redirect()
             ->route('contacts.index')
