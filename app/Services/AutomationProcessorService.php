@@ -47,7 +47,9 @@ class AutomationProcessorService
             ->get()
             ->filter(function (AutomationRun $run) {
                 $meta = $run->metadata ?? [];
-                return $run->resume_from_position !== null || ! empty($meta['resume_from_node_id']);
+                return $run->resume_from_position !== null
+                    || ! empty($meta['resume_from_node_id'])
+                    || ! empty($meta['waiting_smart_reply_node_id']);
             });
 
         if ($toResume->isEmpty()) {

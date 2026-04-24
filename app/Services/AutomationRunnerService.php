@@ -270,20 +270,38 @@ class AutomationRunnerService
         if ($node->type === 'smart_reply') {
             $question = trim((string) ($node->config['question'] ?? ''));
             $timeout  = max(1, (int) ($node->config['timeout_minutes'] ?? 1440));
-            if (! $dryRun) {
-                if ($question !== '' && $contact->phone_for_whatsapp !== '') {
-                    $this->whatsAppSend->sendTextToContact($accountId, $contact, $question, $run->id);
+            $choices  = (array) ($node->config['choices'] ?? []);
+
+            if ($dryRun) {
+                // Teste: simula passando pela primeira opção disponível
+                $firstChoice = $choices[0] ?? null;
+                $handle      = $firstChoice ? 'reply_' . ($firstChoice['id'] ?? '1') : 'fallback';
+                $details[]   = ['action' => 'smart_reply', 'node_id' => $node->id, 'status' => 'simulated', 'simulated_choice' => $firstChoice['label'] ?? 'fallback', 'dry_run' => true];
+                $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
+                $nextNodes = $this->getNextNodesFromHandle($automation, $node, $handle);
+                foreach ($nextNodes as $next) {
+                    $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+                    if (! ($result['done'] ?? true)) return $result;
+                    $run       = $run->fresh();
+                    $details   = (array) ($run->metadata['details']    ?? []);
+                    $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
                 }
-                $run->update([
-                    'metadata'  => array_merge($run->metadata ?? [], [
-                        'details'                    => $details,
-                        'run_status'                 => $runStatus,
-                        'waiting_smart_reply_node_id' => $node->id,
-                    ]),
-                    'resume_at' => now()->addMinutes($timeout),
-                ]);
+                $run->update(['status' => $runStatus, 'metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
+                return ['done' => true, 'status' => $runStatus, 'details' => $details];
             }
-            $details[] = ['action' => 'smart_reply', 'node_id' => $node->id, 'status' => 'waiting_reply', 'dry_run' => $dryRun];
+
+            if ($question !== '' && $contact->phone_for_whatsapp !== '') {
+                $this->whatsAppSend->sendTextToContact($accountId, $contact, $question, $run->id);
+            }
+            $run->update([
+                'metadata'  => array_merge($run->metadata ?? [], [
+                    'details'                     => $details,
+                    'run_status'                  => $runStatus,
+                    'waiting_smart_reply_node_id' => $node->id,
+                ]),
+                'resume_at' => now()->addMinutes($timeout),
+            ]);
+            $details[] = ['action' => 'smart_reply', 'node_id' => $node->id, 'status' => 'waiting_reply'];
             $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
             return ['done' => false, 'details' => $details, 'delay_minutes' => $timeout];
         }
