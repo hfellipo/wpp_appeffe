@@ -13,7 +13,7 @@
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
                     <a href="{{ route('dashboard') }}" class="flex items-center">
-                        <x-application-logo class="block h-9 w-auto" />
+                        <x-application-logo size="md" />
                     </a>
                 </div>
 

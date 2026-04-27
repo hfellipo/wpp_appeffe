@@ -19,7 +19,7 @@
             <div class="text-center">
                 <a href="/" class="flex flex-col items-center">
                     <div class="bg-white rounded-2xl shadow-lg px-8 py-5">
-                        <x-application-logo class="h-16 w-auto" />
+                        <x-application-logo size="lg" />
                     </div>
                 </a>
             </div>
