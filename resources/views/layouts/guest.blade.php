@@ -18,8 +18,7 @@
         <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gradient-to-br from-brand-700 via-brand-600 to-brand-500">
             <div class="text-center">
                 <a href="/" class="flex flex-col items-center">
-                    <x-application-logo class="w-20 h-20 fill-current text-white" />
-                    <span class="mt-2 text-2xl font-bold text-white">Secretário</span>
+                    <x-application-logo class="h-16 w-auto" />
                 </a>
             </div>
 
