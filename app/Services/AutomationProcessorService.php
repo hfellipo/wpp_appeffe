@@ -49,7 +49,8 @@ class AutomationProcessorService
                 $meta = $run->metadata ?? [];
                 return $run->resume_from_position !== null
                     || ! empty($meta['resume_from_node_id'])
-                    || ! empty($meta['waiting_smart_reply_node_id']);
+                    || ! empty($meta['waiting_smart_reply_node_id'])
+                    || ! empty($meta['waiting_ai_reply_node_id']);
             });
 
         if ($toResume->isEmpty()) {
@@ -73,6 +74,13 @@ class AutomationProcessorService
             $smartReplyNodeId = isset($metadata['waiting_smart_reply_node_id']) ? (int) $metadata['waiting_smart_reply_node_id'] : null;
             if ($smartReplyNodeId > 0) {
                 $this->runner->runForContactFromSmartReply($automation, $contact, $run->fresh(), $smartReplyNodeId, 'fallback');
+                continue;
+            }
+
+            // ai_reply timeout → route to error
+            $aiReplyNodeId = isset($metadata['waiting_ai_reply_node_id']) ? (int) $metadata['waiting_ai_reply_node_id'] : null;
+            if ($aiReplyNodeId > 0) {
+                $this->runner->runForContactFromAiReply($automation, $contact, $run->fresh(), $aiReplyNodeId, '');
                 continue;
             }
 

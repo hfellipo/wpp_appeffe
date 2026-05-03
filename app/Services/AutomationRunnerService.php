@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Jobs\RunAutomationFromActionJob;
 use App\Jobs\RunAutomationFromNodeJob;
+use App\Models\AiAgent;
 use App\Models\Automation;
 use App\Models\AutomationNode;
 use App\Models\AutomationRun;
 use App\Models\Contact;
+use App\Models\ContactFieldValue;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -31,7 +33,7 @@ class AutomationRunnerService
      *
      * @return array{success: bool, message: string, run: ?AutomationRun, details: array}
      */
-    public function runForContact(Automation $automation, Contact $contact, bool $skipDelays = false, bool $dryRun = false): array
+    public function runForContact(Automation $automation, Contact $contact, bool $skipDelays = false, bool $dryRun = false, string $triggerMessage = ''): array
     {
         $accountId = (int) $automation->user_id;
         if ((int) $contact->user_id !== $accountId) {
@@ -88,11 +90,11 @@ class AutomationRunnerService
         }
 
         $run = AutomationRun::create([
-            'contact_id' => $contact->id,
+            'contact_id'    => $contact->id,
             'automation_id' => $automation->id,
-            'ran_at' => now(),
-            'status' => 'success',
-            'metadata' => [],
+            'ran_at'        => now(),
+            'status'        => 'success',
+            'metadata'      => $triggerMessage !== '' ? ['trigger_message' => $triggerMessage] : [],
         ]);
 
         $result = $useFlow
@@ -139,6 +141,109 @@ class AutomationRunnerService
      *
      * @return array{done: bool, status?: string, details: array, delay_minutes?: int, resume_at?: \Carbon\CarbonImmutable}
      */
+    /**
+     * Retoma o flow após receber resposta do contato para um nó ai_reply.
+     * Chama a OpenAI com o system_prompt do agente e envia a resposta ao contato.
+     */
+    public function runForContactFromAiReply(Automation $automation, Contact $contact, AutomationRun $run, int $nodeId, string $userMessage): array
+    {
+        $meta = $run->metadata ?? [];
+        $run->update([
+            'resume_at' => null,
+            'metadata'  => array_merge($meta, ['waiting_ai_reply_node_id' => null]),
+        ]);
+
+        $node = $automation->flowNodes->firstWhere('id', $nodeId);
+        if (! $node) {
+            return ['done' => true, 'status' => 'success', 'details' => $meta['details'] ?? []];
+        }
+
+        $config    = $node->config ?? [];
+        $agentId   = (int) ($config['agent_id'] ?? 0);
+        $accountId = (int) $automation->user_id;
+        $details   = (array) ($meta['details'] ?? []);
+
+        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+        if (! $agent) {
+            $details[] = ['action' => 'ai_reply', 'node_id' => $nodeId, 'success' => false, 'reason' => 'Agente de IA não encontrado.'];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details])]);
+            $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
+            foreach ($nextNodes as $next) {
+                $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+            }
+            return ['done' => true, 'status' => 'partial', 'details' => $details];
+        }
+
+        // Janela da sessão: só mensagens enviadas após o início do nó ai_reply
+        $sessionStartAt = isset($meta['ai_session_start_at'])
+            ? \Carbon\Carbon::parse($meta['ai_session_start_at'])
+            : null;
+
+        // Monta histórico filtrado pela janela da sessão
+        $history = [];
+        if (! empty($config['include_history'])) {
+            $history = $this->buildMessageHistory($contact, $accountId, 10, $sessionStartAt);
+        }
+
+        // Marca fim da sessão antes de chamar a IA
+        $sessionEndAt = now()->toISOString();
+
+        try {
+            $aiResponse = app(AiService::class)->generateReply(
+                $accountId,
+                $agent,
+                $userMessage,
+                $history,
+                $sessionStartAt?->toISOString()
+            );
+
+            // Envia a resposta ao contato
+            $this->whatsAppSend->sendTextToContact($accountId, $contact, $aiResponse, $run->id);
+
+            // Salva a resposta num campo personalizado se configurado
+            $saveFieldId = (int) ($config['save_response_field_id'] ?? 0);
+            if ($saveFieldId > 0) {
+                ContactFieldValue::updateOrCreate(
+                    ['contact_id' => $contact->id, 'contact_field_id' => $saveFieldId],
+                    ['value' => $aiResponse]
+                );
+            }
+
+            $details[] = ['action' => 'ai_reply', 'node_id' => $nodeId, 'success' => true, 'agent' => $agent->name];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], [
+                'details'          => $details,
+                'ai_session_end_at' => $sessionEndAt,
+            ])]);
+
+            $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'success');
+            foreach ($nextNodes as $next) {
+                $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+            }
+
+            return ['done' => true, 'status' => 'success', 'details' => $details];
+
+        } catch (\Throwable $e) {
+            Log::error('[AutomationRunner] ai_reply falhou', [
+                'node_id' => $nodeId,
+                'error'   => $e->getMessage(),
+                'contact' => $contact->id,
+            ]);
+
+            $details[] = ['action' => 'ai_reply', 'node_id' => $nodeId, 'success' => false, 'reason' => $e->getMessage()];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], [
+                'details'          => $details,
+                'ai_session_end_at' => $sessionEndAt,
+            ])]);
+
+            $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
+            foreach ($nextNodes as $next) {
+                $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+            }
+
+            return ['done' => true, 'status' => 'partial', 'details' => $details];
+        }
+    }
+
     /**
      * Retoma o flow a partir de um nó smart_reply com o handle correspondente à resposta.
      */
@@ -321,6 +426,96 @@ class AutomationRunnerService
             $details[] = ['action' => 'user_input', 'node_id' => $node->id, 'status' => 'waiting', 'dry_run' => $dryRun];
             $run->update(['metadata' => ['details' => $details, 'run_status' => $runStatus]]);
             return ['done' => false, 'details' => $details, 'delay_minutes' => (int) ($node->config['timeout_minutes'] ?? 60)];
+        }
+
+        // ── ai_reply ──────────────────────────────────────────────────
+        if ($node->type === 'ai_reply') {
+            $mode    = (string) ($node->config['mode']     ?? 'immediate');
+            $agentId = (int)   ($node->config['agent_id'] ?? 0);
+
+            // Simulação (teste)
+            if ($dryRun) {
+                $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'status' => 'simulated', 'dry_run' => true];
+                $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
+                $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'success');
+                foreach ($nextNodes as $next) {
+                    $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+                    if (! ($result['done'] ?? true)) return $result;
+                    $run       = $run->fresh();
+                    $details   = (array) ($run->metadata['details']    ?? []);
+                    $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
+                }
+                $run->update(['status' => $runStatus, 'metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
+                return ['done' => true, 'status' => $runStatus, 'details' => $details];
+            }
+
+            if ($agentId <= 0) {
+                $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Nenhum agente selecionado.'];
+                $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => 'partial'])]);
+                $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
+                foreach ($nextNodes as $next) {
+                    $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+                }
+                return ['done' => true, 'status' => 'partial', 'details' => $details];
+            }
+
+            // ── Modo imediato: usa a mensagem que disparou o fluxo ────
+            if ($mode === 'immediate') {
+                $currentMeta  = $run->metadata ?? [];
+                $sessionStart = now()->toISOString();
+
+                // Pega a mensagem que disparou a automação (keyword/última msg do contato)
+                $triggerMsg = trim((string) ($currentMeta['trigger_message'] ?? ''));
+                if ($triggerMsg === '') {
+                    // Fallback: última mensagem recebida do contato
+                    $triggerMsg = $this->getLastIncomingMessage($contact, $accountId);
+                }
+
+                if ($triggerMsg === '') {
+                    $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Nenhuma mensagem do contato disponível para a IA responder.'];
+                    $run->update(['metadata' => array_merge($currentMeta, ['details' => $details, 'run_status' => 'partial'])]);
+                    $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
+                    foreach ($nextNodes as $next) {
+                        $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+                    }
+                    return ['done' => true, 'status' => 'partial', 'details' => $details];
+                }
+
+                $run->update(['metadata' => array_merge($currentMeta, [
+                    'details'             => $details,
+                    'run_status'          => $runStatus,
+                    'ai_session_start_at' => $sessionStart,
+                    'ai_session_end_at'   => null,
+                ])]);
+
+                return $this->executeAiReplyImmediate($automation, $contact, $run->fresh(), $node, $agentId, $accountId, $triggerMsg, $sessionStart, $details, $runStatus, $skipDelays, $dryRun);
+            }
+
+            // ── Modo aguardar: envia pergunta e espera resposta ───────
+            $question = trim((string) ($node->config['question'] ?? ''));
+            $timeout  = max(1, (int) ($node->config['timeout_minutes'] ?? 1440));
+
+            if ($question !== '' && $contact->phone_for_whatsapp !== '') {
+                $this->whatsAppSend->sendTextToContact($accountId, $contact, $question, $run->id);
+            }
+
+            $currentMeta  = $run->metadata ?? [];
+            $sessionStart = $currentMeta['ai_session_start_at'] ?? now()->toISOString();
+
+            $run->update([
+                'metadata'  => array_merge($currentMeta, [
+                    'details'                  => $details,
+                    'run_status'               => $runStatus,
+                    'waiting_ai_reply_node_id' => $node->id,
+                    'ai_session_start_at'      => $sessionStart,
+                    'ai_session_end_at'        => null,
+                ]),
+                'resume_at' => now()->addMinutes($timeout),
+            ]);
+
+            $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'status' => 'waiting_reply'];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
+            return ['done' => false, 'details' => $details, 'delay_minutes' => $timeout];
         }
 
         // ── generic action node ───────────────────────────────────────
@@ -692,5 +887,149 @@ class AutomationRunnerService
     private function lastSendFailureReason(): string
     {
         return __('Possíveis causas: Evolution API não configurada, instância desconectada ou contato sem telefone.');
+    }
+
+    /**
+     * Executa o nó ai_reply em modo imediato (sem aguardar nova mensagem do contato).
+     */
+    private function executeAiReplyImmediate(
+        Automation $automation, Contact $contact, AutomationRun $run,
+        AutomationNode $node, int $agentId, int $accountId,
+        string $userMessage, string $sessionStart,
+        array $details, string $runStatus,
+        bool $skipDelays, bool $dryRun
+    ): array {
+        $config = $node->config ?? [];
+
+        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+        if (! $agent) {
+            $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Agente não encontrado.'];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => 'partial'])]);
+            $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
+            foreach ($nextNodes as $next) {
+                $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+            }
+            return ['done' => true, 'status' => 'partial', 'details' => $details];
+        }
+
+        $history = [];
+        if (! empty($config['include_history'])) {
+            $history = $this->buildMessageHistory($contact, $accountId, 10, \Carbon\Carbon::parse($sessionStart));
+        }
+
+        try {
+            $aiResponse = app(AiService::class)->generateReply($accountId, $agent, $userMessage, $history, $sessionStart);
+
+            $this->whatsAppSend->sendTextToContact($accountId, $contact, $aiResponse, $run->id);
+
+            $saveFieldId = (int) ($config['save_response_field_id'] ?? 0);
+            if ($saveFieldId > 0) {
+                ContactFieldValue::updateOrCreate(
+                    ['contact_id' => $contact->id, 'contact_field_id' => $saveFieldId],
+                    ['value' => $aiResponse]
+                );
+            }
+
+            $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => true, 'agent' => $agent->name, 'mode' => 'immediate'];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], [
+                'details'           => $details,
+                'run_status'        => $runStatus,
+                'ai_session_end_at' => now()->toISOString(),
+            ])]);
+
+            $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'success');
+            foreach ($nextNodes as $next) {
+                $result = $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+                if (! ($result['done'] ?? true)) return $result;
+                $run       = $run->fresh();
+                $details   = (array) ($run->metadata['details']    ?? []);
+                $runStatus = (string) ($run->metadata['run_status'] ?? $runStatus);
+            }
+
+            $run->update(['status' => $runStatus, 'metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => $runStatus])]);
+            return ['done' => true, 'status' => $runStatus, 'details' => $details];
+
+        } catch (\Throwable $e) {
+            Log::error('[AutomationRunner] ai_reply immediate falhou', ['node_id' => $node->id, 'error' => $e->getMessage()]);
+
+            $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => $e->getMessage(), 'mode' => 'immediate'];
+            $run->update(['metadata' => array_merge($run->metadata ?? [], [
+                'details'           => $details,
+                'run_status'        => 'partial',
+                'ai_session_end_at' => now()->toISOString(),
+            ])]);
+
+            $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
+            foreach ($nextNodes as $next) {
+                $this->runFlowFromNode($automation, $contact, $run->fresh(), $next, $skipDelays, $dryRun);
+            }
+            return ['done' => true, 'status' => 'partial', 'details' => $details];
+        }
+    }
+
+    /**
+     * Retorna a última mensagem recebida do contato (fallback para modo imediato).
+     */
+    private function getLastIncomingMessage(Contact $contact, int $accountId): string
+    {
+        try {
+            $conversation = \App\Models\WhatsAppConversation::where('contact_id', $contact->id)
+                ->where('user_id', $accountId)
+                ->latest('last_message_at')
+                ->first();
+
+            if (! $conversation) {
+                return '';
+            }
+
+            $msg = \App\Models\WhatsAppMessage::where('conversation_id', $conversation->id)
+                ->where('direction', 'in')
+                ->latest('sent_at')
+                ->first();
+
+            return $msg ? trim((string) ($msg->body ?? '')) : '';
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * Monta histórico das mensagens da conversa para contexto da IA.
+     * Filtra apenas mensagens APÓS $sessionStartAt para evitar contexto de conversas anteriores.
+     *
+     * @return array<int, array{role: string, content: string}>
+     */
+    private function buildMessageHistory(Contact $contact, int $accountId, int $limit = 10, ?\Carbon\Carbon $sessionStartAt = null): array
+    {
+        try {
+            $conversation = \App\Models\WhatsAppConversation::where('contact_id', $contact->id)
+                ->where('user_id', $accountId)
+                ->latest('last_message_at')
+                ->first();
+
+            if (! $conversation) {
+                return [];
+            }
+
+            $query = \App\Models\WhatsAppMessage::where('conversation_id', $conversation->id);
+
+            // Filtra apenas mensagens dentro da janela da sessão atual
+            if ($sessionStartAt) {
+                $query->where('sent_at', '>=', $sessionStartAt);
+            }
+
+            $messages = $query->orderByDesc('sent_at')
+                ->limit($limit)
+                ->get()
+                ->reverse()
+                ->values();
+
+            return $messages->map(fn ($msg) => [
+                'role'    => $msg->direction === 'in' ? 'user' : 'assistant',
+                'content' => (string) ($msg->body ?? ''),
+            ])->filter(fn ($m) => $m['content'] !== '')->values()->toArray();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 }

@@ -91,6 +91,7 @@
 
     <script>
         window.AUTOMATION_FLOW = {!! json_encode($flowConfig) !!};
+        window.AI_AGENTS = {!! json_encode($flowConfig['aiAgents'] ?? []) !!};
     </script>
 
     @vite(['resources/css/app.css', 'resources/js/automation-flow.jsx'])

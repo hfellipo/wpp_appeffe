@@ -66,6 +66,7 @@ class AutomationController extends Controller
         $tags         = Tag::forUser($accountId)->orderBy('name')->get(['id', 'name', 'color']);
         $customFields = \App\Models\ContactField::forUser($accountId)->active()->ordered()->get(['id', 'name']);
         $automations  = Automation::forUser($accountId)->orderBy('name')->get(['id', 'name']);
+        $aiAgents     = \App\Models\AiAgent::where('user_id', $accountId)->where('active', true)->orderBy('name')->get(['id', 'name', 'description', 'model']);
 
         $contacts = Contact::forUser($accountId)->orderBy('name')->get(['id', 'name', 'phone']);
 
@@ -81,6 +82,7 @@ class AutomationController extends Controller
             'customFields'  => $customFields,
             'automations'   => $automations,
             'contacts'      => $contacts,
+            'aiAgents'      => $aiAgents,
             'title'         => $automacao->name,
         ];
 
@@ -233,7 +235,7 @@ class AutomationController extends Controller
         $validated = $request->validate([
             'nodes'                   => ['required', 'array'],
             'nodes.*.id'              => ['required', 'string'],
-            'nodes.*.type'            => ['required', 'string', 'in:start,send_message,condition,delay,go_to,user_input,smart_reply,update_field,add_tag,remove_tag,add_list,remove_list,human_transfer'],
+            'nodes.*.type'            => ['required', 'string', 'in:start,send_message,condition,delay,go_to,user_input,smart_reply,update_field,add_tag,remove_tag,add_list,remove_list,human_transfer,ai_reply'],
             'nodes.*.position'        => ['required', 'array'],
             'nodes.*.position.x'      => ['required', 'numeric'],
             'nodes.*.position.y'      => ['required', 'numeric'],

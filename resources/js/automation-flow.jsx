@@ -46,6 +46,7 @@ const META = {
   add_list:       { label: 'Adicionar à lista',   bg: '#eef2ff', bd: '#a5b4fc', ic: '#4f46e5', tx: '#1e1b4b', cat: 'Contatos' },
   remove_list:    { label: 'Remover da lista',    bg: '#fff1f2', bd: '#fda4af', ic: '#e11d48', tx: '#881337', cat: 'Contatos' },
   human_transfer: { label: 'Transferir humano',   bg: '#fdf2f8', bd: '#f0abfc', ic: '#a21caf', tx: '#701a75', cat: 'Ações' },
+  ai_reply:       { label: 'Resposta com IA',     bg: '#f5f3ff', bd: '#a78bfa', ic: '#7c3aed', tx: '#3b0764', cat: 'IA'     },
 };
 
 // Palette definition with categories
@@ -87,6 +88,10 @@ const PALETTE_CATS = [
     label: 'Ações',
     items: [{ type: 'human_transfer', desc: 'Transfere para atendente humano' }],
   },
+  {
+    label: 'IA',
+    items: [{ type: 'ai_reply', desc: 'A IA responde com base nas regras do agente' }],
+  },
 ];
 
 // ── SVG icon paths ───────────────────────────────────────────────
@@ -104,6 +109,7 @@ const ICONS = {
   remove_list:    [['M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2'], ['M10 12l4 4m0-4l-4 4']],
   human_transfer: [['M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z']],
   smart_reply:    [['M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z']],
+  ai_reply:       [['M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z']],
 };
 
 function NodeIcon({ type, size = 16, color = '#fff' }) {
@@ -207,6 +213,11 @@ function getNodeSummary(type, config) {
     }
     case 'human_transfer':
       return config.message ? config.message.slice(0, 50) + (config.message.length > 50 ? '…' : '') : 'Transferir para atendente';
+    case 'ai_reply': {
+      const ag = (window.AI_AGENTS || []).find(a => String(a.id) === String(config.agent_id));
+      const modeLabel = config.mode === 'wait_reply' ? '💬 Aguardar' : '⚡ Imediato';
+      return ag ? `${modeLabel} · 🤖 ${ag.name}` : '— Selecionar agente —';
+    }
     case 'add_tag':
     case 'remove_tag': {
       const t = TAGS.find(t => String(t.id) === String(config.tag_id));
@@ -242,6 +253,7 @@ function AutomationNode({ id, type, data, selected }) {
   const summary    = getNodeSummary(type, data.config);
   const isCond       = type === 'condition';
   const isSmartReply = type === 'smart_reply';
+  const isAiReply    = type === 'ai_reply';
   const srChoices    = isSmartReply ? (data.config?.choices || []) : [];
   const testDetail = data.testResult || null;  // set by FlowEditorInner after test run
   const isLoading  = data.testLoading || false;
@@ -281,7 +293,7 @@ function AutomationNode({ id, type, data, selected }) {
         background: meta.bg,
         border: `2px solid ${borderColor}`,
         borderRadius: 14,
-        minWidth: (isCond || isSmartReply) ? 232 : 214,
+        minWidth: (isCond || isSmartReply || isAiReply) ? 232 : 214,
         boxShadow: shadow,
         transition: 'border-color 0.2s, box-shadow 0.2s',
         position: 'relative',
@@ -387,6 +399,24 @@ function AutomationNode({ id, type, data, selected }) {
         </div>
       )}
 
+      {/* AI reply output labels */}
+      {isAiReply && (
+        <div style={{ borderTop: `1px solid ${meta.bd}`, margin: '0 10px 0', padding: '6px 0 8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, paddingRight: 18 }}>
+            <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#22c55e', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d' }}>IA respondeu</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 18 }}>
+            <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#ef4444', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c' }}>Erro / falha</span>
+          </div>
+        </div>
+      )}
+
       {/* Test result status bar (n8n style) */}
       {badge && (
         <div style={{
@@ -416,6 +446,13 @@ function AutomationNode({ id, type, data, selected }) {
             style={{ background: '#22c55e', width: 11, height: 11, border: '2.5px solid #fff', top: '68%' }} />
           <Handle type="source" id="no" position={Position.Right}
             style={{ background: '#ef4444', width: 11, height: 11, border: '2.5px solid #fff', top: '86%' }} />
+        </>
+      ) : isAiReply ? (
+        <>
+          <Handle type="source" id="success" position={Position.Right}
+            style={{ background: '#22c55e', width: 11, height: 11, border: '2.5px solid #fff', top: '72%' }} />
+          <Handle type="source" id="error" position={Position.Right}
+            style={{ background: '#ef4444', width: 11, height: 11, border: '2.5px solid #fff', top: '88%' }} />
         </>
       ) : isSmartReply ? (
         // One handle per choice + fallback, evenly spaced after header
@@ -903,6 +940,15 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const [htMessage, setHtMessage] = useState(config.message  || '');
   const [htTagId,   setHtTagId]   = useState(String(config.tag_id || ''));
 
+  // ── ai_reply state ───────────────────────────────────────────
+  const [aiMode,           setAiMode]            = useState(config.mode                       || 'immediate');
+  const [aiAgentId,        setAiAgentId]         = useState(String(config.agent_id            || ''));
+  const [aiQuestion,       setAiQuestion]        = useState(config.question                   || '');
+  const [aiTimeout,        setAiTimeout]         = useState(config.timeout_minutes            || 1440);
+  const [aiSaveFieldId,    setAiSaveFieldId]     = useState(String(config.save_response_field_id || ''));
+  const [aiIncludeHistory, setAiIncludeHistory]  = useState(config.include_history             || false);
+  const aiAgents = window.AI_AGENTS || [];
+
   // ── helpers ──────────────────────────────────────────────────
   const totalMinutes = () => {
     const mult = delayUnit === 'days' ? 1440 : delayUnit === 'hours' ? 60 : 1;
@@ -980,6 +1026,15 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
       next = { automation_id: gotoAutoId ? Number(gotoAutoId) : null };
     } else if (type === 'human_transfer') {
       next = { message: htMessage, tag_id: htTagId ? Number(htTagId) : null };
+    } else if (type === 'ai_reply') {
+      next = {
+        mode:                  aiMode,
+        agent_id:              aiAgentId     ? Number(aiAgentId)     : null,
+        question:              aiMode === 'wait_reply' ? aiQuestion : '',
+        timeout_minutes:       aiMode === 'wait_reply' ? (Number(aiTimeout) || 1440) : null,
+        save_response_field_id: aiSaveFieldId ? Number(aiSaveFieldId) : null,
+        include_history:       aiIncludeHistory,
+      };
     }
 
     onUpdate({ ...data, config: next });
@@ -1478,6 +1533,102 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
                   {TAGS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
             }
+          </div>
+        )}
+
+        {/* ── AI REPLY ── */}
+        {type === 'ai_reply' && (
+          <div>
+
+            {/* Modo de operação */}
+            <Label>Modo de operação</Label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { value: 'immediate', icon: '⚡', title: 'Responder imediatamente', desc: 'A IA responde à mensagem que chegou agora (palavra-chave, última mensagem)' },
+                { value: 'wait_reply', icon: '💬', title: 'Aguardar resposta do contato', desc: 'Envia uma pergunta e aguarda o contato responder antes de acionar a IA' },
+              ].map(opt => (
+                <div key={opt.value} onClick={() => setAiMode(opt.value)}
+                  style={{
+                    border: `2px solid ${aiMode === opt.value ? '#7c3aed' : '#e5e7eb'}`,
+                    borderRadius: 8, padding: '8px 10px', cursor: 'pointer',
+                    background: aiMode === opt.value ? '#f5f3ff' : '#fff',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: aiMode === opt.value ? '#5b21b6' : '#374151', marginBottom: 2 }}>
+                    {opt.icon} {opt.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>{opt.desc}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Agente */}
+            {aiAgents.length === 0 ? (
+              <div style={{ marginTop: 14, padding: '10px 12px', background: '#fef3c7', borderRadius: 8, border: '1px solid #fcd34d' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>Nenhum agente cadastrado</div>
+                <div style={{ fontSize: 11.5, color: '#78350f' }}>
+                  Crie agentes em <strong>Agentes IA</strong> no menu superior para poder usar este nó.
+                </div>
+              </div>
+            ) : (
+              <>
+                <Label>Agente de IA <span style={{ color: '#ef4444' }}>*</span></Label>
+                <select value={aiAgentId} onChange={e => setAiAgentId(e.target.value)} style={{ ...INPUT, cursor: 'pointer' }}>
+                  <option value="">— Selecionar agente —</option>
+                  {aiAgents.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}{a.model ? ` (${a.model})` : ''}</option>
+                  ))}
+                </select>
+                {aiAgentId && aiAgents.find(a => String(a.id) === aiAgentId)?.description && (
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, fontStyle: 'italic' }}>
+                    {aiAgents.find(a => String(a.id) === aiAgentId).description}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Campos exclusivos do modo "aguardar resposta" */}
+            {aiMode === 'wait_reply' && (
+              <>
+                <Label>Mensagem antes de aguardar resposta (opcional)</Label>
+                <textarea
+                  value={aiQuestion}
+                  onChange={e => setAiQuestion(e.target.value)}
+                  rows={3}
+                  placeholder="Ex: Olá! Como posso te ajudar hoje?"
+                  style={{ ...INPUT, resize: 'vertical' }}
+                />
+                <Label>Timeout de espera (minutos)</Label>
+                <input type="number" value={aiTimeout} onChange={e => setAiTimeout(e.target.value)}
+                  min={1} max={10080} style={INPUT} />
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+                  Se o contato não responder, o fluxo vai para o handle <strong>Erro</strong>.
+                </div>
+              </>
+            )}
+
+            {/* Salvar resposta */}
+            <Label>Salvar resposta da IA em campo personalizado (opcional)</Label>
+            {CUSTOM_FIELDS.length === 0
+              ? <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Nenhum campo personalizado cadastrado.</div>
+              : <select value={aiSaveFieldId} onChange={e => setAiSaveFieldId(e.target.value)} style={{ ...INPUT, cursor: 'pointer' }}>
+                  <option value="">— Não salvar —</option>
+                  {CUSTOM_FIELDS.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+            }
+
+            {/* Histórico */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+              <input type="checkbox" id="ai-history" checked={aiIncludeHistory}
+                onChange={e => setAiIncludeHistory(e.target.checked)}
+                style={{ width: 14, height: 14, cursor: 'pointer' }} />
+              <label htmlFor="ai-history" style={{ fontSize: 12, color: '#374151', cursor: 'pointer' }}>
+                Incluir histórico da sessão como contexto
+              </label>
+            </div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3, marginLeft: 22 }}>
+              Apenas mensagens da conversa atual (sessão delimitada automaticamente).
+            </div>
           </div>
         )}
       </div>

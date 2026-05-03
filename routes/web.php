@@ -15,6 +15,7 @@ use App\Http\Controllers\WhatsAppInboxController;
 use App\Http\Controllers\WhatsAppStreamController;
 use App\Http\Controllers\EvolutionWebhookController;
 use App\Http\Controllers\Admin\AccountUsersController;
+use App\Http\Controllers\AiAgentController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -214,6 +215,11 @@ Route::middleware('auth')->group(function () {
 
     // Settings routes
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+    Route::post('/settings/ai', [SettingsController::class, 'saveAiConfig'])->name('settings.ai.save');
+
+    // Agentes de IA
+    Route::resource('ai-agents', AiAgentController::class);
+    Route::get('/api/ai-agents', [AiAgentController::class, 'apiList'])->name('ai-agents.api-list');
 
     // Gestão de usuários da conta (apenas admin)
     Route::middleware('admin')->prefix('settings/users')->name('settings.users.')->group(function () {

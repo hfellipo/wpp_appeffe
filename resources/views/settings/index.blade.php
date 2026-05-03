@@ -102,6 +102,122 @@
                             </div>
                         </div>
 
+                        <!-- Inteligência Artificial -->
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                                </svg>
+                                {{ __('Inteligência Artificial') }}
+                            </h3>
+
+                            {{-- Toast de sucesso --}}
+                            @if(session('ai_success'))
+                                <div id="ai-toast"
+                                     style="position:fixed;top:20px;right:20px;z-index:9999;display:flex;align-items:center;gap:10px;background:#111827;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.25);">
+                                    <svg style="width:18px;height:18px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                    {{ session('ai_success') }}
+                                </div>
+                                <script>setTimeout(()=>{const t=document.getElementById('ai-toast');if(t){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(()=>t.remove(),400);}},3000);</script>
+                            @endif
+
+                            <div class="bg-purple-50 border border-purple-200 rounded-lg p-5">
+                                <p class="text-gray-600 mb-5 text-sm">
+                                    {{ __('Configure sua chave da API OpenAI para usar o nó de Resposta com IA nas automações. A chave é armazenada de forma criptografada.') }}
+                                </p>
+
+                                <form method="POST" action="{{ route('settings.ai.save') }}" id="ai-config-form" class="space-y-5">
+                                    @csrf
+
+                                    {{-- API Key --}}
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-1">
+                                            {{ __('Chave da API OpenAI') }}
+                                        </label>
+                                        <div class="relative">
+                                            <input
+                                                type="password"
+                                                id="openai_key_input"
+                                                name="openai_api_key"
+                                                placeholder="{{ $aiConfig->openai_api_key ? '••••••••••••••••••••••••' : 'sk-proj-...' }}"
+                                                class="w-full pr-10 border-gray-300 rounded-md shadow-sm text-sm focus:ring-purple-500 focus:border-purple-500"
+                                                autocomplete="off"
+                                            >
+                                            {{-- toggle show/hide --}}
+                                            <button type="button" onclick="(function(){var i=document.getElementById('openai_key_input');i.type=i.type==='password'?'text':'password';})()"
+                                                class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                            </button>
+                                        </div>
+                                        @if($aiConfig->openai_api_key)
+                                            <p class="mt-1.5 text-xs text-green-600 flex items-center gap-1">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                                {{ __('Chave configurada — deixe em branco para manter a atual.') }}
+                                            </p>
+                                        @else
+                                            <p class="mt-1.5 text-xs text-gray-500">{{ __('Obtenha sua chave em platform.openai.com') }}</p>
+                                        @endif
+                                        @error('openai_api_key')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                    </div>
+
+                                    {{-- Configurações avançadas --}}
+                                    <details class="group">
+                                        <summary class="cursor-pointer text-xs text-purple-700 font-semibold select-none flex items-center gap-1.5 list-none">
+                                            <svg class="w-3.5 h-3.5 transition-transform duration-200 group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                                            {{ __('Configurações avançadas') }}
+                                            <span class="text-gray-400 font-normal">(modelo, temperatura, tokens)</span>
+                                        </summary>
+                                        <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 pl-1">
+                                            <div>
+                                                <label class="block text-xs font-semibold text-gray-600 mb-1">{{ __('Modelo padrão') }}</label>
+                                                <select name="default_model" class="w-full border-gray-300 rounded-md shadow-sm text-sm focus:ring-purple-500 focus:border-purple-500">
+                                                    @foreach(\App\Models\AiConfig::availableModels() as $value => $label)
+                                                        <option value="{{ $value }}" {{ ($aiConfig->default_model ?? 'gpt-3.5-turbo') === $value ? 'selected' : '' }}>{{ $label }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-semibold text-gray-600 mb-1">{{ __('Temperatura') }} <span class="text-gray-400 font-normal">(0 = preciso, 1 = criativo)</span></label>
+                                                <input type="number" name="temperature" value="{{ $aiConfig->temperature ?? 0.70 }}" min="0" max="1" step="0.05"
+                                                    class="w-full border-gray-300 rounded-md shadow-sm text-sm focus:ring-purple-500 focus:border-purple-500">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-semibold text-gray-600 mb-1">{{ __('Máx. tokens por resposta') }}</label>
+                                                <input type="number" name="max_tokens" value="{{ $aiConfig->max_tokens ?? 500 }}" min="50" max="4000" step="50"
+                                                    class="w-full border-gray-300 rounded-md shadow-sm text-sm focus:ring-purple-500 focus:border-purple-500">
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    {{-- Botão salvar --}}
+                                    <div class="pt-1 flex items-center gap-4">
+                                        <button
+                                            type="submit"
+                                            id="ai-save-btn"
+                                            class="inline-flex items-center gap-2 px-6 py-2.5 bg-gray-900 hover:bg-black active:bg-gray-800 text-white text-sm font-semibold rounded-lg shadow-sm transition-all duration-150"
+                                        >
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                            {{ __('Salvar configurações') }}
+                                        </button>
+
+                                        <a href="{{ route('ai-agents.index') }}" class="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-black font-medium transition">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 10-8 0 4 4 0 008 0zM15 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                                            {{ __('Gerenciar Agentes de IA') }}
+                                        </a>
+                                    </div>
+                                </form>
+
+                                {{-- Loading state no submit --}}
+                                <script>
+                                    document.getElementById('ai-config-form').addEventListener('submit', function() {
+                                        var btn = document.getElementById('ai-save-btn');
+                                        btn.disabled = true;
+                                        btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg> Salvando...';
+                                    });
+                                </script>
+                            </div>
+                        </div>
+
                         <!-- WhatsApp -->
                         <div>
                             <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center">

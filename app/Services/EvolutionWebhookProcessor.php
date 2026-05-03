@@ -590,6 +590,15 @@ class EvolutionWebhookProcessor
                         ]);
                     }
 
+                    // Check for pending ai_reply node waiting for this contact's reply
+                    try {
+                        $this->handleAiReplyIfPending($conversation->contact_id, $accountId, $body);
+                    } catch (\Throwable $e) {
+                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiReplyIfPending failed', [
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+
                     // Check keyword triggers
                     try {
                         $this->handleKeywordTrigger($conversation->contact_id, $accountId, $body);
@@ -1227,7 +1236,58 @@ class EvolutionWebhookProcessor
                 'body'          => mb_substr($body, 0, 100),
             ]);
 
-            app(AutomationRunnerService::class)->runForContact($automation, $contact);
+            app(AutomationRunnerService::class)->runForContact($automation, $contact, false, false, $body);
+        }
+    }
+
+    /**
+     * Verifica se há um nó ai_reply aguardando a resposta deste contato.
+     * Se sim, chama a IA com a mensagem do contato e retoma o fluxo.
+     */
+    private function handleAiReplyIfPending(int $contactId, int $accountId, string $body): void
+    {
+        $pendingRuns = AutomationRun::query()
+            ->where('contact_id', $contactId)
+            ->whereNotNull('resume_at')
+            ->where('resume_at', '>', now())
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+
+        foreach ($pendingRuns as $run) {
+            $meta   = $run->metadata ?? [];
+            $nodeId = isset($meta['waiting_ai_reply_node_id']) ? (int) $meta['waiting_ai_reply_node_id'] : null;
+            if (! $nodeId) {
+                continue;
+            }
+
+            $automation = Automation::query()
+                ->where('user_id', $accountId)
+                ->with(['flowNodes', 'flowEdges'])
+                ->find($run->automation_id);
+
+            if (! $automation) {
+                continue;
+            }
+
+            $node = $automation->flowNodes->firstWhere('id', $nodeId);
+            if (! $node || $node->type !== 'ai_reply') {
+                continue;
+            }
+
+            Log::channel('single')->info('[AiReply] Resposta do contato recebida', [
+                'contact_id'    => $contactId,
+                'automation_id' => $automation->id,
+                'node_id'       => $nodeId,
+            ]);
+
+            $contact = Contact::find($contactId);
+            if ($contact) {
+                $runner = app(AutomationRunnerService::class);
+                $runner->runForContactFromAiReply($automation, $contact, $run->fresh(), $nodeId, $body);
+            }
+
+            break;
         }
     }
 

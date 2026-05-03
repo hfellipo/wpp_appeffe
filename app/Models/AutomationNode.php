@@ -56,6 +56,7 @@ class AutomationNode extends Model
             'add_list'       => __('Adicionar à lista'),
             'remove_list'    => __('Remover da lista'),
             'human_transfer' => __('Transferir para humano'),
+            'ai_reply'       => __('Resposta com IA'),
         ];
     }
 }

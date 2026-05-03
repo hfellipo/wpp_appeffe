@@ -42,6 +42,9 @@
                             {{ __('WhatsApp') }}
                         </x-nav-link>
                     @endif
+                    <x-nav-link :href="route('ai-agents.index')" :active="request()->routeIs('ai-agents.*')">
+                        {{ __('Agentes IA') }}
+                    </x-nav-link>
                 </div>
             </div>
 
