@@ -22,11 +22,35 @@ const FLOW_DATA_URL   = cfg.flowDataUrl    || '';
 const FLOW_UPDATE_URL = cfg.flowUpdateUrl  || '';
 const FLOW_TEST_URL    = cfg.flowTestUrl    || '';
 const UPLOAD_MEDIA_URL = cfg.uploadMediaUrl || '';
-const CSRF             = cfg.csrfToken      || '';
 const LISTAS          = cfg.listas         || [];
 const TAGS            = cfg.tags           || [];
 const CUSTOM_FIELDS   = cfg.customFields   || [];
 const AUTOMATIONS     = cfg.automations    || [];
+
+// Lê o CSRF token sempre fresco do meta tag (evita expiração de sessão)
+function getCsrf() {
+  return document.querySelector('meta[name="csrf-token"]')?.content
+    || cfg.csrfToken
+    || '';
+}
+
+// Wrapper de fetch que trata 419 (sessão expirada) com mensagem clara
+async function csrfFetch(url, options = {}) {
+  const headers = {
+    ...(options.headers || {}),
+    'X-CSRF-TOKEN': getCsrf(),
+    'X-Requested-With': 'XMLHttpRequest',
+  };
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 419) {
+    const reload = window.confirm(
+      'Sua sessão expirou. Clique em OK para recarregar a página e salvar novamente.'
+    );
+    if (reload) window.location.reload();
+    throw new Error('Sessão expirada (419). Recarregue a página.');
+  }
+  return res;
+}
 const CONTACTS        = cfg.contacts       || [];
 const CURRENT_AUTO_ID = cfg.automationId   || null;
 
@@ -513,9 +537,9 @@ function TestPanel({ onClose, onResults, onLoading }) {
     setResult(null);
     onResults([]);
     try {
-      const res  = await fetch(FLOW_TEST_URL, {
+      const res  = await csrfFetch(FLOW_TEST_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contact_id: Number(contactId) }),
       });
       const data = await res.json();
@@ -778,9 +802,8 @@ function MediaUploadField({ msgType, mediaUrl, setMediaUrl, filename, setFilenam
     try {
       const form = new FormData();
       form.append('file', file);
-      const res  = await fetch(UPLOAD_MEDIA_URL, {
+      const res  = await csrfFetch(UPLOAD_MEDIA_URL, {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
         body: form,
       });
       const data = await res.json();
@@ -1762,9 +1785,9 @@ function FlowEditorInner() {
       nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: { label: n.data?.label, config: n.data?.config || {} } })),
       edges: edges.map(e => ({ source: e.source, target: e.target, sourceHandle: e.sourceHandle || 'default', targetHandle: e.targetHandle || 'input' })),
     };
-    fetch(FLOW_UPDATE_URL, {
+    csrfFetch(FLOW_UPDATE_URL, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
     })
       .then(r => r.json())

@@ -985,11 +985,36 @@ class AutomationRunnerService
         $meta      = $run->metadata ?? [];
         $accountId = (int) $automation->user_id;
 
-        // Envia mensagem de despedida se configurada
-        if ($handle === 'ended') {
-            $farewell = trim((string) ($meta['ai_chat_farewell'] ?? ''));
-            if ($farewell !== '' && $contact->phone_for_whatsapp !== '') {
+        // Envia despedida ao encerrar o atendimento
+        if ($handle === 'ended' && $contact->phone_for_whatsapp !== '') {
+            $farewell        = trim((string) ($meta['ai_chat_farewell'] ?? ''));
+            $agentId         = (int) ($meta['ai_chat_agent_id'] ?? 0);
+            $sessionStartAt  = $meta['ai_session_start_at'] ?? null;
+
+            if ($farewell !== '') {
+                // Usa mensagem de despedida estática configurada no nó
                 $this->whatsAppSend->sendTextToContact($accountId, $contact, $farewell, $run->id);
+            } elseif ($agentId > 0) {
+                // Pede à IA que gere uma despedida natural com base na conversa
+                $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+                if ($agent) {
+                    try {
+                        $history = $this->buildMessageHistory(
+                            $contact, $accountId, 10,
+                            $sessionStartAt ? \Carbon\Carbon::parse($sessionStartAt) : null
+                        );
+                        $farewellResponse = app(AiService::class)->generateReply(
+                            $accountId,
+                            $agent,
+                            '[SISTEMA: O cliente encerrou o atendimento. Gere uma mensagem de despedida breve, cordial e personalizada com base na conversa. Não cumprimente, apenas despeça-se.]',
+                            $history,
+                            $sessionStartAt
+                        );
+                        $this->whatsAppSend->sendTextToContact($accountId, $contact, $farewellResponse, $run->id);
+                    } catch (\Throwable $e) {
+                        Log::warning('[AiChat] Falha ao gerar despedida com IA', ['error' => $e->getMessage()]);
+                    }
+                }
             }
         }
 
