@@ -114,12 +114,13 @@ class AutomationController extends Controller
         }
 
         $config = [
-            'trigger_type'        => $trigger->type,
-            'tag_id'              => $trigger->config['tag_id']   ?? null,
-            'lista_id'            => $trigger->config['lista_id'] ?? null,
-            'keywords'            => $trigger->config['keywords'] ?? [],
-            'run_once_per_contact' => $automacao->run_once_per_contact ?? true,
-            'condition_logic'     => $automacao->condition_logic ?? 'and',
+            'trigger_type'         => $trigger->type,
+            'tag_id'               => $trigger->config['tag_id']              ?? null,
+            'lista_id'             => $trigger->config['lista_id']            ?? null,
+            'keywords'             => $trigger->config['keywords']            ?? [],
+            'keyword_match_mode'   => $trigger->config['keyword_match_mode']  ?? 'contains',
+            'run_once_per_contact' => $automacao->run_once_per_contact        ?? true,
+            'condition_logic'      => $automacao->condition_logic             ?? 'and',
             'conditions'          => $automacao->conditions->map(fn (AutomationCondition $c) => [
                 'field_type'       => $c->field_type,
                 'field_key'        => $c->field_key,
