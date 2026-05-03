@@ -97,28 +97,20 @@ class AiService
 
     /**
      * Gera o contexto de sessão injetado no system prompt.
-     * Informa à IA quando a conversa atual começou e que ela não deve usar contexto anterior.
+     * Define as regras de comportamento conversacional da IA.
      */
-    private function buildSessionContext(?string $sessionStartAt): string
+    private function buildSessionContext(?string $_sessionStartAt = null): string
     {
-        if (! $sessionStartAt) {
-            return '';
-        }
-
-        try {
-            $dt = \Carbon\Carbon::parse($sessionStartAt)->setTimezone('America/Sao_Paulo');
-            $formatted = $dt->format('d/m/Y \à\s H:i');
-        } catch (\Throwable) {
-            $formatted = $sessionStartAt;
-        }
-
         return implode("\n", [
+            '',
             '---',
-            '[CONTEXTO DO SISTEMA]',
-            "Esta conversa começou em: {$formatted}.",
-            'Considere APENAS as mensagens desta sessão como contexto.',
-            'Ignore qualquer histórico anterior a este momento.',
-            'Quando o fluxo terminar, esta sessão será encerrada.',
+            '[INSTRUÇÕES DE ATENDIMENTO]',
+            'Você está no meio de uma conversa de atendimento via WhatsApp.',
+            'NUNCA cumprimente o cliente novamente após a primeira mensagem (não use "Olá", "Oi", "Bom dia" em cada resposta).',
+            'Dê continuidade natural à conversa como um atendente humano real faria.',
+            'Responda diretamente ao que o cliente perguntou, sem introduções repetitivas.',
+            'Seja objetivo, natural e fluido — como uma pessoa real respondendo no WhatsApp.',
+            'Mantenha o contexto de tudo que já foi dito nesta conversa.',
             '---',
         ]);
     }
