@@ -215,8 +215,8 @@ function getNodeSummary(type, config) {
       return config.message ? config.message.slice(0, 50) + (config.message.length > 50 ? '…' : '') : 'Transferir para atendente';
     case 'ai_reply': {
       const ag = (window.AI_AGENTS || []).find(a => String(a.id) === String(config.agent_id));
-      const modeLabel = config.mode === 'wait_reply' ? '💬 Aguardar' : '⚡ Imediato';
-      return ag ? `${modeLabel} · 🤖 ${ag.name}` : '— Selecionar agente —';
+      const modeLabel = config.mode === 'wait_reply' ? '💬' : config.mode === 'continuous' ? '🤖' : '⚡';
+      return ag ? `${modeLabel} ${ag.name}` : '— Selecionar agente —';
     }
     case 'add_tag':
     case 'remove_tag': {
@@ -251,10 +251,12 @@ function AutomationNode({ id, type, data, selected }) {
   const [hovered, setHovered] = useState(false);
   const meta       = META[type] || { label: type, bg: '#f9fafb', bd: '#d1d5db', ic: '#6b7280', tx: '#111827' };
   const summary    = getNodeSummary(type, data.config);
-  const isCond       = type === 'condition';
-  const isSmartReply = type === 'smart_reply';
-  const isAiReply    = type === 'ai_reply';
-  const srChoices    = isSmartReply ? (data.config?.choices || []) : [];
+  const isCond         = type === 'condition';
+  const isSmartReply   = type === 'smart_reply';
+  const isAiReply      = type === 'ai_reply';
+  const aiMode         = isAiReply ? (data.config?.mode || 'continuous') : null;
+  const isAiContinuous = isAiReply && aiMode === 'continuous';
+  const srChoices      = isSmartReply ? (data.config?.choices || []) : [];
   const testDetail = data.testResult || null;  // set by FlowEditorInner after test run
   const isLoading  = data.testLoading || false;
 
@@ -402,18 +404,29 @@ function AutomationNode({ id, type, data, selected }) {
       {/* AI reply output labels */}
       {isAiReply && (
         <div style={{ borderTop: `1px solid ${meta.bd}`, margin: '0 10px 0', padding: '6px 0 8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, paddingRight: 18 }}>
-            <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#22c55e', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+          {isAiContinuous ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 18 }}>
+              <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#22c55e', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d' }}>Atendimento encerrado</span>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d' }}>IA respondeu</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 18 }}>
-            <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#ef4444', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c' }}>Erro / falha</span>
-          </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, paddingRight: 18 }}>
+                <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#22c55e', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d' }}>IA respondeu</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 18 }}>
+                <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#ef4444', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c' }}>Erro / falha</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -448,12 +461,17 @@ function AutomationNode({ id, type, data, selected }) {
             style={{ background: '#ef4444', width: 11, height: 11, border: '2.5px solid #fff', top: '86%' }} />
         </>
       ) : isAiReply ? (
-        <>
-          <Handle type="source" id="success" position={Position.Right}
-            style={{ background: '#22c55e', width: 11, height: 11, border: '2.5px solid #fff', top: '72%' }} />
-          <Handle type="source" id="error" position={Position.Right}
-            style={{ background: '#ef4444', width: 11, height: 11, border: '2.5px solid #fff', top: '88%' }} />
-        </>
+        isAiContinuous ? (
+          <Handle type="source" id="ended" position={Position.Right}
+            style={{ background: '#22c55e', width: 11, height: 11, border: '2.5px solid #fff', right: -6 }} />
+        ) : (
+          <>
+            <Handle type="source" id="success" position={Position.Right}
+              style={{ background: '#22c55e', width: 11, height: 11, border: '2.5px solid #fff', top: '72%' }} />
+            <Handle type="source" id="error" position={Position.Right}
+              style={{ background: '#ef4444', width: 11, height: 11, border: '2.5px solid #fff', top: '88%' }} />
+          </>
+        )
       ) : isSmartReply ? (
         // One handle per choice + fallback, evenly spaced after header
         (() => {
@@ -941,12 +959,15 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const [htTagId,   setHtTagId]   = useState(String(config.tag_id || ''));
 
   // ── ai_reply state ───────────────────────────────────────────
-  const [aiMode,           setAiMode]            = useState(config.mode                       || 'immediate');
-  const [aiAgentId,        setAiAgentId]         = useState(String(config.agent_id            || ''));
-  const [aiQuestion,       setAiQuestion]        = useState(config.question                   || '');
-  const [aiTimeout,        setAiTimeout]         = useState(config.timeout_minutes            || 1440);
+  const [aiMode,           setAiMode]            = useState(config.mode                        || 'continuous');
+  const [aiAgentId,        setAiAgentId]         = useState(String(config.agent_id             || ''));
+  const [aiQuestion,       setAiQuestion]        = useState(config.question                    || '');
+  const [aiTimeout,        setAiTimeout]         = useState(config.timeout_minutes             || 1440);
+  const [aiTimeoutHours,   setAiTimeoutHours]    = useState(config.timeout_hours               || 24);
+  const [aiStopCommands,   setAiStopCommands]    = useState((config.stop_commands || ['sair', 'encerrar', 'parar', 'tchau']).join(', '));
+  const [aiFarewell,       setAiFarewell]        = useState(config.farewell_message             || '');
   const [aiSaveFieldId,    setAiSaveFieldId]     = useState(String(config.save_response_field_id || ''));
-  const [aiIncludeHistory, setAiIncludeHistory]  = useState(config.include_history             || false);
+  const [aiIncludeHistory, setAiIncludeHistory]  = useState(config.include_history              || false);
   const aiAgents = window.AI_AGENTS || [];
 
   // ── helpers ──────────────────────────────────────────────────
@@ -1027,11 +1048,15 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
     } else if (type === 'human_transfer') {
       next = { message: htMessage, tag_id: htTagId ? Number(htTagId) : null };
     } else if (type === 'ai_reply') {
+      const stopList = aiStopCommands.split(',').map(s => s.trim()).filter(Boolean);
       next = {
         mode:                  aiMode,
-        agent_id:              aiAgentId     ? Number(aiAgentId)     : null,
+        agent_id:              aiAgentId ? Number(aiAgentId) : null,
         question:              aiMode === 'wait_reply' ? aiQuestion : '',
         timeout_minutes:       aiMode === 'wait_reply' ? (Number(aiTimeout) || 1440) : null,
+        timeout_hours:         aiMode === 'continuous' ? (Number(aiTimeoutHours) || 24) : null,
+        stop_commands:         aiMode === 'continuous' ? stopList : [],
+        farewell_message:      aiMode === 'continuous' ? aiFarewell : '',
         save_response_field_id: aiSaveFieldId ? Number(aiSaveFieldId) : null,
         include_history:       aiIncludeHistory,
       };
@@ -1544,8 +1569,9 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
             <Label>Modo de operação</Label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                { value: 'immediate', icon: '⚡', title: 'Responder imediatamente', desc: 'A IA responde à mensagem que chegou agora (palavra-chave, última mensagem)' },
-                { value: 'wait_reply', icon: '💬', title: 'Aguardar resposta do contato', desc: 'Envia uma pergunta e aguarda o contato responder antes de acionar a IA' },
+                { value: 'continuous', icon: '🤖', title: 'Atendimento contínuo', desc: 'IA responde a cada mensagem automaticamente até o contato enviar o comando de encerramento' },
+                { value: 'immediate', icon: '⚡', title: 'Responder uma vez', desc: 'IA responde à mensagem que chegou agora e o fluxo continua' },
+                { value: 'wait_reply', icon: '💬', title: 'Aguardar resposta do contato', desc: 'Envia uma pergunta, aguarda o contato responder, então a IA responde' },
               ].map(opt => (
                 <div key={opt.value} onClick={() => setAiMode(opt.value)}
                   style={{
@@ -1587,17 +1613,39 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
               </>
             )}
 
-            {/* Campos exclusivos do modo "aguardar resposta" */}
+            {/* Campos do modo contínuo */}
+            {aiMode === 'continuous' && (
+              <>
+                <div style={{ marginTop: 10, padding: '8px 10px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0', fontSize: 11.5, color: '#166534' }}>
+                  💡 A IA responderá <strong>cada mensagem</strong> do contato automaticamente até ele enviar o comando de encerramento.
+                </div>
+                <Label>Comandos de encerramento</Label>
+                <input type="text" value={aiStopCommands} onChange={e => setAiStopCommands(e.target.value)}
+                  placeholder="sair, encerrar, parar, tchau"
+                  style={INPUT} />
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+                  Separe por vírgula. Qualquer um desses textos encerrará o atendimento.
+                </div>
+                <Label>Mensagem de despedida (opcional)</Label>
+                <textarea value={aiFarewell} onChange={e => setAiFarewell(e.target.value)}
+                  rows={2} placeholder="Ex: Atendimento encerrado. Até logo!"
+                  style={{ ...INPUT, resize: 'vertical' }} />
+                <Label>Tempo máximo de atendimento (horas)</Label>
+                <input type="number" value={aiTimeoutHours} onChange={e => setAiTimeoutHours(e.target.value)}
+                  min={1} max={168} style={INPUT} />
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+                  Se o contato parar de responder, o atendimento encerra automaticamente após este prazo.
+                </div>
+              </>
+            )}
+
+            {/* Campos do modo aguardar resposta */}
             {aiMode === 'wait_reply' && (
               <>
                 <Label>Mensagem antes de aguardar resposta (opcional)</Label>
-                <textarea
-                  value={aiQuestion}
-                  onChange={e => setAiQuestion(e.target.value)}
-                  rows={3}
-                  placeholder="Ex: Olá! Como posso te ajudar hoje?"
-                  style={{ ...INPUT, resize: 'vertical' }}
-                />
+                <textarea value={aiQuestion} onChange={e => setAiQuestion(e.target.value)}
+                  rows={3} placeholder="Ex: Olá! Como posso te ajudar hoje?"
+                  style={{ ...INPUT, resize: 'vertical' }} />
                 <Label>Timeout de espera (minutos)</Label>
                 <input type="number" value={aiTimeout} onChange={e => setAiTimeout(e.target.value)}
                   min={1} max={10080} style={INPUT} />

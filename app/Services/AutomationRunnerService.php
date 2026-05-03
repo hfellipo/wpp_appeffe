@@ -459,6 +459,58 @@ class AutomationRunnerService
                 return ['done' => true, 'status' => 'partial', 'details' => $details];
             }
 
+            // ── Modo contínuo: atendimento 100% com IA ───────────────
+            if ($mode === 'continuous') {
+                $currentMeta  = $run->metadata ?? [];
+                $sessionStart = now()->toISOString();
+                $triggerMsg   = trim((string) ($currentMeta['trigger_message'] ?? ''));
+                if ($triggerMsg === '') {
+                    $triggerMsg = $this->getLastIncomingMessage($contact, $accountId);
+                }
+
+                $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+                if (! $agent) {
+                    $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Agente não encontrado.'];
+                    $run->update(['metadata' => array_merge($currentMeta, ['details' => $details, 'run_status' => 'partial'])]);
+                    $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'ended');
+                    foreach ($nextNodes as $next) {
+                        $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+                    }
+                    return ['done' => true, 'status' => 'partial', 'details' => $details];
+                }
+
+                // Responde à mensagem de gatilho imediatamente
+                if ($triggerMsg !== '') {
+                    try {
+                        $history    = ! empty($node->config['include_history']) ? $this->buildMessageHistory($contact, $accountId, 10, \Carbon\Carbon::parse($sessionStart)) : [];
+                        $aiResponse = app(AiService::class)->generateReply($accountId, $agent, $triggerMsg, $history, $sessionStart);
+                        $this->whatsAppSend->sendTextToContact($accountId, $contact, $aiResponse, $run->id);
+                    } catch (\Throwable $e) {
+                        Log::error('[AutomationRunner] ai_chat primeira resposta falhou', ['error' => $e->getMessage()]);
+                    }
+                }
+
+                $stopCommands  = array_values(array_filter((array) ($node->config['stop_commands'] ?? ['sair', 'encerrar', 'parar', 'tchau'])));
+                $timeoutHours  = max(1, (int) ($node->config['timeout_hours'] ?? 24));
+
+                $run->update([
+                    'metadata'  => array_merge($currentMeta, [
+                        'details'              => $details,
+                        'run_status'           => $runStatus,
+                        'ai_chat_active'       => true,
+                        'ai_chat_node_id'      => $node->id,
+                        'ai_chat_agent_id'     => $agentId,
+                        'ai_chat_stop_commands' => $stopCommands,
+                        'ai_chat_farewell'     => (string) ($node->config['farewell_message'] ?? ''),
+                        'ai_session_start_at'  => $sessionStart,
+                        'ai_session_end_at'    => null,
+                    ]),
+                    'resume_at' => now()->addHours($timeoutHours),
+                ]);
+
+                return ['done' => false, 'details' => $details, 'delay_minutes' => $timeoutHours * 60];
+            }
+
             // ── Modo imediato: usa a mensagem que disparou o fluxo ────
             if ($mode === 'immediate') {
                 $currentMeta  = $run->metadata ?? [];
@@ -887,6 +939,81 @@ class AutomationRunnerService
     private function lastSendFailureReason(): string
     {
         return __('Possíveis causas: Evolution API não configurada, instância desconectada ou contato sem telefone.');
+    }
+
+    /**
+     * Continua o atendimento contínuo: chama a IA com a nova mensagem e mantém o run aberto.
+     */
+    public function continueAiChat(Automation $automation, Contact $contact, AutomationRun $run, int $nodeId, string $userMessage): void
+    {
+        $meta      = $run->metadata ?? [];
+        $accountId = (int) $automation->user_id;
+        $agentId   = (int) ($meta['ai_chat_agent_id'] ?? 0);
+
+        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+        if (! $agent) {
+            Log::error('[AiChat] Agente não encontrado', ['agent_id' => $agentId]);
+            return;
+        }
+
+        $sessionStart = isset($meta['ai_session_start_at']) ? \Carbon\Carbon::parse($meta['ai_session_start_at']) : null;
+        $node         = $automation->flowNodes->firstWhere('id', $nodeId);
+        $history      = (! empty($node?->config['include_history']))
+            ? $this->buildMessageHistory($contact, $accountId, 10, $sessionStart)
+            : [];
+
+        try {
+            $aiResponse = app(AiService::class)->generateReply(
+                $accountId, $agent, $userMessage, $history, $sessionStart?->toISOString()
+            );
+            $this->whatsAppSend->sendTextToContact($accountId, $contact, $aiResponse, $run->id);
+
+            Log::channel('single')->info('[AiChat] IA respondeu', [
+                'contact_id'    => $contact->id,
+                'automation_id' => $automation->id,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('[AiChat] Falha ao chamar IA', ['error' => $e->getMessage(), 'contact' => $contact->id]);
+        }
+    }
+
+    /**
+     * Encerra o atendimento contínuo (comando de saída ou timeout) e continua o fluxo.
+     */
+    public function runForContactFromAiChat(Automation $automation, Contact $contact, AutomationRun $run, int $nodeId, string $handle): array
+    {
+        $meta      = $run->metadata ?? [];
+        $accountId = (int) $automation->user_id;
+
+        // Envia mensagem de despedida se configurada
+        if ($handle === 'ended') {
+            $farewell = trim((string) ($meta['ai_chat_farewell'] ?? ''));
+            if ($farewell !== '' && $contact->phone_for_whatsapp !== '') {
+                $this->whatsAppSend->sendTextToContact($accountId, $contact, $farewell, $run->id);
+            }
+        }
+
+        $run->update([
+            'resume_at' => null,
+            'metadata'  => array_merge($meta, [
+                'ai_chat_active'    => false,
+                'ai_session_end_at' => now()->toISOString(),
+            ]),
+        ]);
+
+        $node = $automation->flowNodes->firstWhere('id', $nodeId);
+        if (! $node) {
+            $run->update(['status' => 'success']);
+            return ['done' => true, 'status' => 'success', 'details' => $meta['details'] ?? []];
+        }
+
+        $nextNodes = $this->getNextNodesFromHandle($automation, $node, $handle);
+        foreach ($nextNodes as $next) {
+            $this->runFlowFromNode($automation, $contact, $run->fresh(), $next);
+        }
+
+        $run->update(['status' => 'success']);
+        return ['done' => true, 'status' => 'success', 'details' => $run->fresh()->metadata['details'] ?? []];
     }
 
     /**

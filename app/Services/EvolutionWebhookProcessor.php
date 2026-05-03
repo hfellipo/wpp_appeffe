@@ -581,31 +581,43 @@ class EvolutionWebhookProcessor
                 }
 
                 if ($body !== null && $body !== '' && $conversation->contact_id) {
-                    // Check for pending smart_reply node waiting for this contact's reply
+                    // Atendimento contínuo da IA tem prioridade máxima — processa e interrompe os demais
+                    $aiChatHandled = false;
                     try {
-                        $this->handleSmartReplyIfPending($conversation->contact_id, $accountId, $body);
+                        $aiChatHandled = $this->handleAiChatIfActive($conversation->contact_id, $accountId, $body);
                     } catch (\Throwable $e) {
-                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleSmartReplyIfPending failed', [
+                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiChatIfActive failed', [
                             'message' => $e->getMessage(),
                         ]);
                     }
 
-                    // Check for pending ai_reply node waiting for this contact's reply
-                    try {
-                        $this->handleAiReplyIfPending($conversation->contact_id, $accountId, $body);
-                    } catch (\Throwable $e) {
-                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiReplyIfPending failed', [
-                            'message' => $e->getMessage(),
-                        ]);
-                    }
+                    if (! $aiChatHandled) {
+                        // Check for pending smart_reply node waiting for this contact's reply
+                        try {
+                            $this->handleSmartReplyIfPending($conversation->contact_id, $accountId, $body);
+                        } catch (\Throwable $e) {
+                            Log::channel('single')->warning('EvolutionWebhookProcessor: handleSmartReplyIfPending failed', [
+                                'message' => $e->getMessage(),
+                            ]);
+                        }
 
-                    // Check keyword triggers
-                    try {
-                        $this->handleKeywordTrigger($conversation->contact_id, $accountId, $body);
-                    } catch (\Throwable $e) {
-                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleKeywordTrigger failed', [
-                            'message' => $e->getMessage(),
-                        ]);
+                        // Check for pending ai_reply node waiting for this contact's reply
+                        try {
+                            $this->handleAiReplyIfPending($conversation->contact_id, $accountId, $body);
+                        } catch (\Throwable $e) {
+                            Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiReplyIfPending failed', [
+                                'message' => $e->getMessage(),
+                            ]);
+                        }
+
+                        // Check keyword triggers
+                        try {
+                            $this->handleKeywordTrigger($conversation->contact_id, $accountId, $body);
+                        } catch (\Throwable $e) {
+                            Log::channel('single')->warning('EvolutionWebhookProcessor: handleKeywordTrigger failed', [
+                                'message' => $e->getMessage(),
+                            ]);
+                        }
                     }
                 }
             }
@@ -1238,6 +1250,73 @@ class EvolutionWebhookProcessor
 
             app(AutomationRunnerService::class)->runForContact($automation, $contact, false, false, $body);
         }
+    }
+
+    /**
+     * Verifica se há um atendimento contínuo de IA ativo para este contato.
+     * Se sim, responde com IA ou encerra o atendimento se receber o comando de saída.
+     * Retorna true se tratou a mensagem (os outros handlers devem ser ignorados).
+     */
+    private function handleAiChatIfActive(int $contactId, int $accountId, string $body): bool
+    {
+        $pendingRuns = AutomationRun::query()
+            ->where('contact_id', $contactId)
+            ->whereNotNull('resume_at')
+            ->where('resume_at', '>', now())
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get();
+
+        foreach ($pendingRuns as $run) {
+            $meta = $run->metadata ?? [];
+            if (empty($meta['ai_chat_active'])) {
+                continue;
+            }
+
+            $automation = Automation::query()
+                ->where('user_id', $accountId)
+                ->with(['flowNodes', 'flowEdges'])
+                ->find($run->automation_id);
+
+            if (! $automation) {
+                continue;
+            }
+
+            $contact = Contact::find($contactId);
+            if (! $contact) {
+                continue;
+            }
+
+            $nodeId       = (int) ($meta['ai_chat_node_id'] ?? 0);
+            $stopCommands = (array) ($meta['ai_chat_stop_commands'] ?? ['sair', 'encerrar', 'parar', 'tchau']);
+            $normalized   = AutomationRunnerService::normalizeReplyText($body);
+
+            Log::channel('single')->info('[AiChat] Mensagem recebida em atendimento contínuo', [
+                'contact_id'    => $contactId,
+                'automation_id' => $automation->id,
+                'body'          => mb_substr($body, 0, 100),
+            ]);
+
+            // Verifica se é um comando de encerramento
+            foreach ($stopCommands as $cmd) {
+                if (AutomationRunnerService::normalizeReplyText((string) $cmd) === $normalized) {
+                    Log::channel('single')->info('[AiChat] Comando de encerramento detectado', [
+                        'contact_id' => $contactId,
+                        'command'    => $cmd,
+                    ]);
+                    $runner = app(AutomationRunnerService::class);
+                    $runner->runForContactFromAiChat($automation, $contact, $run->fresh(), $nodeId, 'ended');
+                    return true;
+                }
+            }
+
+            // Continua o atendimento: chama a IA com a nova mensagem
+            $runner = app(AutomationRunnerService::class);
+            $runner->continueAiChat($automation, $contact, $run->fresh(), $nodeId, $body);
+            return true;
+        }
+
+        return false;
     }
 
     /**

@@ -84,6 +84,15 @@ class AutomationProcessorService
                 continue;
             }
 
+            // ai_chat continuous timeout → route to ended
+            if (! empty($metadata['ai_chat_active'])) {
+                $aiChatNodeId = (int) ($metadata['ai_chat_node_id'] ?? 0);
+                if ($aiChatNodeId > 0) {
+                    $this->runner->runForContactFromAiChat($automation, $contact, $run->fresh(), $aiChatNodeId, 'ended');
+                }
+                continue;
+            }
+
             $nodeId = isset($metadata['resume_from_node_id']) ? (int) $metadata['resume_from_node_id'] : null;
             if ($nodeId > 0) {
                 $this->runner->runForContactFromNode($automation, $contact, $run->fresh(), $nodeId);
