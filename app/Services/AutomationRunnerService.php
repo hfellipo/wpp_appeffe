@@ -163,9 +163,9 @@ class AutomationRunnerService
         $accountId = (int) $automation->user_id;
         $details   = (array) ($meta['details'] ?? []);
 
-        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->where('active', true)->first();
         if (! $agent) {
-            $details[] = ['action' => 'ai_reply', 'node_id' => $nodeId, 'success' => false, 'reason' => 'Agente de IA não encontrado.'];
+            $details[] = ['action' => 'ai_reply', 'node_id' => $nodeId, 'success' => false, 'reason' => 'Agente de IA não encontrado ou desativado.'];
             $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details])]);
             $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
             foreach ($nextNodes as $next) {
@@ -468,9 +468,9 @@ class AutomationRunnerService
                     $triggerMsg = $this->getLastIncomingMessage($contact, $accountId);
                 }
 
-                $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+                $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->where('active', true)->first();
                 if (! $agent) {
-                    $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Agente não encontrado.'];
+                    $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Agente não encontrado ou desativado.'];
                     $run->update(['metadata' => array_merge($currentMeta, ['details' => $details, 'run_status' => 'partial'])]);
                     $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'ended');
                     foreach ($nextNodes as $next) {
@@ -950,9 +950,9 @@ class AutomationRunnerService
         $accountId = (int) $automation->user_id;
         $agentId   = (int) ($meta['ai_chat_agent_id'] ?? 0);
 
-        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->where('active', true)->first();
         if (! $agent) {
-            Log::error('[AiChat] Agente não encontrado', ['agent_id' => $agentId]);
+            Log::error('[AiChat] Agente não encontrado ou desativado', ['agent_id' => $agentId]);
             return;
         }
 
@@ -996,7 +996,7 @@ class AutomationRunnerService
                 $this->whatsAppSend->sendTextToContact($accountId, $contact, $farewell, $run->id);
             } elseif ($agentId > 0) {
                 // Pede à IA que gere uma despedida natural com base na conversa
-                $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+                $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->where('active', true)->first();
                 if ($agent) {
                     try {
                         $history = $this->buildMessageHistory(
@@ -1053,9 +1053,9 @@ class AutomationRunnerService
     ): array {
         $config = $node->config ?? [];
 
-        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->first();
+        $agent = AiAgent::where('id', $agentId)->where('user_id', $accountId)->where('active', true)->first();
         if (! $agent) {
-            $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Agente não encontrado.'];
+            $details[] = ['action' => 'ai_reply', 'node_id' => $node->id, 'success' => false, 'reason' => 'Agente não encontrado ou desativado.'];
             $run->update(['metadata' => array_merge($run->metadata ?? [], ['details' => $details, 'run_status' => 'partial'])]);
             $nextNodes = $this->getNextNodesFromHandle($automation, $node, 'error');
             foreach ($nextNodes as $next) {
