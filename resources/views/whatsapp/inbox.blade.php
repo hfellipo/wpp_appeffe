@@ -651,11 +651,12 @@
                                     <div
                                         class="wa-conversation-item messenger-list-item"
                                         :class="activeConversation && activeConversation.id === c.id ? 'm-list-active' : ''"
+                                        :style="c.bot_blocked && !(activeConversation && activeConversation.id === c.id) ? 'border-left: 3px solid #dc2626; background: #fff8f8;' : ''"
                                         :data-contact="c.id"
                                         data-action="0"
                                         @click="openConversation(c)"
                                     >
-                                        <div class="wa-conversation-item__avatar">
+                                        <div class="wa-conversation-item__avatar" style="position:relative;">
                                             <div
                                                 class="avatar av-m wa-avatar"
                                                 :class="{ 'wa-avatar--fallback': !c.avatar_url }"
@@ -665,6 +666,12 @@
                                                     <span class="wa-avatar-initial" x-text="(c.contact_name || c.contact_number || '?').charAt(0).toUpperCase()"></span>
                                                 </template>
                                             </div>
+                                            {{-- Ícone de headset quando aguardando atendimento --}}
+                                            <template x-if="c.bot_blocked">
+                                                <span style="position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:#dc2626;display:flex;align-items:center;justify-content:center;border:2px solid #fff;animation:wa-pulse 1.4s ease-in-out infinite;">
+                                                    <i class="fas fa-headset" style="font-size:7px;color:#fff;"></i>
+                                                </span>
+                                            </template>
                                         </div>
                                         <div class="wa-conversation-item__body">
                                             <div class="wa-conversation-item__top">
@@ -673,7 +680,10 @@
                                             </div>
                                             <div class="wa-conversation-item__bottom">
                                                 <div style="flex:1;min-width:0;display:flex;align-items:center;gap:3px;overflow:hidden;">
-                                                    <template x-if="c.last_message_status && tickForStatus(c.last_message_status) && (c.unread_count || 0) === 0">
+                                                    <template x-if="c.bot_blocked">
+                                                        <span style="flex-shrink:0;font-size:0.68rem;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;padding:0 4px;font-weight:700;white-space:nowrap;">Aguardando</span>
+                                                    </template>
+                                                    <template x-if="!c.bot_blocked && c.last_message_status && tickForStatus(c.last_message_status) && (c.unread_count || 0) === 0">
                                                         <span class="wa-tick" :class="tickForStatus(c.last_message_status).colorClass" style="flex-shrink:0;font-size:0.7rem;">
                                                             <i :class="tickForStatus(c.last_message_status).iconClass"></i>
                                                         </span>

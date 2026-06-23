@@ -181,6 +181,7 @@ class WhatsAppInboxController extends Controller
         // Nome do dono do número: prioridade tabela contacts (app).
         // Busca apenas os contatos cujos telefones batem com as conversas abertas (query direcionada).
         $appContactNamesByKey = [];
+        $botStatusByConvKey   = []; // "instance|digits" => ['blocked'=>bool, 'disabled'=>bool, 'paused_until'=>?string]
         $directItems = $items->filter(fn (WhatsAppConversation $c) => ($c->kind ?? '') !== 'group');
         if ($directItems->isNotEmpty()) {
             // Gera os formatos de telefone que o modelo Contact armazena: (DDD)XXXXX-XXXX ou (DDD)XXXX-XXXX
@@ -202,16 +203,27 @@ class WhatsAppInboxController extends Controller
 
             if (!empty($phonePatterns)) {
                 $contactLookup = [];
+                $botStatusByDigits = []; // digits => ['bot_disabled'=>bool, 'bot_paused_until'=>?string]
                 Contact::forUser($accountId)
                     ->whereIn('phone', $phonePatterns)
-                    ->get(['name', 'phone'])
-                    ->each(function ($appCt) use (&$contactLookup) {
+                    ->get(['name', 'phone', 'bot_disabled', 'bot_paused_until'])
+                    ->each(function ($appCt) use (&$contactLookup, &$botStatusByDigits) {
                         $digits = ltrim(preg_replace('/\D/', '', (string) ($appCt->phone ?? '')), '0');
                         $name   = trim((string) ($appCt->name ?? ''));
-                        if ($digits === '' || $name === '') return;
-                        $contactLookup[$digits] = $name;
-                        if (strlen($digits) >= 11) $contactLookup[substr($digits, -11)] = $name;
-                        if (strlen($digits) >= 10) $contactLookup[substr($digits, -10)] = $name;
+                        if ($digits === '') return;
+                        $botBlocked = (bool) $appCt->bot_disabled
+                            || ($appCt->bot_paused_until && \Carbon\Carbon::parse($appCt->bot_paused_until)->isFuture());
+                        $botStatus = ['blocked' => $botBlocked, 'disabled' => (bool) $appCt->bot_disabled, 'paused_until' => optional($appCt->bot_paused_until instanceof \Carbon\Carbon ? $appCt->bot_paused_until : \Carbon\Carbon::parse($appCt->bot_paused_until))->toIso8601String()];
+                        if ($name !== '') $contactLookup[$digits] = $name;
+                        $botStatusByDigits[$digits] = $botStatus;
+                        if (strlen($digits) >= 11) {
+                            if ($name !== '') $contactLookup[substr($digits, -11)] = $name;
+                            $botStatusByDigits[substr($digits, -11)] = $botStatus;
+                        }
+                        if (strlen($digits) >= 10) {
+                            if ($name !== '') $contactLookup[substr($digits, -10)] = $name;
+                            $botStatusByDigits[substr($digits, -10)] = $botStatus;
+                        }
                     });
 
                 foreach ($directItems as $c) {
@@ -223,11 +235,20 @@ class WhatsAppInboxController extends Controller
                         ?? (strlen($convDigits) >= 10 ? ($contactLookup[substr($convDigits, -10)] ?? null) : null)
                         ?? null;
 
-                    if ($name === null) continue;
                     $inst = $c->instance_name;
-                    $appContactNamesByKey[$inst . '|' . $convDigits] = $name;
-                    if (strlen($convDigits) >= 11) $appContactNamesByKey[$inst . '|' . substr($convDigits, -11)] = $name;
-                    if (strlen($convDigits) >= 10) $appContactNamesByKey[$inst . '|' . substr($convDigits, -10)] = $name;
+                    if ($name !== null) {
+                        $appContactNamesByKey[$inst . '|' . $convDigits] = $name;
+                        if (strlen($convDigits) >= 11) $appContactNamesByKey[$inst . '|' . substr($convDigits, -11)] = $name;
+                        if (strlen($convDigits) >= 10) $appContactNamesByKey[$inst . '|' . substr($convDigits, -10)] = $name;
+                    }
+                    // Bot status map
+                    $bs = $botStatusByDigits[$convDigits]
+                        ?? (strlen($convDigits) >= 11 ? ($botStatusByDigits[substr($convDigits, -11)] ?? null) : null)
+                        ?? (strlen($convDigits) >= 10 ? ($botStatusByDigits[substr($convDigits, -10)] ?? null) : null)
+                        ?? null;
+                    if ($bs !== null) {
+                        $botStatusByConvKey[$inst . '|' . $convDigits] = $bs;
+                    }
                 }
             }
         }
@@ -274,7 +295,7 @@ class WhatsAppInboxController extends Controller
             'success'  => true,
             'has_more' => $hasMore,
             // Do not expose internal numeric IDs
-            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid, $appContactNamesByKey, $lastMsgStatusByConv) {
+            'items' => $items->map(function (WhatsAppConversation $c) use ($contactsByKey, $groupsByJid, $appContactNamesByKey, $botStatusByConvKey, $lastMsgStatusByConv) {
                 $digits = preg_replace('/\D/', '', (string) ($c->contact_number ?? ''));
                 $digitsNorm = $digits !== '' ? ltrim($digits, '0') : '';
                 $k = $c->instance_name . '|' . $digits;
@@ -330,6 +351,12 @@ class WhatsAppInboxController extends Controller
                     $avatarUrl = $groupInfoFull['avatar_url'];
                 }
 
+                // Bot status para indicador visual
+                $botStatus = $botStatusByConvKey[$kNorm]
+                    ?? ($digitsNorm !== '' && strlen($digitsNorm) >= 11 ? ($botStatusByConvKey[$c->instance_name . '|' . substr($digitsNorm, -11)] ?? null) : null)
+                    ?? ($digitsNorm !== '' && strlen($digitsNorm) >= 10 ? ($botStatusByConvKey[$c->instance_name . '|' . substr($digitsNorm, -10)] ?? null) : null)
+                    ?? null;
+
                 $payload = [
                     'id' => $c->public_id,
                     'instance_name' => $c->instance_name,
@@ -343,6 +370,7 @@ class WhatsAppInboxController extends Controller
                     'last_message_sender' => $c->last_message_sender,
                     'unread_count' => (int) $c->unread_count,
                     'last_message_status' => $lastMsgStatusByConv[(int) $c->id] ?? null,
+                    'bot_blocked' => $botStatus ? (bool) $botStatus['blocked'] : false,
                 ];
                 if ($isGroup) {
                     $payload['is_owner'] = $isOwner;
@@ -2523,10 +2551,9 @@ class WhatsAppInboxController extends Controller
      */
     public function humanQueue(Request $request): JsonResponse
     {
-        $accountId = (int) $request->user()->id;
+        $accountId = auth()->user()->accountId();
 
-        $contacts = Contact::query()
-            ->where('user_id', $accountId)
+        $contacts = Contact::forUser($accountId)
             ->where(function ($q) {
                 $q->where('bot_disabled', true)
                   ->orWhere(function ($q2) {
@@ -2537,25 +2564,62 @@ class WhatsAppInboxController extends Controller
             ->orderByDesc('updated_at')
             ->get(['id', 'name', 'phone', 'bot_disabled', 'bot_paused_until', 'updated_at']);
 
-        // Para cada contato, busca a conversa WA mais recente
+        if ($contacts->isEmpty()) {
+            return response()->json(['items' => [], 'total' => 0]);
+        }
+
+        // Busca conversas por contact_id (quando disponível)
         $contactIds = $contacts->pluck('id')->all();
-        $conversations = WhatsAppConversation::query()
+        $convsByContactId = WhatsAppConversation::query()
             ->where('user_id', $accountId)
             ->whereIn('contact_id', $contactIds)
             ->orderByDesc('last_message_at')
-            ->get(['id', 'public_id', 'contact_id', 'contact_name', 'instance_name', 'last_message_at', 'last_message_preview', 'unread_count']);
+            ->get(['id', 'public_id', 'contact_id', 'contact_name', 'instance_name', 'last_message_at', 'last_message_preview', 'unread_count'])
+            ->keyBy(fn ($c) => (int) $c->contact_id);
 
-        // Monta mapa contact_id => conversa mais recente
-        $convByContact = [];
-        foreach ($conversations as $conv) {
-            $cid = (int) $conv->contact_id;
-            if (!isset($convByContact[$cid])) {
-                $convByContact[$cid] = $conv;
-            }
+        // Fallback: busca conversas pelo número de telefone normalizado
+        $phoneLookup = []; // digits => contact_id
+        $phonePatterns = [];
+        foreach ($contacts as $contact) {
+            $digits = ltrim(preg_replace('/\D/', '', (string) ($contact->phone ?? '')), '0');
+            if ($digits === '') continue;
+            $phoneLookup[$digits] = $contact->id;
+            if (strlen($digits) >= 11) $phoneLookup[substr($digits, -11)] = $contact->id;
+            if (strlen($digits) >= 10) $phoneLookup[substr($digits, -10)] = $contact->id;
+            // Formatos armazenados na coluna contact_number
+            if (strlen($digits) === 11) $phonePatterns[] = sprintf('(%s)%s-%s', substr($digits,0,2), substr($digits,2,5), substr($digits,7,4));
+            elseif (strlen($digits) === 10) $phonePatterns[] = sprintf('(%s)%s-%s', substr($digits,0,2), substr($digits,2,4), substr($digits,6,4));
+            $phonePatterns[] = $digits;
         }
 
-        $items = $contacts->map(function (Contact $contact) use ($convByContact) {
-            $conv = $convByContact[$contact->id] ?? null;
+        $convsByPhone = collect();
+        if (!empty($phonePatterns)) {
+            $convsByPhone = WhatsAppConversation::query()
+                ->where('user_id', $accountId)
+                ->whereIn('contact_number', array_unique($phonePatterns))
+                ->orderByDesc('last_message_at')
+                ->get(['id', 'public_id', 'contact_id', 'contact_name', 'contact_number', 'instance_name', 'last_message_at', 'last_message_preview', 'unread_count']);
+        }
+
+        // Mapa phone digits => conversa mais recente
+        $convsByPhoneDigits = [];
+        foreach ($convsByPhone as $conv) {
+            $d = ltrim(preg_replace('/\D/', '', (string) ($conv->contact_number ?? '')), '0');
+            if ($d === '' || isset($convsByPhoneDigits[$d])) continue;
+            $convsByPhoneDigits[$d] = $conv;
+            if (strlen($d) >= 11 && !isset($convsByPhoneDigits[substr($d, -11)])) $convsByPhoneDigits[substr($d, -11)] = $conv;
+            if (strlen($d) >= 10 && !isset($convsByPhoneDigits[substr($d, -10)])) $convsByPhoneDigits[substr($d, -10)] = $conv;
+        }
+
+        $items = $contacts->map(function (Contact $contact) use ($convsByContactId, $convsByPhoneDigits) {
+            // Preferência: contact_id > telefone
+            $conv = $convsByContactId[(int) $contact->id] ?? null;
+            if ($conv === null) {
+                $d = ltrim(preg_replace('/\D/', '', (string) ($contact->phone ?? '')), '0');
+                $conv = $convsByPhoneDigits[$d]
+                    ?? (strlen($d) >= 11 ? ($convsByPhoneDigits[substr($d, -11)] ?? null) : null)
+                    ?? (strlen($d) >= 10 ? ($convsByPhoneDigits[substr($d, -10)] ?? null) : null);
+            }
             return [
                 'contact_id'       => $contact->id,
                 'contact_name'     => $contact->name,
@@ -2575,8 +2639,8 @@ class WhatsAppInboxController extends Controller
 
     public function humanQueueReactivate(Request $request, Contact $contact): JsonResponse
     {
-        $accountId = (int) $request->user()->id;
-        if ((int) $contact->user_id !== $accountId) {
+        $accountId = auth()->user()->accountId();
+        if ((int) $contact->user_id !== (int) $accountId) {
             return response()->json(['error' => 'Não autorizado'], 403);
         }
 
