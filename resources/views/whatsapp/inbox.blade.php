@@ -860,13 +860,15 @@
                                     <template x-for="item in humanQueue" :key="item.contact_id">
                                         <div
                                             class="wa-human-queue-item"
-                                            style="margin: 4px 8px; border-radius: 10px; border: 1.5px solid #fca5a5; background: #fff; overflow: hidden; cursor: pointer;"
+                                            style="margin: 4px 8px; border-radius: 10px; border: 1.5px solid #fca5a5; background: #fff; overflow: hidden; cursor: pointer; transition: box-shadow 0.15s;"
                                             :style="item.unread_count > 0 ? 'border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,0.12);' : ''"
+                                            @click="openHumanQueueConversation(item)"
+                                            @mouseover="$el.style.boxShadow='0 2px 8px rgba(220,38,38,0.18)'"
+                                            @mouseout="$el.style.boxShadow=item.unread_count > 0 ? '0 0 0 2px rgba(220,38,38,0.12)' : 'none'"
                                         >
                                             {{-- Cabeçalho do card --}}
                                             <div
                                                 style="display: flex; align-items: center; gap: 10px; padding: 10px 12px;"
-                                                @click="openHumanQueueConversation(item)"
                                             >
                                                 {{-- Avatar --}}
                                                 <div style="flex-shrink: 0;">

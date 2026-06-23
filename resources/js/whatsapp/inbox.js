@@ -707,11 +707,27 @@ window.waInboxChatify = function waInboxChatify() {
 
         openHumanQueueConversation(item) {
             if (!item.conversation_id) return;
-            const conv = this.conversations.find((c) => String(c.id) === String(item.conversation_id));
-            if (conv) {
-                this.setConversationTab('direct');
-                this.openConversation(conv);
+            // Tenta encontrar na lista já carregada
+            let conv = this.conversations.find((c) => String(c.id) === String(item.conversation_id));
+            if (!conv) {
+                // Constrói objeto mínimo para abrir — a rota de mensagens usa apenas c.id (public_id)
+                conv = {
+                    id: item.conversation_id,
+                    kind: 'direct',
+                    contact_name: item.contact_name,
+                    contact_number: item.contact_phone,
+                    avatar_url: null,
+                    last_message_at: item.last_message_at,
+                    last_message_preview: item.last_message_preview,
+                    unread_count: item.unread_count,
+                    bot_blocked: true,
+                };
+                // Insere na lista para aparecer selecionado
+                this.conversations.unshift(conv);
+                this.syncConversationLists();
             }
+            this.setConversationTab('direct');
+            this.openConversation(conv);
         },
 
         humanQueueTimeAgo(iso) {
