@@ -707,11 +707,20 @@ window.waInboxChatify = function waInboxChatify() {
 
         openHumanQueueConversation(item) {
             if (!item.conversation_id) return;
-            // Tenta encontrar na lista já carregada
-            let conv = this.conversations.find((c) => String(c.id) === String(item.conversation_id));
-            if (!conv) {
-                // Constrói objeto mínimo para abrir — a rota de mensagens usa apenas c.id (public_id)
-                conv = {
+            // Tenta encontrar na lista já carregada (por id ou por número de telefone)
+            const phone = String(item.contact_phone || '').replace(/\D/g, '').replace(/^0+/, '');
+            let conv = this.conversations.find((c) => String(c.id) === String(item.conversation_id))
+                || (phone ? this.conversations.find((c) => {
+                    const n = String(c.contact_number || '').replace(/\D/g, '').replace(/^0+/, '');
+                    return n && (n === phone || n.slice(-11) === phone.slice(-11) || n.slice(-10) === phone.slice(-10));
+                }) : null);
+            if (conv) {
+                this.setConversationTab('direct');
+                this.openConversation(conv);
+            } else {
+                // Não encontrada na lista: abre pelo public_id diretamente sem duplicar a lista
+                // Depois faz refresh silencioso para exibir corretamente
+                const minimal = {
                     id: item.conversation_id,
                     kind: 'direct',
                     contact_name: item.contact_name,
@@ -722,12 +731,10 @@ window.waInboxChatify = function waInboxChatify() {
                     unread_count: item.unread_count,
                     bot_blocked: true,
                 };
-                // Insere na lista para aparecer selecionado
-                this.conversations.unshift(conv);
-                this.syncConversationLists();
+                this.setConversationTab('direct');
+                this.openConversation(minimal);
+                this.refreshConversations(true); // recarrega lista sem duplicar
             }
-            this.setConversationTab('direct');
-            this.openConversation(conv);
         },
 
         humanQueueTimeAgo(iso) {
