@@ -67,6 +67,7 @@
             }
             .wa-typing-label { font-size: 0.75rem; color: #6b7280; font-style: italic; }
             .wa-tab--active { color: var(--primary-color, #25D366) !important; font-weight: 600; border-bottom: 2px solid var(--primary-color, #25D366); margin-bottom: -1px; }
+            .wa-list-tabs::-webkit-scrollbar { display: none; }
 
             /* Message media (image / video / document) */
             .wa-message-media { margin-bottom: 4px; }
@@ -567,13 +568,13 @@
 
                 <div class="m-body contacts-container">
                     <div class="show messenger-tab users-tab app-scroll" data-view="users">
-                        <div class="wa-list-tabs" style="display: flex; border-bottom: 1px solid #e5e7eb; margin-bottom: 8px;">
+                        <div class="wa-list-tabs" style="display: flex; border-bottom: 1px solid #e5e7eb; margin-bottom: 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch;">
                             <button
                                 type="button"
                                 class="wa-tab"
                                 :class="{ 'wa-tab--active': conversationTab === 'direct' }"
                                 @click="setConversationTab('direct')"
-                                style="flex: 1; padding: 10px 8px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280;"
+                                style="flex: 0 0 auto; padding: 10px 14px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280; white-space: nowrap;"
                             >
                                 <i class="fas fa-user"></i> Conversas
                             </button>
@@ -582,7 +583,7 @@
                                 class="wa-tab"
                                 :class="{ 'wa-tab--active': conversationTab === 'group' }"
                                 @click="setConversationTab('group')"
-                                style="flex: 1; padding: 10px 8px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280;"
+                                style="flex: 0 0 auto; padding: 10px 14px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280; white-space: nowrap;"
                             >
                                 <i class="fas fa-users"></i> Grupos
                             </button>
@@ -592,7 +593,7 @@
                                 class="wa-tab"
                                 :class="{ 'wa-tab--active': conversationTab === 'human' }"
                                 @click="setConversationTab('human')"
-                                style="flex: 1; padding: 10px 8px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280; position: relative;"
+                                style="flex: 0 0 auto; padding: 10px 14px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280; position: relative; white-space: nowrap;"
                                 :style="humanQueue.length > 0 ? 'color: #dc2626; font-weight: 700;' : ''"
                             >
                                 <span style="position: relative; display: inline-flex; align-items: center; gap: 4px;">
