@@ -206,6 +206,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/api/conversations/{conversation}/send', [WhatsAppInboxController::class, 'send'])->name('api.send');
         Route::post('/api/conversations/{conversation}/send-media', [WhatsAppInboxController::class, 'sendMedia'])->name('api.send-media');
         Route::get('/api/attachments/{attachment}', [WhatsAppInboxController::class, 'showAttachment'])->name('attachments.show');
+        Route::get('/api/human-queue', [WhatsAppInboxController::class, 'humanQueue'])->name('api.human-queue');
+        Route::post('/api/human-queue/{contact}/reactivate', [WhatsAppInboxController::class, 'humanQueueReactivate'])->name('api.human-queue.reactivate');
     });
 
     // Profile routes

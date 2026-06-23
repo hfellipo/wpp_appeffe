@@ -109,6 +109,12 @@ window.waInboxChatify = function waInboxChatify() {
         showEmojiPicker: false,
         emojiList: ['😀','😃','😄','😁','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😋','😜','🤔','🤗','👍','👎','👏','🙌','👋','❤️','🧡','💛','💚','💙','💜','🖤','💯','🔥','⭐','✨','🎉','🙏','✌️','🤝','💪','😎','🥳','😢','😭','😤','😡','🤬','😷','🤒','🤕','💀','💩','🤡','👻','🙈','🙉','🙊','💋','💌','💐','🌸','🌺','🌻','🌹','🥀','🌷','🍀','☀️','🌈','⚡','❄️','🔥','💧','🌊'],
 
+        // fila de atendimento humano
+        humanQueue: [],
+        humanQueueLoading: false,
+        _humanQueueTimer: null,
+        _reactivating: {},
+
         // fallback quando preview de imagem falha ao carregar
         imageLoadFail: {},
         // true/undefined = carregando, false = carregou (para mostrar feedback "Carregando...")
@@ -155,6 +161,7 @@ window.waInboxChatify = function waInboxChatify() {
 
         setConversationTab(tab) {
             this.conversationTab = tab;
+            if (tab === 'human') return;
             if (this.activeConversation && (this.activeConversation.kind || 'direct') !== tab) {
                 this.activeConversation = null;
                 this.loadingMessages = false;
@@ -379,6 +386,7 @@ window.waInboxChatify = function waInboxChatify() {
 
             await this.refreshStatus();
             await this.refreshConversations();
+            await this.refreshHumanQueue();
 
             // Poll as fallback (SSE can drop on some proxies)
             this.startTimers();
@@ -615,14 +623,62 @@ window.waInboxChatify = function waInboxChatify() {
             // Conversations are also updated by SSE, but keep a light poll as safety-net
             this._pollTimer = setInterval(() => this.poll(), 12000);
             this._statusTimer = setInterval(() => this.refreshStatus(), 20000);
+            this._humanQueueTimer = setInterval(() => this.refreshHumanQueue(), 30000);
         },
 
         stopTimers() {
             this._timersRunning = false;
             if (this._pollTimer) clearInterval(this._pollTimer);
             if (this._statusTimer) clearInterval(this._statusTimer);
+            if (this._humanQueueTimer) clearInterval(this._humanQueueTimer);
             this._pollTimer = null;
             this._statusTimer = null;
+            this._humanQueueTimer = null;
+        },
+
+        async refreshHumanQueue() {
+            try {
+                const resp = await fetch('/whatsapp/api/human-queue', { headers: { Accept: 'application/json' } });
+                const data = await resp.json().catch(() => ({}));
+                this.humanQueue = Array.isArray(data.items) ? data.items : [];
+            } catch (_) { /* silencioso */ }
+        },
+
+        async reactivateBot(item) {
+            if (this._reactivating[item.contact_id]) return;
+            this._reactivating = { ...this._reactivating, [item.contact_id]: true };
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            try {
+                const resp = await fetch(`/whatsapp/api/human-queue/${item.contact_id}/reactivate`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' },
+                });
+                if (resp.ok) {
+                    this.humanQueue = this.humanQueue.filter((i) => i.contact_id !== item.contact_id);
+                }
+            } catch (_) { /* silencioso */ } finally {
+                const next = { ...this._reactivating };
+                delete next[item.contact_id];
+                this._reactivating = next;
+            }
+        },
+
+        openHumanQueueConversation(item) {
+            if (!item.conversation_id) return;
+            const conv = this.conversations.find((c) => String(c.id) === String(item.conversation_id));
+            if (conv) {
+                this.setConversationTab('direct');
+                this.openConversation(conv);
+            }
+        },
+
+        humanQueueTimeAgo(iso) {
+            if (!iso) return '';
+            const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+            if (diff < 60) return `${diff}s`;
+            if (diff < 3600) return `${Math.floor(diff / 60)}min`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+            return `${Math.floor(diff / 86400)}d`;
         },
 
         async poll() {

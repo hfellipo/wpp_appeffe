@@ -2521,6 +2521,72 @@ class WhatsAppInboxController extends Controller
      * POST /api/conversations/{conversation}/run-automation
      * Body: automation_id
      */
+    public function humanQueue(Request $request): JsonResponse
+    {
+        $accountId = (int) $request->user()->id;
+
+        $contacts = Contact::query()
+            ->where('user_id', $accountId)
+            ->where(function ($q) {
+                $q->where('bot_disabled', true)
+                  ->orWhere(function ($q2) {
+                      $q2->whereNotNull('bot_paused_until')
+                         ->where('bot_paused_until', '>', now());
+                  });
+            })
+            ->orderByDesc('updated_at')
+            ->get(['id', 'name', 'phone', 'bot_disabled', 'bot_paused_until', 'updated_at']);
+
+        // Para cada contato, busca a conversa WA mais recente
+        $contactIds = $contacts->pluck('id')->all();
+        $conversations = WhatsAppConversation::query()
+            ->where('user_id', $accountId)
+            ->whereIn('contact_id', $contactIds)
+            ->orderByDesc('last_message_at')
+            ->get(['id', 'public_id', 'contact_id', 'contact_name', 'instance_name', 'last_message_at', 'last_message_preview', 'unread_count']);
+
+        // Monta mapa contact_id => conversa mais recente
+        $convByContact = [];
+        foreach ($conversations as $conv) {
+            $cid = (int) $conv->contact_id;
+            if (!isset($convByContact[$cid])) {
+                $convByContact[$cid] = $conv;
+            }
+        }
+
+        $items = $contacts->map(function (Contact $contact) use ($convByContact) {
+            $conv = $convByContact[$contact->id] ?? null;
+            return [
+                'contact_id'       => $contact->id,
+                'contact_name'     => $contact->name,
+                'contact_phone'    => $contact->phone,
+                'bot_disabled'     => (bool) $contact->bot_disabled,
+                'bot_paused_until' => $contact->bot_paused_until?->toIso8601String(),
+                'transferred_at'   => $contact->updated_at->toIso8601String(),
+                'conversation_id'  => $conv?->public_id,
+                'last_message_at'  => $conv?->last_message_at?->toIso8601String(),
+                'last_message_preview' => $conv?->last_message_preview,
+                'unread_count'     => (int) ($conv?->unread_count ?? 0),
+            ];
+        })->values();
+
+        return response()->json(['items' => $items, 'total' => $items->count()]);
+    }
+
+    public function humanQueueReactivate(Request $request, Contact $contact): JsonResponse
+    {
+        $accountId = (int) $request->user()->id;
+        if ((int) $contact->user_id !== $accountId) {
+            return response()->json(['error' => 'Não autorizado'], 403);
+        }
+
+        $contact->bot_disabled    = false;
+        $contact->bot_paused_until = null;
+        $contact->save();
+
+        return response()->json(['success' => true, 'contact_id' => $contact->id]);
+    }
+
     public function runAutomation(Request $request, WhatsAppConversation $conversation): JsonResponse
     {
         $accountId = auth()->user()->accountId();

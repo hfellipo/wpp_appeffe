@@ -573,7 +573,7 @@
                                 class="wa-tab"
                                 :class="{ 'wa-tab--active': conversationTab === 'direct' }"
                                 @click="setConversationTab('direct')"
-                                style="flex: 1; padding: 10px 12px; border: none; background: none; cursor: pointer; font-size: 0.9rem; color: #6b7280;"
+                                style="flex: 1; padding: 10px 8px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280;"
                             >
                                 <i class="fas fa-user"></i> Conversas
                             </button>
@@ -582,12 +582,34 @@
                                 class="wa-tab"
                                 :class="{ 'wa-tab--active': conversationTab === 'group' }"
                                 @click="setConversationTab('group')"
-                                style="flex: 1; padding: 10px 12px; border: none; background: none; cursor: pointer; font-size: 0.9rem; color: #6b7280;"
+                                style="flex: 1; padding: 10px 8px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280;"
                             >
                                 <i class="fas fa-users"></i> Grupos
                             </button>
+                            {{-- Aba Aguardando com badge de alerta --}}
+                            <button
+                                type="button"
+                                class="wa-tab"
+                                :class="{ 'wa-tab--active': conversationTab === 'human' }"
+                                @click="setConversationTab('human')"
+                                style="flex: 1; padding: 10px 8px; border: none; background: none; cursor: pointer; font-size: 0.82rem; color: #6b7280; position: relative;"
+                                :style="humanQueue.length > 0 ? 'color: #dc2626; font-weight: 700;' : ''"
+                            >
+                                <span style="position: relative; display: inline-flex; align-items: center; gap: 4px;">
+                                    <i class="fas fa-headset"></i>
+                                    <span> Humano</span>
+                                    <template x-if="humanQueue.length > 0">
+                                        <span
+                                            x-text="humanQueue.length"
+                                            style="position: absolute; top: -8px; right: -14px; min-width: 16px; height: 16px; border-radius: 8px; background: #dc2626; color: #fff; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center; justify-content: center; padding: 0 3px; animation: wa-pulse 1.4s ease-in-out infinite;"
+                                        ></span>
+                                    </template>
+                                </span>
+                            </button>
                         </div>
-                        <p class="messenger-title" style="margin-top: 0;"><span x-text="conversationTab === 'direct' ? 'Conversas' : 'Grupos'"></span></p>
+                        <p class="messenger-title" style="margin-top: 0;">
+                            <span x-text="conversationTab === 'direct' ? 'Conversas' : (conversationTab === 'group' ? 'Grupos' : 'Aguardando atendimento')"></span>
+                        </p>
 
                         {{-- Banner discreto: sem instância conectada --}}
                         <template x-if="hasInstance === false || (hasInstance === true && !connected && waConfigured !== null)">
@@ -803,6 +825,91 @@
                                     </template>
                                 </div>
                             </template>
+
+                            {{-- Aba: Fila de atendimento humano --}}
+                            <template x-if="conversationTab === 'human'">
+                                <div>
+                                    {{-- Banner de alerta quando há itens --}}
+                                    <template x-if="humanQueue.length > 0">
+                                        <div style="margin: 0 8px 8px; padding: 8px 12px; border-radius: 8px; background: #fef2f2; border: 1px solid #fca5a5; display: flex; align-items: center; gap: 8px;">
+                                            <span style="flex-shrink:0; width: 8px; height: 8px; border-radius: 50%; background: #dc2626; animation: wa-pulse 1.4s ease-in-out infinite;"></span>
+                                            <span style="font-size: 0.78rem; color: #991b1b; font-weight: 600;" x-text="humanQueue.length === 1 ? '1 contato aguardando atendimento' : humanQueue.length + ' contatos aguardando atendimento'"></span>
+                                        </div>
+                                    </template>
+
+                                    {{-- Lista vazia --}}
+                                    <template x-if="humanQueue.length === 0">
+                                        <div style="padding: 32px 16px; text-align: center; color: #9ca3af;">
+                                            <i class="fas fa-check-circle" style="font-size: 2rem; color: #10b981; margin-bottom: 8px; display: block;"></i>
+                                            <p style="font-size: 0.82rem; margin: 0;">Nenhum contato aguardando.<br>Todos estão sendo atendidos!</p>
+                                        </div>
+                                    </template>
+
+                                    {{-- Cards de cada contato em espera --}}
+                                    <template x-for="item in humanQueue" :key="item.contact_id">
+                                        <div
+                                            class="wa-human-queue-item"
+                                            style="margin: 4px 8px; border-radius: 10px; border: 1.5px solid #fca5a5; background: #fff; overflow: hidden; cursor: pointer;"
+                                            :style="item.unread_count > 0 ? 'border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,0.12);' : ''"
+                                        >
+                                            {{-- Cabeçalho do card --}}
+                                            <div
+                                                style="display: flex; align-items: center; gap: 10px; padding: 10px 12px;"
+                                                @click="openHumanQueueConversation(item)"
+                                            >
+                                                {{-- Avatar --}}
+                                                <div style="flex-shrink: 0;">
+                                                    <div
+                                                        class="avatar av-m wa-avatar wa-avatar--fallback"
+                                                        style="background: #fee2e2; color: #dc2626; font-weight: 700;"
+                                                    >
+                                                        <span class="wa-avatar-initial" x-text="(item.contact_name || item.contact_phone || '?').charAt(0).toUpperCase()"></span>
+                                                    </div>
+                                                </div>
+                                                {{-- Info --}}
+                                                <div style="flex: 1; min-width: 0;">
+                                                    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 4px;">
+                                                        <span style="font-size: 0.87rem; font-weight: 700; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" x-text="item.contact_name || item.contact_phone"></span>
+                                                        <span style="font-size: 0.72rem; color: #dc2626; white-space: nowrap; font-weight: 600;" x-text="humanQueueTimeAgo(item.transferred_at)"></span>
+                                                    </div>
+                                                    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px; gap: 4px;">
+                                                        <span
+                                                            style="font-size: 0.72rem; padding: 1px 6px; border-radius: 4px; font-weight: 700; white-space: nowrap;"
+                                                            :style="item.bot_disabled ? 'background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;' : 'background:#fefce8;color:#854d0e;border:1px solid #fde68a;'"
+                                                            x-text="item.bot_disabled ? '🔒 Definitivo' : '⏱ Temporário'"
+                                                        ></span>
+                                                        <span style="font-size: 0.72rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right;" x-text="item.last_message_preview || ''"></span>
+                                                        <template x-if="item.unread_count > 0">
+                                                            <span class="wa-conversation-item__unread" x-text="item.unread_count" style="flex-shrink:0;"></span>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {{-- Rodapé com ação "Reativar bot" --}}
+                                            <div style="border-top: 1px solid #fee2e2; padding: 6px 12px; display: flex; align-items: center; justify-content: space-between; background: #fef9f9;">
+                                                <span style="font-size: 0.72rem; color: #9ca3af;">
+                                                    <template x-if="!item.bot_disabled && item.bot_paused_until">
+                                                        <span>Retoma em: <strong x-text="humanQueueTimeAgo(item.bot_paused_until)"></strong></span>
+                                                    </template>
+                                                    <template x-if="item.bot_disabled">
+                                                        <span>Bot desativado permanentemente</span>
+                                                    </template>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    @click.stop="reactivateBot(item)"
+                                                    :disabled="_reactivating[item.contact_id]"
+                                                    style="font-size: 0.72rem; padding: 3px 10px; border-radius: 6px; border: 1px solid #10b981; background: #f0fdf4; color: #065f46; font-weight: 700; cursor: pointer; white-space: nowrap; transition: background 0.15s;"
+                                                    :style="_reactivating[item.contact_id] ? 'opacity:0.5;cursor:not-allowed;' : ''"
+                                                    x-text="_reactivating[item.contact_id] ? 'Reativando...' : 'Reativar bot'"
+                                                ></button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+
                         </div>
                     </div>
                 </div>

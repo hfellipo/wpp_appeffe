@@ -235,8 +235,10 @@ function getNodeSummary(type, config) {
       const n = (config.choices || []).length;
       return q ? `${q} (${n} opção${n !== 1 ? 'ões' : ''})` : '';
     }
-    case 'human_transfer':
-      return config.message ? config.message.slice(0, 50) + (config.message.length > 50 ? '…' : '') : 'Transferir para atendente';
+    case 'human_transfer': {
+      const modeHt = config.mode === 'temporary' ? '⏱ Temporária' : '🔒 Definitiva';
+      return config.message ? `${modeHt} — ${config.message.slice(0, 40)}${config.message.length > 40 ? '…' : ''}` : `${modeHt} — Transferir para atendente`;
+    }
     case 'ai_reply': {
       const ag = (window.AI_AGENTS || []).find(a => String(a.id) === String(config.agent_id));
       const modeLabel = config.mode === 'wait_reply' ? '💬' : config.mode === 'continuous' ? '🤖' : '⚡';
@@ -978,8 +980,10 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
   const [gotoAutoId, setGotoAutoId] = useState(String(config.automation_id || ''));
 
   // ── human_transfer state ─────────────────────────────────────
-  const [htMessage, setHtMessage] = useState(config.message  || '');
-  const [htTagId,   setHtTagId]   = useState(String(config.tag_id || ''));
+  const [htMessage,      setHtMessage]      = useState(config.message       || '');
+  const [htTagId,        setHtTagId]        = useState(String(config.tag_id || ''));
+  const [htMode,         setHtMode]         = useState(config.mode          || 'permanent');
+  const [htPauseMinutes, setHtPauseMinutes] = useState(String(config.pause_minutes || '60'));
 
   // ── ai_reply state ───────────────────────────────────────────
   const [aiMode,           setAiMode]            = useState(config.mode                        || 'continuous');
@@ -1069,7 +1073,12 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
     } else if (type === 'go_to') {
       next = { automation_id: gotoAutoId ? Number(gotoAutoId) : null };
     } else if (type === 'human_transfer') {
-      next = { message: htMessage, tag_id: htTagId ? Number(htTagId) : null };
+      next = {
+        message:       htMessage,
+        tag_id:        htTagId ? Number(htTagId) : null,
+        mode:          htMode,
+        pause_minutes: htMode === 'temporary' ? Math.max(1, parseInt(htPauseMinutes, 10) || 60) : null,
+      };
     } else if (type === 'ai_reply') {
       const stopList = aiStopCommands.split(',').map(s => s.trim()).filter(Boolean);
       next = {
@@ -1571,6 +1580,64 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
         {/* ── HUMAN_TRANSFER ── */}
         {type === 'human_transfer' && (
           <div>
+            {/* Modo de transferência */}
+            <Label>Tipo de transferência</Label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {[
+                { value: 'permanent', icon: '🔒', title: 'Definitiva', desc: 'O bot é desativado permanentemente para este contato. Nenhuma automação será disparada até que seja reativado manualmente.' },
+                { value: 'temporary', icon: '⏱', title: 'Temporária', desc: 'O bot é pausado por um período. Após o tempo definido, automações voltam a funcionar normalmente.' },
+              ].map(opt => (
+                <div key={opt.value} onClick={() => setHtMode(opt.value)}
+                  style={{
+                    border: `2px solid ${htMode === opt.value ? '#a21caf' : '#e5e7eb'}`,
+                    borderRadius: 8, padding: '8px 10px', cursor: 'pointer',
+                    background: htMode === opt.value ? '#fdf4ff' : '#fff',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: htMode === opt.value ? '#701a75' : '#374151', marginBottom: 2 }}>
+                    {opt.icon} {opt.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>{opt.desc}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Duração — só aparece no modo temporário */}
+            {htMode === 'temporary' && (
+              <div style={{ marginBottom: 12 }}>
+                <Label>Duração da pausa</Label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { label: '30 min',   val: '30' },
+                    { label: '1 hora',   val: '60' },
+                    { label: '2 horas',  val: '120' },
+                    { label: '4 horas',  val: '240' },
+                    { label: '8 horas',  val: '480' },
+                    { label: '24 horas', val: '1440' },
+                  ].map(o => (
+                    <button key={o.val} onClick={() => setHtPauseMinutes(o.val)}
+                      style={{
+                        padding: '4px 8px', fontSize: 11, borderRadius: 6, cursor: 'pointer',
+                        border: `1.5px solid ${htPauseMinutes === o.val ? '#a21caf' : '#d1d5db'}`,
+                        background: htPauseMinutes === o.val ? '#fdf4ff' : '#f9fafb',
+                        color: htPauseMinutes === o.val ? '#701a75' : '#374151',
+                        fontWeight: htPauseMinutes === o.val ? 700 : 400,
+                      }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                  <input
+                    type="number" min="1" value={htPauseMinutes}
+                    onChange={e => setHtPauseMinutes(e.target.value)}
+                    style={{ ...INPUT, width: 90 }}
+                  />
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>minutos</span>
+                </div>
+              </div>
+            )}
+
             <Label>Mensagem antes da transferência (opcional)</Label>
             <textarea value={htMessage} onChange={e => setHtMessage(e.target.value)} rows={4} placeholder="Ex: Aguarde, vou transferir para um atendente..." style={{ ...INPUT, resize: 'vertical' }} />
             <Label>Tag a adicionar ao contato (opcional)</Label>
@@ -1581,6 +1648,12 @@ function PropertiesPanel({ node, onUpdate, onClose }) {
                   {TAGS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
             }
+
+            {htMode === 'permanent' && (
+              <div style={{ marginTop: 12, padding: '8px 10px', background: '#fef3c7', borderRadius: 8, border: '1px solid #fcd34d', fontSize: 11, color: '#92400e' }}>
+                <strong>Atenção:</strong> Para reativar o bot, acesse o contato e clique em "Reativar automação".
+              </div>
+            )}
           </div>
         )}
 

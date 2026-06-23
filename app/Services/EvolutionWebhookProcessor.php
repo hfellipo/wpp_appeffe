@@ -581,42 +581,52 @@ class EvolutionWebhookProcessor
                 }
 
                 if ($body !== null && $body !== '' && $conversation->contact_id) {
-                    // Atendimento contínuo da IA tem prioridade máxima — processa e interrompe os demais
-                    $aiChatHandled = false;
-                    try {
-                        $aiChatHandled = $this->handleAiChatIfActive($conversation->contact_id, $accountId, $body);
-                    } catch (\Throwable $e) {
-                        Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiChatIfActive failed', [
-                            'message' => $e->getMessage(),
+                    // Verifica se o contato está em modo humano (bot desativado)
+                    $contactForBotCheck = \App\Models\Contact::find($conversation->contact_id);
+                    if ($contactForBotCheck && $contactForBotCheck->isBotBlocked()) {
+                        Log::channel('single')->info('EvolutionWebhookProcessor: automação bloqueada — contato em atendimento humano', [
+                            'contact_id'       => $conversation->contact_id,
+                            'bot_disabled'     => $contactForBotCheck->bot_disabled,
+                            'bot_paused_until' => $contactForBotCheck->bot_paused_until,
                         ]);
-                    }
-
-                    if (! $aiChatHandled) {
-                        // Check for pending smart_reply node waiting for this contact's reply
+                    } else {
+                        // Atendimento contínuo da IA tem prioridade máxima — processa e interrompe os demais
+                        $aiChatHandled = false;
                         try {
-                            $this->handleSmartReplyIfPending($conversation->contact_id, $accountId, $body);
+                            $aiChatHandled = $this->handleAiChatIfActive($conversation->contact_id, $accountId, $body);
                         } catch (\Throwable $e) {
-                            Log::channel('single')->warning('EvolutionWebhookProcessor: handleSmartReplyIfPending failed', [
+                            Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiChatIfActive failed', [
                                 'message' => $e->getMessage(),
                             ]);
                         }
 
-                        // Check for pending ai_reply node waiting for this contact's reply
-                        try {
-                            $this->handleAiReplyIfPending($conversation->contact_id, $accountId, $body);
-                        } catch (\Throwable $e) {
-                            Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiReplyIfPending failed', [
-                                'message' => $e->getMessage(),
-                            ]);
-                        }
+                        if (! $aiChatHandled) {
+                            // Check for pending smart_reply node waiting for this contact's reply
+                            try {
+                                $this->handleSmartReplyIfPending($conversation->contact_id, $accountId, $body);
+                            } catch (\Throwable $e) {
+                                Log::channel('single')->warning('EvolutionWebhookProcessor: handleSmartReplyIfPending failed', [
+                                    'message' => $e->getMessage(),
+                                ]);
+                            }
 
-                        // Check keyword triggers
-                        try {
-                            $this->handleKeywordTrigger($conversation->contact_id, $accountId, $body);
-                        } catch (\Throwable $e) {
-                            Log::channel('single')->warning('EvolutionWebhookProcessor: handleKeywordTrigger failed', [
-                                'message' => $e->getMessage(),
-                            ]);
+                            // Check for pending ai_reply node waiting for this contact's reply
+                            try {
+                                $this->handleAiReplyIfPending($conversation->contact_id, $accountId, $body);
+                            } catch (\Throwable $e) {
+                                Log::channel('single')->warning('EvolutionWebhookProcessor: handleAiReplyIfPending failed', [
+                                    'message' => $e->getMessage(),
+                                ]);
+                            }
+
+                            // Check keyword triggers
+                            try {
+                                $this->handleKeywordTrigger($conversation->contact_id, $accountId, $body);
+                            } catch (\Throwable $e) {
+                                Log::channel('single')->warning('EvolutionWebhookProcessor: handleKeywordTrigger failed', [
+                                    'message' => $e->getMessage(),
+                                ]);
+                            }
                         }
                     }
                 }

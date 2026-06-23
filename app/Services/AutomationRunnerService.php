@@ -800,10 +800,24 @@ class AutomationRunnerService
                 if ($tagId > 0) {
                     $contact->tags()->syncWithoutDetaching([$tagId]);
                 }
-                Log::info('AutomationRunner: human_transfer requested', [
-                    'contact_id'   => $contact->id,
-                    'automation_id' => $run->automation_id,
-                ]);
+                $mode = (string) ($config['mode'] ?? 'permanent');
+                if ($mode === 'temporary') {
+                    $pauseMinutes = max(1, (int) ($config['pause_minutes'] ?? 60));
+                    $contact->bot_paused_until = now()->addMinutes($pauseMinutes);
+                    $contact->save();
+                    Log::info('AutomationRunner: human_transfer temporary', [
+                        'contact_id'    => $contact->id,
+                        'automation_id' => $run->automation_id,
+                        'pause_until'   => $contact->bot_paused_until,
+                    ]);
+                } else {
+                    $contact->bot_disabled = true;
+                    $contact->save();
+                    Log::info('AutomationRunner: human_transfer permanent', [
+                        'contact_id'    => $contact->id,
+                        'automation_id' => $run->automation_id,
+                    ]);
+                }
                 return true;
 
             default:

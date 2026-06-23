@@ -19,7 +19,25 @@ class Contact extends Model
         'phone',
         'email',
         'notes',
+        'bot_disabled',
+        'bot_paused_until',
     ];
+
+    protected $casts = [
+        'bot_disabled'    => 'boolean',
+        'bot_paused_until' => 'datetime',
+    ];
+
+    public function isBotBlocked(): bool
+    {
+        if ($this->bot_disabled) {
+            return true;
+        }
+        if ($this->bot_paused_until && $this->bot_paused_until->isFuture()) {
+            return true;
+        }
+        return false;
+    }
 
     /**
      * Canonical phone normalization used everywhere: (XX)XXXXX-XXXX or (XX)XXXX-XXXX.
