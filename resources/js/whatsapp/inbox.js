@@ -114,6 +114,7 @@ window.waInboxChatify = function waInboxChatify() {
         humanQueueLoading: false,
         _humanQueueTimer: null,
         _reactivating: {},
+        _endingAttendance: false,
 
         // fallback quando preview de imagem falha ao carregar
         imageLoadFail: {},
@@ -655,12 +656,53 @@ window.waInboxChatify = function waInboxChatify() {
                 });
                 if (resp.ok) {
                     this.humanQueue = this.humanQueue.filter((i) => i.contact_id !== item.contact_id);
+                    await this._clearBotBlockedOnConversation(item.contact_id);
                 }
             } catch (_) { /* silencioso */ } finally {
                 const next = { ...this._reactivating };
                 delete next[item.contact_id];
                 this._reactivating = next;
             }
+        },
+
+        async endHumanAttendance(conv) {
+            if (!conv || this._endingAttendance) return;
+            // Descobre o contact_id via humanQueue ou via detailsData
+            const contactId = (this.detailsData && this.detailsData.found && this.detailsData.contact)
+                ? this.detailsData.contact.id
+                : (this.humanQueue.find((i) => i.conversation_id === conv.id) || {}).contact_id;
+            if (!contactId) return;
+            this._endingAttendance = true;
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            try {
+                const resp = await fetch(`/whatsapp/api/human-queue/${contactId}/reactivate`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' },
+                });
+                if (resp.ok) {
+                    this.humanQueue = this.humanQueue.filter((i) => i.contact_id !== contactId);
+                    await this._clearBotBlockedOnConversation(contactId);
+                }
+            } catch (_) { /* silencioso */ } finally {
+                this._endingAttendance = false;
+            }
+        },
+
+        _clearBotBlockedOnConversation(contactId) {
+            // Remove o indicador visual da lista de conversas sem re-fetch completo
+            this.conversations = this.conversations.map((c) => {
+                if (!c.bot_blocked) return c;
+                // Tenta casar pelo humanQueue
+                const item = this.humanQueue.find((i) => i.conversation_id === c.id);
+                if (item && item.contact_id === contactId) return { ...c, bot_blocked: false };
+                return c;
+            });
+            this.syncConversationLists();
+            // Atualiza activeConversation se for a mesma
+            if (this.activeConversation && this.activeConversation.bot_blocked) {
+                this.activeConversation = { ...this.activeConversation, bot_blocked: false };
+            }
+            return this.refreshConversations(true);
         },
 
         openHumanQueueConversation(item) {

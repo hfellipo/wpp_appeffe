@@ -1268,6 +1268,33 @@
                 <template x-if="activeConversation && !detailsLoading">
                     <div>
 
+                        {{-- Seção: Atendimento humano ativo --}}
+                        <template x-if="activeConversation && activeConversation.bot_blocked">
+                            <div style="margin: 0 1rem 0.75rem; border-radius: 10px; background: #fef2f2; border: 1.5px solid #fca5a5; overflow: hidden;">
+                                <div style="padding: 10px 12px 6px; display: flex; align-items: center; gap: 8px;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #dc2626; flex-shrink: 0; animation: wa-pulse 1.4s ease-in-out infinite;"></span>
+                                    <span style="font-size: 0.78rem; font-weight: 700; color: #991b1b;">Em atendimento humano</span>
+                                </div>
+                                <div style="padding: 0 12px 10px; font-size: 0.73rem; color: #7f1d1d; line-height: 1.4;">
+                                    O bot está pausado. Responda o contato e clique em <strong>Encerrar atendimento</strong> quando concluir.
+                                </div>
+                                <div style="border-top: 1px solid #fca5a5; padding: 8px 12px;">
+                                    <button
+                                        type="button"
+                                        @click="endHumanAttendance(activeConversation)"
+                                        :disabled="_endingAttendance"
+                                        style="width: 100%; padding: 7px 0; border-radius: 7px; border: none; background: #dc2626; color: #fff; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s;"
+                                        :style="_endingAttendance ? 'opacity:0.6;cursor:not-allowed;' : 'opacity:1;'"
+                                        onmouseover="if(!this.disabled)this.style.background='#b91c1c'"
+                                        onmouseout="if(!this.disabled)this.style.background='#dc2626'"
+                                    >
+                                        <i class="fas" :class="_endingAttendance ? 'fa-circle-notch fa-spin' : 'fa-check-circle'"></i>
+                                        <span x-text="_endingAttendance ? 'Encerrando...' : 'Encerrar atendimento'"></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+
                         {{-- Seção: Grupo info (somente para grupos) --}}
                         <template x-if="activeConversation && (activeConversation.kind || '') === 'group'">
                             <div style="border-top:1px solid var(--border-color,#e9edef);padding:0.75rem 1rem 0.5rem;">
